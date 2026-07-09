@@ -1,0 +1,9 @@
+{
+  "name": "iris-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "IRIS · Plataforma Clínica Veterinaria SaaS — prototipo estático + funciones serverless de Vercel",
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -13,6 +13,26 @@
   <!-- FullCalendar (bundle global incluye su propio CSS-in-JS, sin link aparte) -->
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales/es.global.min.js"></script>
+  <!-- Supabase JS v2 (CDN, build ESM) — crea el cliente global window.supabase
+       que consumen tanto el auth shell como el resto del documento (scripts
+       clásicos, sin import). Dispara "supabase-ready" quienes necesiten
+       esperar a que exista antes de operar. -->
+  <script type="module">
+    import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+    // TODO: reemplaza estos dos valores por los de tu proyecto de Supabase
+    // (Project Settings → API → Project URL / anon public key). La anon key
+    // es pública por diseño — la seguridad la da RLS, no el secreto de esta
+    // key. La Service Role key NUNCA debe ir en el frontend; esa solo vive
+    // en las variables de entorno del panel de Vercel (uso backend).
+    const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
+    const SUPABASE_ANON_KEY = 'TU-ANON-PUBLIC-KEY';
+
+    window.supabase = createClient(https://ayyggymsblvxrrzfjhmw.supabase.co/rest/v1/, sb_publishable_JcVhVQEX0Ph57fag7VpkLw_UJV3Z36L);
+    window.dispatchEvent(new Event('supabase-ready'));
+  </script>
+  <!-- jsPDF (generación de PDF en cliente para adjuntar/almacenar formularios) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <style>
     /* VARIABLES DE DISEÑO (SISTEMA DE COLOR CRÍTICO) */
     :root {
@@ -2803,6 +2823,8 @@
             <a href="#" class="link-ghost">¿Olvidaste tu contraseña?</a>
           </div>
 
+          <span class="field-error" id="login-error-msg" style="display:none;margin:-8px 0 12px;"></span>
+
           <button type="submit" class="btn btn-primary" id="login-btn">Ingresar</button>
         </form>
 
@@ -2928,6 +2950,18 @@
         <p class="card-subtitle">Datos del establecimiento — serás el administrador principal</p>
 
         <form onsubmit="handleCreateClinic(event)" novalidate>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="reg-d-email">Email corporativo</label>
+              <input class="input" type="email" id="reg-d-email" placeholder="tu@clinica.com" autocomplete="email" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="reg-d-password">Contraseña</label>
+              <input class="input" type="password" id="reg-d-password" placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="new-password" required>
+            </div>
+          </div>
+          <span class="field-error" id="reg-d-error" style="display:none;margin:-10px 0 14px;"></span>
+
           <div class="form-group">
             <label class="form-label" for="razon">Razón social</label>
             <input class="input" type="text" id="razon" placeholder="Ej. Felinos & Caninos SAS" required>
@@ -3015,6 +3049,18 @@
 
         <h2 class="card-title">Busca tu establecimiento</h2>
         <p class="card-subtitle">Encuentra la clínica a la que quieres unirte y solicita acceso</p>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="reg-e-email">Email corporativo</label>
+            <input class="input" type="email" id="reg-e-email" placeholder="tu@clinica.com" autocomplete="email" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="reg-e-password">Contraseña</label>
+            <input class="input" type="password" id="reg-e-password" placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="new-password" required>
+          </div>
+        </div>
+        <span class="field-error" id="reg-e-error" style="display:none;margin:-10px 0 14px;"></span>
 
         <div class="search-wrap">
           <i data-lucide="search" class="search-icon" style="width:18px;height:18px;"></i>
@@ -3172,8 +3218,11 @@
     /* ── Login ─────────────────────────────────────────────────── */
     function handleLoginSubmit(e) {
       e.preventDefault();
-      const emailEl  = document.getElementById('email');
-      const errorEl  = document.getElementById('email-error');
+      const emailEl    = document.getElementById('email');
+      const passwordEl = document.getElementById('password');
+      const errorEl    = document.getElementById('email-error');
+      const authErrorEl = document.getElementById('login-error-msg');
+      authErrorEl.style.display = 'none';
 
       if (!emailEl.value.trim()) {
         emailEl.classList.add('has-error');
@@ -3187,9 +3236,33 @@
       btn.disabled = true;
       btn.innerHTML = '<div class="spinner"></div> Ingresando...';
 
-      setTimeout(() => {
+      // Login real contra Supabase Auth. Si el cliente todavía no cargó
+      // (import ESM en curso) o las credenciales fallan, se avisa en
+      // login-error-msg y no se avanza al shell — entrarAlShellDesdeAuth()
+      // solo se dispara tras un login exitoso.
+      if (!window.supabase) {
+        btn.disabled = false;
+        btn.innerHTML = 'Ingresar';
+        authErrorEl.textContent = 'No se pudo conectar con el servidor. Intenta de nuevo en unos segundos.';
+        authErrorEl.style.display = 'block';
+        return;
+      }
+
+      window.supabase.auth.signInWithPassword({
+        email: emailEl.value.trim(),
+        password: passwordEl.value
+      }).then(({ error }) => {
+        if (error) {
+          btn.disabled = false;
+          btn.innerHTML = 'Ingresar';
+          authErrorEl.textContent = error.message === 'Invalid login credentials'
+            ? 'Email o contraseña incorrectos'
+            : error.message;
+          authErrorEl.style.display = 'block';
+          return;
+        }
         goToTransition();
-      }, 1500);
+      });
     }
 
     document.getElementById('email').addEventListener('input', function() {
@@ -3223,11 +3296,16 @@
     /* ── Crear Clínica ─────────────────────────────────────────── */
     function handleCreateClinic(e) {
       e.preventDefault();
+      const emailEl    = document.getElementById('reg-d-email');
+      const passwordEl = document.getElementById('reg-d-password');
+      const errorEl    = document.getElementById('reg-d-error');
+      errorEl.style.display = 'none';
+
       const btn = document.getElementById('create-btn');
       btn.disabled = true;
       btn.textContent = 'Creando...';
 
-      setTimeout(() => {
+      const finishUI = () => {
         document.getElementById('sd-step1').classList.remove('active');
         document.getElementById('sd-step1').classList.add('done');
         document.getElementById('sd-step1').innerHTML = '<i data-lucide="check" style="width:12px;height:12px;"></i>';
@@ -3238,11 +3316,45 @@
         document.getElementById('screen-d-form').style.display = 'none';
         document.getElementById('screen-d-success').style.display = 'block';
         lucide.createIcons();
-      }, 1200);
+      };
+
+      // Crea la cuenta real en Supabase Auth (rol + nombre de la clínica
+      // quedan en user_metadata) antes de mostrar la pantalla de éxito.
+      if (!window.supabase) {
+        setTimeout(finishUI, 1200);
+        return;
+      }
+
+      const clinicName = document.getElementById('comercial').value.trim() || document.getElementById('razon').value.trim();
+      window.supabase.auth.signUp({
+        email: emailEl.value.trim(),
+        password: passwordEl.value,
+        options: { data: { role: selectedRole || 'admin', clinic_name: clinicName } }
+      }).then(({ error }) => {
+        btn.disabled = false;
+        btn.textContent = 'Crear establecimiento';
+        if (error) {
+          errorEl.textContent = error.message;
+          errorEl.style.display = 'block';
+          return;
+        }
+        finishUI();
+      });
     }
 
     /* ── Solicitar Vinculación ─────────────────────────────────── */
     function requestLink(clinicName) {
+      const emailEl    = document.getElementById('reg-e-email');
+      const passwordEl = document.getElementById('reg-e-password');
+      const errorEl    = document.getElementById('reg-e-error');
+      errorEl.style.display = 'none';
+
+      if (!emailEl.value.trim() || !passwordEl.value) {
+        errorEl.textContent = 'Ingresa tu email y contraseña para crear tu cuenta antes de solicitar la vinculación';
+        errorEl.style.display = 'block';
+        return;
+      }
+
       selectedClinic = clinicName;
       const roleLabel = {
         medico:   'Médico Veterinario',
@@ -3251,9 +3363,28 @@
         ventas:   'Ventas'
       }[selectedRole] || 'miembro del equipo';
 
-      document.getElementById('pending-clinic').textContent = clinicName;
-      document.getElementById('pending-role').textContent   = roleLabel;
-      goTo('screen-e2');
+      const proceed = () => {
+        document.getElementById('pending-clinic').textContent = clinicName;
+        document.getElementById('pending-role').textContent   = roleLabel;
+        goTo('screen-e2');
+      };
+
+      // Crea la cuenta real en Supabase Auth para quien se vincula a un
+      // establecimiento existente (rol + clínica solicitada en metadata).
+      if (!window.supabase) { proceed(); return; }
+
+      window.supabase.auth.signUp({
+        email: emailEl.value.trim(),
+        password: passwordEl.value,
+        options: { data: { role: selectedRole || 'auxiliar', requested_clinic: clinicName } }
+      }).then(({ error }) => {
+        if (error) {
+          errorEl.textContent = error.message;
+          errorEl.style.display = 'block';
+          return;
+        }
+        proceed();
+      });
     }
 
     /* ── PROTOTIPO: desbloquear pantalla de pendiente de aprobación ── */
@@ -6145,6 +6276,7 @@
 
     // Cierra la sesión simulada y regresa al login (pantalla A del auth shell)
     function cerrarSesion() {
+      if (window.supabase) window.supabase.auth.signOut();
       localStorage.removeItem('iris_session_active');
       localStorage.removeItem('iris_sim_role');
       const profileDropdownEl = document.getElementById('profile-dropdown');
@@ -6560,6 +6692,12 @@
 
       closeRegistrarPropietarioModal();
       showToast('Propietario registrado');
+
+      // Sincronización con backend real (Supabase): inserta el registro,
+      // genera el PDF y dispara el email de confirmación. No bloquea el
+      // flujo local — si falla (sin sesión Supabase real, sin conexión,
+      // etc.) el propietario ya quedó guardado en el mock local igual.
+      sincronizarPropietarioConSupabase(nuevoPropietario);
 
       // Encadenar con "Registrar mascota" (Parte B.5) — el propietario recién
       // creado queda preseleccionado/vinculado en ese modal.
@@ -16729,5 +16867,170 @@
       </div>
     </div>
   </div>
+
+  <!-- ── Integración con backend real (Supabase + jsPDF + Resend) ──────
+       Vive en un bloque de script propio al final del documento, después
+       de que TODO lo demás (auth shell y app shell) ya se ejecutó, para
+       no repetir la trampa de orden de ejecución documentada más arriba
+       en este archivo (temporal dead zone sobre const/let de scripts
+       anteriores). Solo depende de globals que a esta altura ya existen:
+       window.supabase (definido en el bloque de script tipo módulo del
+       head), window.jspdf (UMD, cargado también en el head), y
+       funciones/arrays del app shell (showToast, propietarios). -->
+  <script>
+    const IRIS_PDF_ACCENT = [15, 118, 110]; // --clinic-accent
+
+    function generarPdfPropietario(datos) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const marginX = 48;
+      let y;
+
+      doc.setFillColor(IRIS_PDF_ACCENT[0], IRIS_PDF_ACCENT[1], IRIS_PDF_ACCENT[2]);
+      doc.rect(0, 0, pageWidth, 90, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.text('IRIS', marginX, 40);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.text('Sistema de Gestión Clínica Veterinaria', marginX, 58);
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Ficha de registro de propietario', marginX, 78);
+
+      y = 120;
+      doc.setTextColor(30, 30, 30);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const fecha = new Date().toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' });
+      doc.text(`Generado el ${fecha}`, marginX, y);
+      y += 24;
+
+      const rows = [
+        ['Tipo de identificación', datos.docTipo || '—'],
+        ['Número de identificación', datos.docNumero || '—'],
+        ['Expedición documento', datos.expedicionDocumento || '—'],
+        ['Nombre / Razón social', datos.nombre || '—'],
+        ['Móvil / WhatsApp', datos.movil || '—'],
+        ['Email', datos.email || 'No registra'],
+        ['Dirección', datos.direccion || '—'],
+        ['Ciudad o municipio', datos.ciudad || '—'],
+        ['Contacto autorizado', datos.contactoAutorizado || '—'],
+        ['Teléfono alternativo', datos.telefonoAlterno || '—'],
+        ['Teléfono opcional', datos.telefonoOpcional || '—'],
+        ['¿Cómo nos encontró?', datos.comoNosEncontro || '—']
+      ];
+
+      doc.setFontSize(11);
+      const rowHeight = 26;
+      rows.forEach(([label, value], i) => {
+        if (i % 2 === 0) {
+          doc.setFillColor(244, 247, 246);
+          doc.rect(marginX - 8, y - 16, pageWidth - (marginX - 8) * 2, rowHeight, 'F');
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(60, 60, 60);
+        doc.text(label, marginX, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(20, 20, 20);
+        doc.text(String(value), marginX + 200, y);
+        y += rowHeight;
+      });
+
+      y += 20;
+      doc.setDrawColor(220, 220, 220);
+      doc.line(marginX, y, pageWidth - marginX, y);
+      y += 20;
+      doc.setFontSize(9);
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        'Documento generado automáticamente por IRIS a partir del formulario de registro de propietario.',
+        marginX, y, { maxWidth: pageWidth - marginX * 2 }
+      );
+
+      return doc.output('blob');
+    }
+
+    // Inserta el propietario en Supabase (tabla `formularios`, asociada al
+    // usuario autenticado), genera su PDF, lo sube al bucket privado
+    // `pdfs` y dispara el email de confirmación vía /api/send-email. No
+    // bloquea ni revierte el guardado local en el array `propietarios` —
+    // si no hay sesión real de Supabase (ej. credenciales de prototipo
+    // aún sin configurar en el head, o el usuario entró por el bypass
+    // "Simular aprobación y continuar") simplemente se omite en silencio.
+    async function sincronizarPropietarioConSupabase(nuevoPropietario) {
+      if (!window.supabase) {
+        console.warn('[IRIS] Supabase no está inicializado todavía — se omite la sincronización con el backend.');
+        return;
+      }
+      try {
+        const { data: userData, error: userError } = await window.supabase.auth.getUser();
+        if (userError || !userData || !userData.user) {
+          console.warn('[IRIS] No hay sesión de Supabase activa — se omite la sincronización con el backend.', userError);
+          return;
+        }
+        const user = userData.user;
+
+        const { data: inserted, error: insertError } = await window.supabase
+          .from('formularios')
+          .insert({
+            user_id: user.id,
+            tipo: 'propietario',
+            doc_tipo: nuevoPropietario.docTipo,
+            doc_numero: nuevoPropietario.docNumero,
+            movil: nuevoPropietario.movil,
+            email: nuevoPropietario.email,
+            nombre: nuevoPropietario.nombre,
+            direccion: nuevoPropietario.direccion,
+            ciudad: nuevoPropietario.ciudad,
+            contacto_autorizado: nuevoPropietario.contactoAutorizado,
+            telefono_alterno: nuevoPropietario.telefonoAlterno,
+            telefono_opcional: nuevoPropietario.telefonoOpcional,
+            expedicion_documento: nuevoPropietario.expedicionDocumento,
+            como_nos_encontro: nuevoPropietario.comoNosEncontro
+          })
+          .select()
+          .single();
+        if (insertError) throw insertError;
+
+        const pdfBlob = generarPdfPropietario(nuevoPropietario);
+        const pdfPath = `${user.id}/propietario-${inserted.id}.pdf`;
+
+        const { error: uploadError } = await window.supabase.storage
+          .from('pdfs')
+          .upload(pdfPath, pdfBlob, { contentType: 'application/pdf', upsert: true });
+        if (uploadError) throw uploadError;
+
+        // El bucket es privado (los PDFs traen datos personales) — se
+        // guarda solo la ruta en la fila y se firma una URL temporal
+        // (1h) cada vez que se necesita compartir/enviar el documento.
+        await window.supabase.from('formularios').update({ pdf_url: pdfPath }).eq('id', inserted.id);
+
+        const { data: signedUrlData, error: signedUrlError } = await window.supabase.storage
+          .from('pdfs')
+          .createSignedUrl(pdfPath, 3600);
+        if (signedUrlError) throw signedUrlError;
+
+        const destinatario = nuevoPropietario.email || user.email;
+        if (destinatario) {
+          await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: destinatario,
+              propietario: nuevoPropietario,
+              pdfUrl: signedUrlData.signedUrl
+            })
+          });
+        }
+
+        showToast('Propietario sincronizado con el servidor');
+      } catch (err) {
+        console.error('[IRIS] Error sincronizando propietario con Supabase:', err);
+      }
+    }
+  </script>
 </body>
 </html>
