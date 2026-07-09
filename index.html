@@ -20,19 +20,20 @@
   <script type="module">
     import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-    // TODO: reemplaza estos dos valores por los de tu proyecto de Supabase
-    // (Project Settings → API → Project URL / anon public key). La anon key
+    // Project Settings → API → Project URL / anon public key. La anon key
     // es pública por diseño — la seguridad la da RLS, no el secreto de esta
     // key. La Service Role key NUNCA debe ir en el frontend; esa solo vive
     // en las variables de entorno del panel de Vercel (uso backend).
-    const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
-    const SUPABASE_ANON_KEY = 'TU-ANON-PUBLIC-KEY';
+    const SUPABASE_URL = 'https://ayyggymsblvxrrzfjhmw.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_JcVhVQEX0Ph57fag7VpkLw_UJV3Z36L';
 
-    window.supabase = createClient(https://ayyggymsblvxrrzfjhmw.supabase.co/rest/v1/, sb_publishable_JcVhVQEX0Ph57fag7VpkLw_UJV3Z36L);
+    window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     window.dispatchEvent(new Event('supabase-ready'));
   </script>
   <!-- jsPDF (generación de PDF en cliente para adjuntar/almacenar formularios) -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <!-- html2canvas (requerido por jsPDF.html() para rasterizar HTML a PDF) -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     /* VARIABLES DE DISEÑO (SISTEMA DE COLOR CRÍTICO) */
     :root {
@@ -7825,7 +7826,7 @@
 
     function crearMascotaKey(nombre) {
       const base = nombre.toLowerCase()
-        .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar tildes
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quitar tildes
         .replace(/[^a-z0-9]+/g, '') || 'mascota';
       let key = base;
       let i = 2;
@@ -8233,90 +8234,127 @@
       lucide.createIcons();
     }
 
-    function rowActionVer(moduleKey, recordId) {
-      closeAllRowMenus();
+    // Helper compartido por rowActionVer (Tarea "Ver") y rowActionImprimir
+    // (Tarea "Imprimir a PDF"): dado un moduleKey/recordId, resuelve el
+    // registro correspondiente y devuelve { title, html } usando las
+    // funciones *ViewContentHTML() ya existentes, sin abrir ningún modal.
+    // Devuelve null si el registro no existe o el moduleKey no tiene
+    // mapeo aquí (usuario/seguimiento/agenda-evento se resuelven aparte,
+    // no tienen función *ViewContentHTML() propia).
+    function getRegistroViewData(moduleKey, recordId) {
       if (moduleKey === 'consulta') {
-        openViewModal('Consulta clínica', consultaViewContentHTML());
+        return { title: 'Consulta clínica', html: consultaViewContentHTML() };
       } else if (moduleKey === 'formula') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].formulas[Number(idx)];
-        openViewModal('Fórmula médica', formulaViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Fórmula médica', html: formulaViewContentHTML(record) };
       } else if (moduleKey === 'vacunacion') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].vacunaciones[Number(idx)];
-        openViewModal('Vacunación', vacunacionViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Vacunación', html: vacunacionViewContentHTML(record) };
       } else if (moduleKey === 'desparasitacion') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].desparasitaciones[Number(idx)];
-        openViewModal('Desparasitación', desparasitacionViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Desparasitación', html: desparasitacionViewContentHTML(record) };
       } else if (moduleKey === 'orden') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].ordenes[Number(idx)];
-        openViewModal('Orden', ordenViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Orden', html: ordenViewContentHTML(record) };
       } else if (moduleKey === 'documento') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].documentos[Number(idx)];
-        openViewModal(record.nombre, documentoViewContentHTML(record));
-      } else if (moduleKey === 'usuario') {
-        openUsuarioDetalleModal(recordId);
+        if (!record) return null;
+        return { title: record.nombre, html: documentoViewContentHTML(record) };
       } else if (moduleKey === 'resultado') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].resultados[Number(idx)];
-        openViewModal('Resultado', resultadoViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Resultado', html: resultadoViewContentHTML(record) };
       } else if (moduleKey === 'hospitalizacion') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].hospitalizaciones[Number(idx)];
-        openViewModal('Hospitalización/ambulatorio', hospitalizacionViewContentHTML(record));
-      } else if (moduleKey === 'seguimiento') {
-        const [petKey, idx] = recordId.split(':');
-        verSeguimiento(petKey, Number(idx));
+        if (!record) return null;
+        return { title: 'Hospitalización/ambulatorio', html: hospitalizacionViewContentHTML(record) };
       } else if (moduleKey === 'cirugia') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].cirugias[Number(idx)];
-        openViewModal('Cirugía/procedimiento', cirugiaViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Cirugía/procedimiento', html: cirugiaViewContentHTML(record) };
       } else if (moduleKey === 'peluqueria') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].peluquerias[Number(idx)];
-        openViewModal('Peluquería y spa', peluqueriaViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Peluquería y spa', html: peluqueriaViewContentHTML(record) };
       } else if (moduleKey === 'guarderia') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].guarderias[Number(idx)];
-        openViewModal('Guardería', guarderiaViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Guardería', html: guarderiaViewContentHTML(record) };
       } else if (moduleKey === 'remision') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].remisiones[Number(idx)];
-        openViewModal('Remisión', remisionViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Remisión', html: remisionViewContentHTML(record) };
       } else if (moduleKey === 'mensaje') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].mensajes[Number(idx)];
-        openViewModal('Mensaje al propietario', mensajeViewContentHTML(record));
+        if (!record) return null;
+        return { title: 'Mensaje al propietario', html: mensajeViewContentHTML(record) };
       } else if (moduleKey === 'cotizacion' || moduleKey === 'factura' || moduleKey === 'notacredito' || moduleKey === 'docsoporte') {
         const record = getDocVentaArray(moduleKey).find(d => d.id === recordId);
-        if (record) openViewModal(record.numero, docVentaViewContentHTML(moduleKey, record));
+        if (!record) return null;
+        return { title: record.numero, html: docVentaViewContentHTML(moduleKey, record) };
       } else if (moduleKey === 'movimiento') {
         const m = VENTAS_MOVIMIENTOS.find(x => x.id === Number(recordId));
-        if (m) openViewModal(m.concepto, movimientoViewContentHTML(m));
+        if (!m) return null;
+        return { title: m.concepto, html: movimientoViewContentHTML(m) };
       } else if (moduleKey === 'proveedor') {
         const p = VENTAS_PROVEEDORES.find(x => x.id === recordId);
-        if (p) openViewModal(p.nombre, proveedorViewContentHTML(p));
+        if (!p) return null;
+        return { title: p.nombre, html: proveedorViewContentHTML(p) };
       } else if (moduleKey === 'cliente') {
         const c = VENTAS_CLIENTES.find(x => x.id === recordId);
-        if (c) openViewModal(c.nombre, clienteViewContentHTML(c));
+        if (!c) return null;
+        return { title: c.nombre, html: clienteViewContentHTML(c) };
       } else if (moduleKey === 'producto') {
         const p = VENTAS_CATALOGO.find(x => x.id === recordId);
-        if (p) openViewModal(p.nombre, productoViewContentHTML(p));
+        if (!p) return null;
+        return { title: p.nombre, html: productoViewContentHTML(p) };
       } else if (moduleKey === 'salida') {
         const s = INVENTARIO_SALIDAS.find(x => x.id === Number(recordId));
-        if (s) openViewModal('Salida de inventario', salidaViewContentHTML(s));
+        if (!s) return null;
+        return { title: 'Salida de inventario', html: salidaViewContentHTML(s) };
       } else if (moduleKey === 'ordencompra') {
         const oc = INVENTARIO_ORDENES_COMPRA.find(x => x.id === recordId);
-        if (oc) openViewModal(oc.id.toUpperCase(), ordenCompraViewContentHTML(oc));
+        if (!oc) return null;
+        return { title: oc.id.toUpperCase(), html: ordenCompraViewContentHTML(oc) };
       } else if (moduleKey === 'compra') {
         const cp = INVENTARIO_COMPRAS.find(x => x.id === recordId);
-        if (cp) openViewModal(cp.id.toUpperCase(), compraViewContentHTML(cp));
+        if (!cp) return null;
+        return { title: cp.id.toUpperCase(), html: compraViewContentHTML(cp) };
+      }
+      return null;
+    }
+
+    function rowActionVer(moduleKey, recordId) {
+      closeAllRowMenus();
+      if (moduleKey === 'usuario') {
+        openUsuarioDetalleModal(recordId);
+        return;
+      } else if (moduleKey === 'seguimiento') {
+        const [petKey, idx] = recordId.split(':');
+        verSeguimiento(petKey, Number(idx));
+        return;
       } else if (moduleKey === 'agenda-evento') {
         abrirEventoAgendaPorId(recordId);
+        return;
       }
+      const data = getRegistroViewData(moduleKey, recordId);
+      if (data) openViewModal(data.title, data.html);
     }
 
     function rowActionEditar(moduleKey, recordId) {
@@ -8380,9 +8418,122 @@
       }
     }
 
+    // Convierte un texto libre en un slug apto para nombre de archivo:
+    // sin tildes/diacríticos, minúsculas, separado por guiones.
+    function slugificarIrisPdf(texto) {
+      const slug = String(texto == null ? '' : texto)
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      return slug || 'registro';
+    }
+
+    // Genera el PDF de un registro (vía jsPDF + html2canvas, 100% en el
+    // navegador, sin llamadas a Supabase/backend) a partir del título y
+    // HTML ya resueltos por getRegistroViewData(), y dispara su descarga.
+    // Rasteriza el contenido con html2canvas() y lo inserta con
+    // doc.addImage() en vez de usar doc.html() directamente: doc.html()
+    // por defecto dibuja el texto como vectores reubicándolo según la
+    // posición ORIGINAL en pantalla del contenedor fuente, así que si ese
+    // contenedor vive fuera de pantalla (como acá, para no parpadear en
+    // la UI) el texto termina dibujado fuera del área imprimible de la
+    // página — el PDF sale con el encabezado pero el cuerpo en blanco.
+    // Rasterizar nosotros mismos evita ese desfase de coordenadas.
+    async function generarPdfRegistroImpresion(titulo, contenidoHTML, recordId) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 40;
+      const marginBottom = 36;
+      const accent = [15, 118, 110]; // --clinic-accent (#0F766E)
+
+      doc.setFillColor(accent[0], accent[1], accent[2]);
+      doc.rect(0, 0, pageWidth, 90, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.text('IRIS', marginX, 40);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.text('Sistema de Gestión Clínica Veterinaria', marginX, 58);
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.text(String(titulo), marginX, 78);
+
+      const fechaGeneracion = new Date().toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' });
+      doc.setTextColor(90, 90, 90);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Generado el ${fechaGeneracion}`, marginX, 106);
+
+      // Contenedor temporal fuera de pantalla: mantiene las clases/estilos
+      // globales (.info-label, .info-value, etc.) para que html2canvas
+      // rasterice el registro con la misma apariencia que el modal "Ver".
+      const container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.top = '0';
+      container.style.left = '-10000px';
+      container.style.width = '520px';
+      container.style.background = '#ffffff';
+      container.style.padding = '4px';
+      container.innerHTML = contenidoHTML;
+      document.body.appendChild(container);
+
+      try {
+        const canvas = await html2canvas(container, { backgroundColor: '#ffffff', scale: 2 });
+        container.parentNode.removeChild(container);
+
+        const imgWidth = pageWidth - marginX * 2;
+        const pxPerPt = canvas.width / imgWidth;
+        const firstPageContentHeightPx = (pageHeight - 122 - marginBottom) * pxPerPt;
+        const nextPageContentHeightPx = (pageHeight - marginX - marginBottom) * pxPerPt;
+
+        let renderedPx = 0;
+        let firstSlice = true;
+        while (renderedPx < canvas.height) {
+          const availablePx = firstSlice ? firstPageContentHeightPx : nextPageContentHeightPx;
+          const slicePx = Math.min(availablePx, canvas.height - renderedPx);
+
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = slicePx;
+          sliceCanvas.getContext('2d').drawImage(
+            canvas, 0, renderedPx, canvas.width, slicePx, 0, 0, canvas.width, slicePx
+          );
+
+          if (!firstSlice) doc.addPage();
+          const y = firstSlice ? 122 : marginX;
+          doc.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginX, y, imgWidth, slicePx / pxPerPt);
+
+          renderedPx += slicePx;
+          firstSlice = false;
+        }
+
+        const nombreArchivo = `${slugificarIrisPdf(titulo)}-${slugificarIrisPdf(recordId)}.pdf`;
+        doc.save(nombreArchivo);
+        showToast('PDF descargado');
+      } catch (err) {
+        if (container.parentNode) container.parentNode.removeChild(container);
+        console.error('[IRIS] Error generando PDF de impresión:', err);
+        showToast('No se pudo generar el PDF');
+      }
+    }
+
     function rowActionImprimir(moduleKey, recordId) {
       closeAllRowMenus();
+      if (moduleKey === 'usuario' || moduleKey === 'seguimiento' || moduleKey === 'agenda-evento') {
+        showToast('Impresión no disponible para este tipo de registro');
+        return;
+      }
+      const data = getRegistroViewData(moduleKey, recordId);
+      if (!data) {
+        showToast('No se encontró el registro para imprimir');
+        return;
+      }
       showToast('Generando PDF...');
+      generarPdfRegistroImpresion(data.title, data.html, recordId);
     }
 
     function rowActionEmail(moduleKey, recordId) {
