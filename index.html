@@ -2839,11 +2839,45 @@
           Continuar con Google
         </button>
 
-        <div class="divider"><span>o</span></div>
+      </div>
+    </div>
 
-        <div class="text-center">
-          <a class="link-accent" onclick="goTo('screen-b')">¿Tu clínica es nueva? Regístrala aquí</a>
+    <!-- PANTALLA PERFIL — COMPLETAR PERFIL PERSONAL (Tarea 4: primer paso
+         obligatorio tras login/registro exitoso, antes de elegir rol) -->
+    <div class="screen" id="screen-perfil-completar">
+      <div class="card card-md">
+        <div class="logo-wrap" style="margin-bottom:16px;">
+          <div class="logo-badge">I</div>
+          <span class="logo-name">IRIS</span>
         </div>
+
+        <h2 class="card-title">Completa tu perfil</h2>
+        <p class="card-subtitle">Estos datos identifican tu cuenta dentro de IRIS</p>
+
+        <form onsubmit="handleCompletarPerfil(event)" novalidate>
+          <div class="form-group">
+            <label class="form-label" for="perfil-nombre">Nombre completo</label>
+            <input class="input" type="text" id="perfil-nombre" placeholder="Ej. Dra. Ana Martínez" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="perfil-telefono">Teléfono</label>
+            <input class="input" type="tel" id="perfil-telefono" placeholder="Ej. 310 123 4567">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="perfil-foto">Foto (URL, opcional)</label>
+            <input class="input" type="text" id="perfil-foto" placeholder="https://...">
+          </div>
+
+          <div class="form-group" style="margin-bottom:24px;">
+            <label class="form-label">Verifica tu correo (<span id="perfil-email-display"></span>)</label>
+            <div id="perfil-email-verify"></div>
+          </div>
+          <span class="field-error" id="perfil-completar-error" style="display:none;margin:-8px 0 12px;"></span>
+
+          <div class="form-actions" style="justify-content:flex-end;">
+            <button type="submit" class="btn btn-primary" style="width:auto;padding:0 28px;" id="perfil-completar-btn">Continuar</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -2897,72 +2931,19 @@
       </div>
     </div>
 
-    <!-- PANTALLA C — CREAR O VINCULARSE (solo Admin/Médico) -->
-    <div class="screen" id="screen-c">
-      <div class="card card-lg">
-        <div class="logo-wrap" style="margin-bottom:16px;">
-          <div class="logo-badge">I</div>
-          <span class="logo-name">IRIS</span>
-        </div>
-
-        <h2 class="card-title">¿Cómo quieres empezar?</h2>
-        <p class="card-subtitle">Tienes acceso a crear un establecimiento o unirte a uno ya existente</p>
-
-        <div class="choice-grid">
-          <div class="choice-card">
-            <div class="choice-icon">🏥</div>
-            <div class="choice-name">Crear un establecimiento nuevo</div>
-            <div class="choice-desc">Registra tu clínica desde cero. Quedarás como administrador principal.</div>
-            <button class="choice-btn choice-btn-primary" onclick="goTo('screen-d')">
-              <i data-lucide="plus" style="width:15px;height:15px;"></i> Crear establecimiento
-            </button>
-          </div>
-          <div class="choice-card">
-            <div class="choice-icon">🔗</div>
-            <div class="choice-name">Vincularme a uno existente</div>
-            <div class="choice-desc">Tu clínica ya usa IRIS y quieres unirte al equipo registrado.</div>
-            <button class="choice-btn choice-btn-outline" onclick="goTo('screen-e')">
-              <i data-lucide="search" style="width:15px;height:15px;"></i> Buscar establecimiento
-            </button>
-          </div>
-        </div>
-
-        <div class="text-center mt-16">
-          <a class="link-ghost" onclick="goTo('screen-b')" style="cursor:pointer;">← Cambiar mi rol</a>
-        </div>
-      </div>
-    </div>
-
-    <!-- PANTALLA D — REGISTRO DE CLÍNICA (UN SOLO PASO) -->
+    <!-- PANTALLA D — REGISTRO DE CLÍNICA (solo Administrador, un solo
+         paso — Tareas 6/7: sin pantalla de éxito separada, sin WhatsApp) -->
     <div class="screen" id="screen-d">
-      <div class="card card-md" id="screen-d-form">
+      <div class="card card-md">
         <div class="logo-wrap" style="margin-bottom:16px;">
           <div class="logo-badge">I</div>
           <span class="logo-name">IRIS</span>
-        </div>
-
-        <div class="step-bar">
-          <div class="step-dot active" id="sd-step1">1</div>
-          <div class="step-line" id="sd-line1"></div>
-          <div class="step-dot" id="sd-step2"><i data-lucide="check" style="width:12px;height:12px;"></i></div>
         </div>
 
         <h2 class="card-title">Registra tu clínica</h2>
-        <p class="card-subtitle">Datos del establecimiento — serás el administrador principal</p>
+        <p class="card-subtitle">Datos del establecimiento — quedarás como administrador principal</p>
 
         <form onsubmit="handleCreateClinic(event)" novalidate>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="reg-d-email">Email corporativo</label>
-              <input class="input" type="email" id="reg-d-email" placeholder="tu@clinica.com" autocomplete="email" required>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="reg-d-password">Contraseña</label>
-              <input class="input" type="password" id="reg-d-password" placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="new-password" required>
-            </div>
-          </div>
-          <span class="field-error" id="reg-d-error" style="display:none;margin:-10px 0 14px;"></span>
-
           <div class="form-group">
             <label class="form-label" for="razon">Razón social</label>
             <input class="input" type="text" id="razon" placeholder="Ej. Felinos & Caninos SAS" required>
@@ -2990,178 +2971,29 @@
             </div>
           </div>
 
-          <div class="form-group" style="margin-bottom:28px;">
+          <div class="form-group">
             <label class="form-label" for="telefono">Teléfono de contacto</label>
             <input class="input" type="tel" id="telefono" placeholder="Ej. 604 123 4567 o 310 123 4567">
           </div>
 
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" for="correo-clinica">Correo de contacto</label>
+            <input class="input" type="email" id="correo-clinica" oninput="handleCorreoClinicaChange()" required>
+          </div>
+          <div class="form-group" id="clinica-email-verify-group" style="display:none;margin-bottom:24px;">
+            <label class="form-label">Verifica el nuevo correo</label>
+            <div id="clinica-email-verify"></div>
+          </div>
+
+          <span class="field-error" id="reg-d-error" style="display:none;margin:-10px 0 14px;"></span>
+
           <div class="form-actions">
-            <a class="link-ghost" onclick="goTo('screen-c')" style="cursor:pointer;">← Atrás</a>
+            <a class="link-ghost" onclick="goTo('screen-b')" style="cursor:pointer;">← Cambiar mi rol</a>
             <button type="submit" class="btn btn-primary" style="width:auto;padding:0 28px;" id="create-btn">
               Crear establecimiento
             </button>
           </div>
         </form>
-      </div>
-
-      <!-- Paso 3: Confirmación de éxito -->
-      <div class="card card-md" id="screen-d-success" style="display:none;text-align:center;">
-        <div class="step-bar">
-          <div class="step-dot done"><i data-lucide="check" style="width:12px;height:12px;"></i></div>
-          <div class="step-line done"></div>
-          <div class="step-dot active"><i data-lucide="check" style="width:12px;height:12px;"></i></div>
-        </div>
-
-        <div class="success-icon">
-          <i data-lucide="check" style="width:36px;height:36px;"></i>
-        </div>
-        <h3 style="font-size:20px;font-weight:700;margin-bottom:10px;">¡Tu clínica está lista!</h3>
-        <p style="font-size:14px;color:var(--text-2);line-height:1.6;margin-bottom:28px;">
-          Ahora conecta Gmail y WhatsApp para que tus recordatorios y documentos lleguen a tus clientes.
-        </p>
-
-        <button class="integration-btn">
-          <img class="integration-logo" src="https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png" alt="Gmail" onerror="this.style.display='none'">
-          <span style="font-size:18px;margin-right:2px;" id="gmail-fallback">📧</span>
-          <span>Conectar Gmail</span>
-          <i data-lucide="arrow-right" style="width:14px;height:14px;margin-left:auto;color:var(--text-2);"></i>
-        </button>
-
-        <button class="integration-btn">
-          <span style="font-size:22px;">💬</span>
-          <span>Conectar WhatsApp Business</span>
-          <i data-lucide="arrow-right" style="width:14px;height:14px;margin-left:auto;color:var(--text-2);"></i>
-        </button>
-
-        <button class="btn btn-primary mt-24" onclick="goToTransition()">Ir al dashboard</button>
-        <a class="link-ghost" onclick="goToTransition()" style="cursor:pointer;display:block;margin-top:12px;font-size:13px;">
-          Prefiero hacerlo después
-        </a>
-      </div>
-    </div>
-
-    <!-- PANTALLA E — BUSCAR ESTABLECIMIENTO -->
-    <div class="screen" id="screen-e">
-      <div class="card card-md">
-        <div class="logo-wrap" style="margin-bottom:16px;">
-          <div class="logo-badge">I</div>
-          <span class="logo-name">IRIS</span>
-        </div>
-
-        <h2 class="card-title">Busca tu establecimiento</h2>
-        <p class="card-subtitle">Encuentra la clínica a la que quieres unirte y solicita acceso</p>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="reg-e-email">Email corporativo</label>
-            <input class="input" type="email" id="reg-e-email" placeholder="tu@clinica.com" autocomplete="email" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="reg-e-password">Contraseña</label>
-            <input class="input" type="password" id="reg-e-password" placeholder="Mínimo 6 caracteres" minlength="6" autocomplete="new-password" required>
-          </div>
-        </div>
-        <span class="field-error" id="reg-e-error" style="display:none;margin:-10px 0 14px;"></span>
-
-        <div class="search-wrap">
-          <i data-lucide="search" class="search-icon" style="width:18px;height:18px;"></i>
-          <input class="input input-search" type="text" placeholder="Nombre de la clínica o NIT...">
-        </div>
-
-        <div class="clinic-result-list">
-          <div class="clinic-result">
-            <div class="clinic-result-icon">🏥</div>
-            <div class="clinic-result-info">
-              <div class="clinic-result-name">Clínica Felinos & Caninos</div>
-              <div class="clinic-result-meta">
-                <span class="meta-pill">NIT 900.123.456-7</span>
-                <span class="meta-pill">Medellín</span>
-                <span class="meta-pill">12 profesionales</span>
-              </div>
-            </div>
-            <button class="btn-solicitar" onclick="requestLink('Clínica Felinos & Caninos')">
-              Solicitar vinculación
-            </button>
-          </div>
-
-          <div class="clinic-result">
-            <div class="clinic-result-icon">🏥</div>
-            <div class="clinic-result-info">
-              <div class="clinic-result-name">VetCentro Laureles</div>
-              <div class="clinic-result-meta">
-                <span class="meta-pill">NIT 900.987.654-3</span>
-                <span class="meta-pill">Medellín</span>
-                <span class="meta-pill">7 profesionales</span>
-              </div>
-            </div>
-            <button class="btn-solicitar" onclick="requestLink('VetCentro Laureles')">
-              Solicitar vinculación
-            </button>
-          </div>
-
-          <div class="clinic-result">
-            <div class="clinic-result-icon">🐾</div>
-            <div class="clinic-result-info">
-              <div class="clinic-result-name">Nanimals Pet Shop</div>
-              <div class="clinic-result-meta">
-                <span class="meta-pill">NIT 901.234.567-8</span>
-                <span class="meta-pill">Itagüí</span>
-                <span class="meta-pill">4 profesionales</span>
-              </div>
-            </div>
-            <button class="btn-solicitar" onclick="requestLink('Nanimals Pet Shop')">
-              Solicitar vinculación
-            </button>
-          </div>
-        </div>
-
-        <div class="text-center mt-24">
-          <a class="link-ghost" onclick="historyBack()" style="cursor:pointer;">← Atrás</a>
-        </div>
-      </div>
-    </div>
-
-    <!-- PANTALLA E-2 — PENDIENTE DE APROBACIÓN -->
-    <div class="screen" id="screen-e2">
-      <div class="card card-sm" style="text-align:center;">
-        <div class="pending-icon">
-          <i data-lucide="clock" style="width:36px;height:36px;"></i>
-        </div>
-
-        <div class="pending-title">Tu solicitud fue enviada</div>
-        <p class="pending-text" id="pending-text">
-          Un administrador de <strong id="pending-clinic">la clínica</strong> debe aprobar
-          tu acceso como <strong id="pending-role">miembro del equipo</strong>.
-          Te notificaremos por email cuando esto ocurra.
-        </p>
-
-        <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:12px 16px;margin-bottom:24px;display:flex;gap:10px;align-items:flex-start;text-align:left;">
-          <i data-lucide="info" style="width:16px;height:16px;color:var(--warning);flex-shrink:0;margin-top:2px;"></i>
-          <span style="font-size:13px;color:#92400E;line-height:1.5;">
-            Tu perfil ya fue creado. Solo necesitas aprobación para acceder al espacio de trabajo de la clínica.
-          </span>
-        </div>
-
-        <div class="tooltip-wrap">
-          <div class="tooltip-box">Disponible después de la aprobación</div>
-          <button class="btn-disabled" disabled>
-            Ver mi perfil
-          </button>
-        </div>
-
-        <button class="btn-danger-ghost" onclick="goTo('screen-a')" style="display:block;margin:0 auto;">
-          <i data-lucide="log-out" style="width:14px;height:14px;display:inline;"></i>
-          Cerrar sesión
-        </button>
-
-        <div class="proto-only-wrap">
-          <span class="proto-only-label">Solo prototipo</span>
-          <button class="proto-only-btn" onclick="simulateApprovalAndContinue()">
-            <i data-lucide="wrench" style="width:14px;height:14px;"></i>
-            Simular aprobación y continuar
-            <i data-lucide="arrow-right" style="width:14px;height:14px;"></i>
-          </button>
-        </div>
       </div>
     </div>
 
@@ -3182,18 +3014,14 @@
 
     /* ── Estado global del flujo de autenticación ─────────────── */
     let selectedRole = null;
-    let selectedClinic = '';
-    let prevScreen  = 'screen-a';
+    let perfilEmailVerifier = null;
+    let clinicaEmailVerifier = null;
+    let clinicaCorreoOriginal = '';
 
     /* ── Navegación entre pantallas ────────────────────────────── */
     function goTo(id) {
       document.querySelectorAll('#auth-shell .screen').forEach(s => s.classList.remove('active'));
       document.getElementById(id).classList.add('active');
-    }
-
-    function historyBack() {
-      const backTo = (selectedRole === 'auxiliar' || selectedRole === 'ventas') ? 'screen-b' : 'screen-c';
-      goTo(backTo);
     }
 
     /* ── Selección de Rol ──────────────────────────────────────── */
@@ -3207,13 +3035,19 @@
       lucide.createIcons();
     }
 
-    function continueFromRole() {
-      if (!selectedRole) return;
-      if (selectedRole === 'auxiliar' || selectedRole === 'ventas') {
-        goTo('screen-e');
-      } else {
-        goTo('screen-c');
-      }
+    // Tarea 4: solo Administrador continúa hacia creación de clínica;
+    // médico/auxiliar/ventas entran directo al shell aterrizando en
+    // Perfil — lo decide bootstrapSession() (script del app shell; ambos
+    // scripts comparten el mismo scope global de funciones) al ver que
+    // el rol recién guardado no tiene ningún establecimiento.
+    async function continueFromRole() {
+      if (!selectedRole || !window.supabase) return;
+      const btn = document.getElementById('role-continue-btn');
+      btn.disabled = true;
+      const { data: { user } } = await window.supabase.auth.getUser();
+      await window.supabase.from('profiles').update({ role: selectedRole }).eq('id', user.id);
+      btn.disabled = false;
+      goToTransition();
     }
 
     /* ── Login ─────────────────────────────────────────────────── */
@@ -3239,8 +3073,8 @@
 
       // Login real contra Supabase Auth. Si el cliente todavía no cargó
       // (import ESM en curso) o las credenciales fallan, se avisa en
-      // login-error-msg y no se avanza al shell — entrarAlShellDesdeAuth()
-      // solo se dispara tras un login exitoso.
+      // login-error-msg y no se avanza — bootstrapSession() (vía
+      // goToTransition()) solo se dispara tras un login exitoso.
       if (!window.supabase) {
         btn.disabled = false;
         btn.innerHTML = 'Ingresar';
@@ -3289,128 +3123,136 @@
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
           </svg>
           Continuar con Google`;
-        // Simula siempre primera vez: va a selección de rol
-        goTo('screen-b');
+        goToTransition();
       }, 900);
     }
 
-    /* ── Crear Clínica ─────────────────────────────────────────── */
-    function handleCreateClinic(e) {
+    /* ── Completar perfil personal (Tarea 4/8) ───────────────────
+       Primer paso obligatorio tras login/registro — bootstrapSession()
+       navega aquí mientras profiles.nombre esté vacío. */
+    function prepararScreenPerfil(email) {
+      document.getElementById('perfil-email-display').textContent = email;
+      perfilEmailVerifier = mountEmailVerifier('perfil-email-verify', () => email, () => {});
+    }
+
+    async function handleCompletarPerfil(e) {
       e.preventDefault();
-      const emailEl    = document.getElementById('reg-d-email');
-      const passwordEl = document.getElementById('reg-d-password');
-      const errorEl    = document.getElementById('reg-d-error');
+      const errorEl = document.getElementById('perfil-completar-error');
       errorEl.style.display = 'none';
+
+      if (!(perfilEmailVerifier && perfilEmailVerifier.isVerified())) {
+        errorEl.textContent = 'Verifica tu correo antes de continuar';
+        errorEl.style.display = 'block';
+        return;
+      }
+      const nombre = document.getElementById('perfil-nombre').value.trim();
+      if (!nombre) {
+        errorEl.textContent = 'Ingresa tu nombre completo';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('perfil-completar-btn');
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+
+      const { data: { user } } = await window.supabase.auth.getUser();
+      const { error } = await window.supabase.from('profiles').update({
+        nombre,
+        telefono: document.getElementById('perfil-telefono').value.trim(),
+        foto_url: document.getElementById('perfil-foto').value.trim() || null
+      }).eq('id', user.id);
+
+      btn.disabled = false;
+      btn.textContent = 'Continuar';
+      if (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+        return;
+      }
+      bootstrapSession();
+    }
+
+    /* ── Crear Clínica (solo Administrador — Tarea 7) ─────────────
+       Un solo paso: sin pantalla de éxito separada (Tarea 6) y sin
+       WhatsApp Business (eliminado, no se traslada a ningún otro
+       punto del flujo). Correo pre-llenado con el email de la cuenta,
+       editable; si cambia, exige verificación (Tarea 8) antes de crear. */
+    function prepararScreenD(email) {
+      clinicaCorreoOriginal = email;
+      document.getElementById('correo-clinica').value = email;
+      document.getElementById('clinica-email-verify-group').style.display = 'none';
+      clinicaEmailVerifier = null;
+    }
+
+    function handleCorreoClinicaChange() {
+      const val = document.getElementById('correo-clinica').value.trim();
+      const group = document.getElementById('clinica-email-verify-group');
+      if (val && val !== clinicaCorreoOriginal) {
+        group.style.display = 'block';
+        clinicaEmailVerifier = mountEmailVerifier('clinica-email-verify', () => document.getElementById('correo-clinica').value.trim(), () => {});
+      } else {
+        group.style.display = 'none';
+        clinicaEmailVerifier = null;
+      }
+    }
+
+    async function handleCreateClinic(e) {
+      e.preventDefault();
+      const errorEl = document.getElementById('reg-d-error');
+      errorEl.style.display = 'none';
+
+      const correo = document.getElementById('correo-clinica').value.trim();
+      if (correo !== clinicaCorreoOriginal && !(clinicaEmailVerifier && clinicaEmailVerifier.isVerified())) {
+        errorEl.textContent = 'Verifica el nuevo correo de contacto antes de continuar';
+        errorEl.style.display = 'block';
+        return;
+      }
 
       const btn = document.getElementById('create-btn');
       btn.disabled = true;
       btn.textContent = 'Creando...';
 
-      const finishUI = () => {
-        document.getElementById('sd-step1').classList.remove('active');
-        document.getElementById('sd-step1').classList.add('done');
-        document.getElementById('sd-step1').innerHTML = '<i data-lucide="check" style="width:12px;height:12px;"></i>';
-        document.getElementById('sd-line1').classList.add('done');
-        document.getElementById('sd-step2').classList.add('active');
-        lucide.createIcons();
+      const { data: { user } } = await window.supabase.auth.getUser();
+      const nombre = document.getElementById('comercial').value.trim() || document.getElementById('razon').value.trim();
 
-        document.getElementById('screen-d-form').style.display = 'none';
-        document.getElementById('screen-d-success').style.display = 'block';
-        lucide.createIcons();
-      };
+      const { data: estab, error: estabError } = await window.supabase.from('establecimientos').insert({
+        nombre,
+        razon_social: document.getElementById('razon').value.trim(),
+        nit: document.getElementById('nit').value.trim(),
+        ciudad: document.getElementById('ciudad').value,
+        telefono: document.getElementById('telefono').value.trim(),
+        correo_contacto: correo,
+        created_by: user.id
+      }).select().single();
 
-      // Crea la cuenta real en Supabase Auth (rol + nombre de la clínica
-      // quedan en user_metadata) antes de mostrar la pantalla de éxito.
-      if (!window.supabase) {
-        setTimeout(finishUI, 1200);
-        return;
-      }
-
-      const clinicName = document.getElementById('comercial').value.trim() || document.getElementById('razon').value.trim();
-      window.supabase.auth.signUp({
-        email: emailEl.value.trim(),
-        password: passwordEl.value,
-        options: { data: { role: selectedRole || 'admin', clinic_name: clinicName } }
-      }).then(({ error }) => {
+      if (estabError) {
         btn.disabled = false;
         btn.textContent = 'Crear establecimiento';
-        if (error) {
-          errorEl.textContent = error.message;
-          errorEl.style.display = 'block';
-          return;
-        }
-        finishUI();
-      });
-    }
-
-    /* ── Solicitar Vinculación ─────────────────────────────────── */
-    function requestLink(clinicName) {
-      const emailEl    = document.getElementById('reg-e-email');
-      const passwordEl = document.getElementById('reg-e-password');
-      const errorEl    = document.getElementById('reg-e-error');
-      errorEl.style.display = 'none';
-
-      if (!emailEl.value.trim() || !passwordEl.value) {
-        errorEl.textContent = 'Ingresa tu email y contraseña para crear tu cuenta antes de solicitar la vinculación';
+        errorEl.textContent = estabError.message;
         errorEl.style.display = 'block';
         return;
       }
 
-      selectedClinic = clinicName;
-      const roleLabel = {
-        medico:   'Médico Veterinario',
-        admin:    'Administrador',
-        auxiliar: 'Auxiliar',
-        ventas:   'Ventas'
-      }[selectedRole] || 'miembro del equipo';
-
-      const proceed = () => {
-        document.getElementById('pending-clinic').textContent = clinicName;
-        document.getElementById('pending-role').textContent   = roleLabel;
-        goTo('screen-e2');
-      };
-
-      // Crea la cuenta real en Supabase Auth para quien se vincula a un
-      // establecimiento existente (rol + clínica solicitada en metadata).
-      if (!window.supabase) { proceed(); return; }
-
-      window.supabase.auth.signUp({
-        email: emailEl.value.trim(),
-        password: passwordEl.value,
-        options: { data: { role: selectedRole || 'auxiliar', requested_clinic: clinicName } }
-      }).then(({ error }) => {
-        if (error) {
-          errorEl.textContent = error.message;
-          errorEl.style.display = 'block';
-          return;
-        }
-        proceed();
+      const { error: membershipError } = await window.supabase.from('memberships').insert({
+        user_id: user.id, establecimiento_id: estab.id, rol: 'admin', estado: 'activo'
       });
-    }
+      if (membershipError) {
+        btn.disabled = false;
+        btn.textContent = 'Crear establecimiento';
+        errorEl.textContent = membershipError.message;
+        errorEl.style.display = 'block';
+        return;
+      }
 
-    /* ── PROTOTIPO: desbloquear pantalla de pendiente de aprobación ── */
-    function simulateApprovalAndContinue() {
-      // Solo prototipo: entra directo al shell simulando el rol con el
-      // que se intentó registrar (antes esto navegaba a index.html;
-      // ahora YA estamos en index.html, así que solo cambiamos de vista).
-      entrarAlShellDesdeAuth(selectedRole || 'auxiliar');
+      localStorage.setItem('iris_active_estab_id', estab.id);
+      goToTransition();
     }
 
     /* ── Transición a shell principal ──────────────────────────── */
     function goToTransition() {
       goTo('screen-f');
-      setTimeout(() => {
-        entrarAlShellDesdeAuth(selectedRole || 'medico');
-      }, 1400);
-    }
-
-    /* ── Entrar al shell principal de IRIS (Consultorio, 17 módulos) ── */
-    // Antes esto era un window.location.href a index.html/dashboard.html;
-    // ahora ambos flujos viven en el mismo documento.
-    function entrarAlShellDesdeAuth(roleKey) {
-      localStorage.setItem('iris_session_active', '1');
-      localStorage.setItem('iris_sim_role', roleKey);
-      mostrarShellSegunSesion();
+      setTimeout(() => { bootstrapSession(); }, 1000);
     }
 
     /* ── Toggle de contraseña ──────────────────────────────────── */
@@ -3442,8 +3284,8 @@
       </div>
       <div class="logo-divider"></div>
       <div class="clinic-info">
-        <span class="clinic-name" id="header-clinic-name">Clínica Felinos & Caninos</span>
-        <span class="clinic-nit"  id="header-clinic-nit">NIT 900.123.456-7</span>
+        <span class="clinic-name" id="header-clinic-name">—</span>
+        <span class="clinic-nit"  id="header-clinic-nit"></span>
       </div>
     </div>
     <div class="header-right">
@@ -3484,12 +3326,12 @@
         </div>
       </div>
 
-      <!-- Perfil Médico -->
+      <!-- Perfil de usuario — contenido siempre poblado desde currentSession
+           por renderHeaderFromSession()/renderProfileDropdownFromSession(),
+           nunca hardcodeado. -->
       <div class="user-profile" id="profile-trigger">
-        <div class="user-avatar">
-          <img src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=120&h=120" alt="Dr. Sebastián Ríos">
-        </div>
-        <span class="user-name">Dr. Sebastián Ríos</span>
+        <div class="user-avatar"></div>
+        <span class="user-name">—</span>
         <i data-lucide="chevron-down" class="user-chevron"></i>
       </div>
 
@@ -3497,27 +3339,21 @@
       <div class="profile-dropdown" id="profile-dropdown">
         <!-- Usuario -->
         <div class="profile-dropdown-header">
-          <div class="profile-dropdown-role">Médico Veterinario</div>
-          <div class="profile-dropdown-email">s.rios@clinicafc.com</div>
+          <div class="profile-dropdown-role">—</div>
+          <div class="profile-dropdown-email">—</div>
         </div>
 
-        <!-- Establecimiento Activo -->
-        <div class="dd-section-label">Establecimiento activo</div>
-        <div class="dd-estab-item" id="estab-felinos" onclick="switchEstab('felinos')">
-          <i data-lucide="check" class="estab-check" style="width:14px;height:14px;"></i>
-          <span class="estab-name">Clínica Felinos & Caninos</span>
-        </div>
-        <div class="dd-estab-item inactive" id="estab-vet" onclick="switchEstab('vet')">
-          <span style="width:14px;flex-shrink:0;"></span>
-          <span class="estab-name">VetCentro Laureles</span>
-        </div>
+        <!-- Establecimiento Activo — poblado dinámicamente desde
+             currentSession.memberships, ver renderProfileDropdownFromSession() -->
+        <div class="dd-section-label">Establecimientos vinculados</div>
+        <div id="dd-estab-list"></div>
         <!-- Vincular otro -->
         <div class="dd-link-item" onclick="openLinkModal()">
           <i data-lucide="plus" style="width:14px;height:14px;"></i>
           Vincularme a otro establecimiento
         </div>
         <!-- Perfil / Logout -->
-        <a class="profile-dropdown-item"><i data-lucide="user" style="width:14px;height:14px;"></i> Perfil</a>
+        <a class="profile-dropdown-item" onclick="irAPerfil()" style="cursor:pointer;"><i data-lucide="user" style="width:14px;height:14px;"></i> Perfil</a>
         <a href="#" onclick="cerrarSesion(); return false;" class="profile-dropdown-item logout"><i data-lucide="log-out" style="width:14px;height:14px;"></i> Cerrar sesión</a>
       </div>
     </div>
@@ -3575,20 +3411,85 @@
         <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('tutores')">Tutores</button>
         <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('planes')">Planes y suscripción</button>
         <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('variables')">Variables</button>
+        <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('usuarios'); switchAdminView('solicitudes');">Solicitudes de vinculación</button>
       </div>
     </div>
+    <!-- Punto de llegada para usuarios sin establecimiento (Tarea 4) y
+         origen de "Vincularme a otro establecimiento" manual (Tarea 5) —
+         siempre visible, sin restricción por rol. -->
+    <button class="tab-btn" data-tab="perfil">
+      <i data-lucide="user-circle" style="width: 16px; height: 16px;"></i> Perfil
+    </button>
   </nav>
 
   <!-- MAIN CONTAINER -->
   <main class="main-container">
+
+    <!-- Tab Perfil — datos del usuario logueado + establecimientos
+         vinculados + solicitudes de vinculación propias. Punto de
+         llegada para roles sin establecimiento (Tarea 4) y origen de
+         "Vincularme a otro establecimiento" manual (Tarea 5). Contenido
+         siempre poblado desde currentSession por renderPerfilTab(),
+         nunca hardcodeado. -->
+    <div class="tab-content" id="tab-perfil">
+      <div class="admin-pane">
+        <div class="dashboard-header-section">
+          <div>
+            <h1 class="page-title">Mi perfil</h1>
+            <p class="page-subtitle">Tus datos y tus establecimientos vinculados</p>
+          </div>
+        </div>
+
+        <div class="card" style="max-width:640px;">
+          <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+            <span class="card-title">Datos personales</span>
+            <div class="form-group">
+              <label class="form-label">Nombre completo</label>
+              <input class="input" type="text" id="perfil-tab-nombre">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Teléfono</label>
+              <input class="input" type="tel" id="perfil-tab-telefono">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Foto (URL)</label>
+              <input class="input" type="text" id="perfil-tab-foto">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input class="input" type="text" id="perfil-tab-email" disabled>
+            </div>
+            <span class="field-error" id="perfil-tab-error" style="display:none;"></span>
+            <button class="btn-primary" style="width:auto;align-self:flex-end;" onclick="guardarPerfilTab()">Guardar cambios</button>
+          </div>
+        </div>
+
+        <div class="card" style="max-width:640px;margin-top:20px;">
+          <div style="padding:20px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+              <span class="card-title">Mis establecimientos</span>
+              <button class="btn-primary" onclick="openLinkModal()"><i data-lucide="plus" style="width:14px;height:14px;"></i> Vincularme a otro establecimiento</button>
+            </div>
+            <div id="perfil-tab-establecimientos"></div>
+          </div>
+        </div>
+
+        <div class="card" style="max-width:640px;margin-top:20px;">
+          <div style="padding:20px;">
+            <span class="card-title">Mis solicitudes de vinculación</span>
+            <div id="perfil-tab-solicitudes" style="margin-top:12px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Tab Dashboard -->
     <div class="tab-content" id="tab-dashboard">
       <div class="admin-pane">
       <div class="dashboard-header-section">
         <div>
-          <h1 class="page-title">Bienvenido, Dr. Sebastián Ríos</h1>
-          <p class="page-subtitle">Clínica Felinos & Caninos · martes, 7 de julio de 2026</p>
+          <h1 class="page-title" id="dashboard-welcome-title">Bienvenido</h1>
+          <p class="page-subtitle" id="dashboard-welcome-subtitle">—</p>
         </div>
         <div class="role-sim-widget">
           <div class="role-sim-select-wrap">
@@ -5437,6 +5338,7 @@
           <div class="admin-subview-tabs">
             <button type="button" class="admin-subview-tab-btn active" data-admin-view="usuarios" onclick="switchAdminView('usuarios')">Usuarios</button>
             <button type="button" class="admin-subview-tab-btn" data-admin-view="privilegios" onclick="switchAdminView('privilegios')">Privilegios</button>
+            <button type="button" class="admin-subview-tab-btn" data-admin-view="solicitudes" onclick="switchAdminView('solicitudes')">Solicitudes de vinculación</button>
           </div>
 
           <!-- Vista A: Usuarios -->
@@ -5493,6 +5395,41 @@
                   <!-- Dinámico por JS -->
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <!-- Vista C: Solicitudes de vinculación (Tarea 5) — pendientes
+               de aprobar para este establecimiento, contra la tabla real
+               link_requests. Aprobar/Rechazar llaman a las funciones RPC
+               approve_link_request/reject_link_request (ver
+               supabase/schema.sql) para que el cambio de estado y el alta
+               de la membership ocurran en una sola transacción atómica. -->
+          <div class="admin-subview" id="admin-view-solicitudes">
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title"><i data-lucide="user-plus" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Solicitudes de vinculación</span>
+                <button class="btn-primary" onclick="generarEnlaceInvitacion()" style="padding: 8px 16px; font-size: 13px;">
+                  <i data-lucide="link" style="width: 14px; height: 14px;"></i> Generar enlace de invitación
+                </button>
+              </div>
+              <table class="results-table">
+                <thead>
+                  <tr>
+                    <th>Solicitante</th>
+                    <th>Rol solicitado</th>
+                    <th>Fecha</th>
+                    <th>Estado</th>
+                    <th style="text-align: right;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="solicitudes-table-body">
+                  <!-- Dinámico por JS -->
+                </tbody>
+              </table>
+              <div class="placeholder-content" id="solicitudes-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
+                <div class="placeholder-icon"><i data-lucide="user-plus" style="width: 24px; height: 24px;"></i></div>
+                <p class="placeholder-text" style="font-size: 12px;">No hay solicitudes pendientes</p>
+              </div>
             </div>
           </div>
         </div>
@@ -6236,11 +6173,11 @@
     function getCurrentSimUserId() { return CURRENT_SIM_USER_ID_BY_ROLE[currentSimRole] ?? null; }
 
     // ── AUTH SHELL ⇄ APP SHELL (Parte 3) ──────────────────────────
-    // Decide qué mitad del documento se muestra según la sesión
-    // simulada en localStorage. Se llama una vez al cargar la página
-    // y de nuevo cada vez que el auth shell "loguea" (ver
-    // entrarAlShellDesdeAuth en el script del auth shell) — ambos
-    // scripts comparten el mismo scope global de funciones.
+    // Decide qué mitad del documento se muestra según iris_session_active.
+    // Se llama una vez al cargar la página (vía bootstrapSession(), que la
+    // invoca tras resolver la sesión real de Supabase) y de nuevo cada vez
+    // que el auth shell "loguea" (ver bootstrapSession() en este mismo
+    // script) — ambos scripts comparten el mismo scope global de funciones.
     function mostrarShellSegunSesion() {
       const sessionActive = localStorage.getItem('iris_session_active') === '1';
       document.getElementById('auth-shell').classList.toggle('active', !sessionActive);
@@ -6278,8 +6215,10 @@
     // Cierra la sesión simulada y regresa al login (pantalla A del auth shell)
     function cerrarSesion() {
       if (window.supabase) window.supabase.auth.signOut();
+      currentSession = null;
       localStorage.removeItem('iris_session_active');
       localStorage.removeItem('iris_sim_role');
+      localStorage.removeItem('iris_active_estab_id');
       const profileDropdownEl = document.getElementById('profile-dropdown');
       if (profileDropdownEl) profileDropdownEl.classList.remove('show');
       document.querySelectorAll('#auth-shell .screen').forEach(s => s.classList.remove('active'));
@@ -6420,6 +6359,7 @@
           initAgendaCalendar();
           if (agendaCalendar) agendaCalendar.updateSize();
         }
+        if (targetTab === 'perfil') renderPerfilTab();
       });
     });
 
@@ -12303,6 +12243,74 @@
       document.querySelectorAll('.admin-subview').forEach(pane => {
         pane.classList.toggle('active', pane.id === `admin-view-${viewName}`);
       });
+      if (viewName === 'solicitudes') renderSolicitudesTable();
+    }
+
+    // ── SOLICITUDES DE VINCULACIÓN (Tarea 5) ────────────────────────
+    async function renderSolicitudesTable() {
+      const tbody = document.getElementById('solicitudes-table-body');
+      const emptyState = document.getElementById('solicitudes-empty-state');
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        tbody.innerHTML = '';
+        emptyState.style.display = 'flex';
+        return;
+      }
+      const estabId = currentSession.activeMembership.establecimientoId;
+      const { data } = await window.supabase.from('link_requests')
+        .select('*, profiles(nombre, email)')
+        .eq('establecimiento_id', estabId)
+        .eq('estado', 'pendiente')
+        .order('created_at', { ascending: false });
+
+      if (!data || !data.length) {
+        tbody.innerHTML = '';
+        emptyState.style.display = 'flex';
+        return;
+      }
+      emptyState.style.display = 'none';
+      tbody.innerHTML = data.map(r => `
+        <tr data-solicitud-row="${r.id}">
+          <td>${r.profiles ? (r.profiles.nombre || r.profiles.email) : r.user_id}</td>
+          <td>${ROLES[r.rol_solicitado] ? ROLES[r.rol_solicitado].label : r.rol_solicitado}</td>
+          <td>${new Date(r.created_at).toLocaleDateString('es-CO')}</td>
+          <td><span style="font-size:11px;font-weight:600;color:#F59E0B;">Pendiente</span></td>
+          <td style="text-align:right;">
+            <button class="btn-outline" style="width:auto;padding:6px 10px;font-size:12px;margin-right:6px;" onclick="decidirSolicitud('${r.id}', 'aprobar', this)">Aprobar</button>
+            <button class="btn-outline" style="width:auto;padding:6px 10px;font-size:12px;" onclick="decidirSolicitud('${r.id}', 'rechazar', this)">Rechazar</button>
+          </td>
+        </tr>`).join('');
+    }
+
+    async function decidirSolicitud(requestId, accion, btn) {
+      btn.closest('tr').querySelectorAll('button').forEach(b => b.disabled = true);
+      const fn = accion === 'aprobar' ? 'approve_link_request' : 'reject_link_request';
+      const { error } = await window.supabase.rpc(fn, { p_request_id: requestId });
+      if (error) {
+        showToast('No se pudo procesar la solicitud: ' + error.message);
+        btn.closest('tr').querySelectorAll('button').forEach(b => b.disabled = false);
+        return;
+      }
+      showToast(accion === 'aprobar' ? 'Solicitud aprobada' : 'Solicitud rechazada');
+      renderSolicitudesTable();
+    }
+
+    // ── ENLACE DE INVITACIÓN (Tarea 4) — un admin genera un enlace
+    // preasociado a un rol de su establecimiento; quien entra por él salta
+    // selección de rol y creación/solicitud de vinculación (ver
+    // pendingInviteToken/accept_invite en bootstrapSession()).
+    async function generarEnlaceInvitacion() {
+      if (!currentSession || !currentSession.activeMembership) return;
+      const rol = prompt('¿Para qué rol es el enlace? Escribe: medico, auxiliar, ventas o admin', 'medico');
+      if (!rol || !ROLES[rol]) { if (rol !== null) showToast('Rol no válido'); return; }
+      const { data, error } = await window.supabase.from('invites').insert({
+        establecimiento_id: currentSession.activeMembership.establecimientoId,
+        rol,
+        created_by: currentSession.user.id
+      }).select().single();
+      if (error) { showToast('No se pudo generar el enlace: ' + error.message); return; }
+      const url = `${location.origin}${location.pathname}?invite=${data.id}`;
+      if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+      window.prompt('Enlace de invitación (copiado al portapapeles si el navegador lo permitió) — válido 7 días:', url);
     }
 
     // ── TAB "ADMIN" (dropdown de navbar) ────────────────────────────
@@ -12372,6 +12380,18 @@
       document.getElementById('vetconfig-telefono').value = CLINIC_INFO.telefono;
       document.getElementById('vetconfig-correo').value = CLINIC_INFO.correo;
       document.getElementById('vetconfig-correo-recordatorios').value = CLINIC_INFO.correoRecordatorios;
+
+      // "Datos fiscales de la clínica" (Ventas > Configuración de
+      // facturación) tenía razón social/NIT quemados en el HTML estático
+      // (nunca leídos desde CLINIC_INFO) — fuga de datos entre clínicas
+      // detectada en la auditoría de la Tarea 3. Se resuelve reutilizando
+      // los mismos campos de CLINIC_INFO, no un mecanismo paralelo.
+      const factRazonSocial = document.getElementById('config-fact-razon-social');
+      const factNit = document.getElementById('config-fact-nit');
+      const factDireccion = document.getElementById('config-fact-direccion');
+      if (factRazonSocial) factRazonSocial.value = CLINIC_INFO.nombre || '';
+      if (factNit) factNit.value = CLINIC_INFO.nit || '';
+      if (factDireccion) factDireccion.value = '';
     }
 
     function guardarVetConfigGeneral() {
@@ -14679,33 +14699,6 @@
       element.classList.add('active');
     }
 
-    // ESTABLECIMIENTO ACTIVO
-    const ESTABS = {
-      felinos: { name: 'Clínica Felinos & Caninos', nit: 'NIT 900.123.456-7' },
-      vet:     { name: 'VetCentro Laureles',         nit: 'NIT 900.987.654-3' }
-    };
-    let activeEstab = 'felinos';
-
-    function switchEstab(key) {
-      if (key === activeEstab) { profileDropdown.classList.remove('show'); return; }
-      activeEstab = key;
-      document.querySelectorAll('.dd-estab-item').forEach(el => {
-        const isActive = el.id === `estab-${key}`;
-        el.classList.toggle('inactive', !isActive);
-        if (isActive) {
-          el.innerHTML = `<i data-lucide="check" class="estab-check" style="width:14px;height:14px;"></i><span class="estab-name">${ESTABS[key].name}</span>`;
-        } else {
-          const other = Object.keys(ESTABS).find(k => k !== key);
-          el.innerHTML = `<span style="width:14px;flex-shrink:0;"></span><span class="estab-name">${ESTABS[other].name}</span>`;
-        }
-      });
-      lucide.createIcons();
-      document.getElementById('header-clinic-name').textContent = ESTABS[key].name;
-      document.getElementById('header-clinic-nit').textContent  = ESTABS[key].nit;
-      showToast(`Cambiando a ${ESTABS[key].name}...`);
-      profileDropdown.classList.remove('show');
-    }
-
     function showToast(msg) {
       const toast = document.getElementById('switch-toast');
       document.getElementById('toast-text').textContent = msg;
@@ -14713,48 +14706,628 @@
       setTimeout(() => toast.classList.remove('show'), 2000);
     }
 
-    function openLinkModal() {
+    // ── VINCULARME A OTRO ESTABLECIMIENTO — modal con búsqueda real
+    // contra la tabla `establecimientos` (Supabase) y solicitud real
+    // (`link_requests`), reemplaza los 3 resultados hardcodeados de antes.
+    let linkModalAllEstabs = [];
+
+    async function openLinkModal() {
       profileDropdown.classList.remove('show');
       document.getElementById('link-modal').classList.add('show');
+      document.getElementById('link-modal-search').value = '';
+      document.getElementById('link-modal-results').innerHTML = '<p style="font-size:13px;color:var(--text-2);text-align:center;padding:12px 0;">Cargando establecimientos...</p>';
       lucide.createIcons();
+      if (window.supabase) {
+        const { data } = await window.supabase.from('establecimientos').select('*').order('nombre');
+        linkModalAllEstabs = data || [];
+      } else {
+        linkModalAllEstabs = [];
+      }
+      renderLinkModalResults();
     }
     function closeLinkModal() { document.getElementById('link-modal').classList.remove('show'); }
     function handleModalOverlayClick(e) { if (e.target === document.getElementById('link-modal')) closeLinkModal(); }
 
-    // Aplicar el rol simulado inicial (ahora que todos los componentes ya están definidos)
-    renderUsuariosTable();
-    renderPrivilegiosMatrix();
-    renderPropietariosTable();
-    renderVariablesTable();
-    renderVetConfigGeneral();
-    poblarFiltroAgendaEncargados();
-    refreshAgendaPreRegistroBadge();
+    function renderLinkModalResults() {
+      const term = (document.getElementById('link-modal-search').value || '').trim().toLowerCase();
+      const yaVinculado = new Set((currentSession?.memberships || []).map(m => m.establecimientoId));
+      const results = linkModalAllEstabs.filter(e =>
+        !yaVinculado.has(e.id) &&
+        (!term || e.nombre.toLowerCase().includes(term) || (e.nit || '').toLowerCase().includes(term))
+      );
+      const container = document.getElementById('link-modal-results');
+      if (!results.length) {
+        container.innerHTML = '<p style="font-size:13px;color:var(--text-2);text-align:center;padding:12px 0;">No se encontraron establecimientos</p>';
+        return;
+      }
+      container.innerHTML = results.map(e => `
+        <div class="modal-result">
+          <span class="modal-result-icon">🏥</span>
+          <div class="modal-result-info">
+            <div class="modal-result-name">${e.nombre}</div>
+            <div class="modal-result-meta">${e.nit ? 'NIT ' + e.nit : ''}${e.ciudad ? ' · ' + e.ciudad : ''}</div>
+          </div>
+          <select class="input" id="link-modal-rol-${e.id}" style="width:auto;height:32px;font-size:12px;padding:0 8px;margin-right:8px;">
+            <option value="medico">Médico Veterinario</option>
+            <option value="auxiliar">Auxiliar</option>
+            <option value="ventas">Ventas</option>
+            <option value="admin">Administrador</option>
+          </select>
+          <button class="modal-btn-solic" onclick="solicitarVinculacion('${e.id}', this)">Solicitar</button>
+        </div>`).join('');
+      lucide.createIcons();
+    }
 
-    // Módulo Ventas — poblar filtros y renderizar todas las sub-vistas
-    poblarFiltrosVentasDashboard();
-    renderVentasDashboard();
-    renderCotizacionesTable();
-    renderFacturasTable();
-    renderNotasCreditoTable();
-    renderDocSoporteTable();
-    renderIngresosEgresosTable();
-    renderProveedoresTable();
-    renderClientesTable();
+    async function solicitarVinculacion(estabId, btn) {
+      if (!window.supabase || !currentSession) return;
+      const rol = document.getElementById(`link-modal-rol-${estabId}`).value;
+      btn.disabled = true;
+      btn.textContent = 'Enviando...';
+      const { error } = await window.supabase.from('link_requests').insert({
+        user_id: currentSession.user.id,
+        establecimiento_id: estabId,
+        rol_solicitado: rol
+      });
+      if (error) {
+        showToast('No se pudo enviar la solicitud: ' + error.message);
+        btn.disabled = false;
+        btn.textContent = 'Solicitar';
+        return;
+      }
+      showToast('Solicitud enviada. Un administrador debe aprobarla.');
+      closeLinkModal();
+      if (document.getElementById('tab-perfil')?.classList.contains('active')) renderPerfilTab();
+    }
 
-    // Módulo Inventario — poblar filtros y renderizar todas las sub-vistas
-    document.getElementById('salida-filtro-tipo').innerHTML =
-      '<option value="">Todos</option>' + INVENTARIO_TIPOS_SALIDA.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
-    renderProductosServiciosTable();
-    renderCategoriasTable();
-    renderSalidasTable();
-    renderOrdenesCompraTable();
-    renderComprasTable();
-    renderSiigoResolucionesTable();
-    renderSiigoDispositivosTable();
+    // ── SESIÓN REAL (Supabase) Y TENENCIA MULTI-CLÍNICA ───────────
+    // currentSession es la única fuente de verdad para identidad/rol/
+    // establecimiento activo — header, dropdown y tab Perfil siempre
+    // leen de aquí, nunca de un valor quemado en el HTML.
+    let currentSession = null; // { user:{id,email,nombre,telefono,fotoUrl,role}, memberships:[...], activeMembership:{...}|null }
+    const DEMO_ESTABLISHMENT_NIT = '900.123.456-7'; // clínica semilla del prototipo — cualquier otra clínica arranca en cero (Tarea 3)
 
-    // Llamada real de mostrarShellSegunSesion() (ver nota junto a su
-    // definición más arriba) — debe ser lo último del script.
-    mostrarShellSegunSesion();
+    function getInitials(name) {
+      if (!name) return '?';
+      return name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    }
+
+    function renderHeaderFromSession() {
+      if (!currentSession) return;
+      const estab = currentSession.activeMembership && currentSession.activeMembership.establecimiento;
+      const nameEl = document.getElementById('header-clinic-name');
+      const nitEl = document.getElementById('header-clinic-nit');
+      if (nameEl) nameEl.textContent = estab ? estab.nombre : 'Sin establecimiento';
+      if (nitEl) nitEl.textContent = estab && estab.nit ? `NIT ${estab.nit}` : '';
+
+      const displayName = currentSession.user.nombre || currentSession.user.email || 'Usuario';
+      document.querySelectorAll('.user-name').forEach(el => { el.textContent = displayName; });
+      document.querySelectorAll('.user-avatar').forEach(el => {
+        el.innerHTML = currentSession.user.fotoUrl
+          ? `<img src="${currentSession.user.fotoUrl}" alt="${displayName}">`
+          : `<div style="width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--clinic-accent);color:#fff;font-weight:600;font-size:13px;">${getInitials(displayName)}</div>`;
+      });
+
+      const welcomeTitle = document.getElementById('dashboard-welcome-title');
+      if (welcomeTitle) welcomeTitle.textContent = `Bienvenido, ${displayName}`;
+      const welcomeSubtitle = document.getElementById('dashboard-welcome-subtitle');
+      if (welcomeSubtitle) {
+        const fecha = new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        welcomeSubtitle.textContent = estab ? `${estab.nombre} · ${fecha}` : fecha;
+      }
+    }
+
+    function renderProfileDropdownFromSession() {
+      if (!currentSession) return;
+      const roleKey = currentSession.activeMembership ? currentSession.activeMembership.rol : currentSession.user.role;
+      const roleEl = document.querySelector('.profile-dropdown-role');
+      if (roleEl) roleEl.textContent = (roleKey && ROLES[roleKey]) ? ROLES[roleKey].label : '—';
+      const emailEl = document.querySelector('.profile-dropdown-email');
+      if (emailEl) emailEl.textContent = currentSession.user.email || '';
+
+      const listContainer = document.getElementById('dd-estab-list');
+      if (listContainer) {
+        if (!currentSession.memberships.length) {
+          listContainer.innerHTML = `<div class="dd-estab-item inactive" style="cursor:default;">Sin establecimientos vinculados</div>`;
+        } else {
+          listContainer.innerHTML = currentSession.memberships.map(m => {
+            const isActive = currentSession.activeMembership && m.establecimientoId === currentSession.activeMembership.establecimientoId;
+            return `<div class="dd-estab-item ${isActive ? '' : 'inactive'}" onclick="switchEstablecimiento('${m.establecimientoId}')">
+              ${isActive ? '<i data-lucide="check" class="estab-check" style="width:14px;height:14px;"></i>' : '<span style="width:14px;flex-shrink:0;"></span>'}
+              <span class="estab-name">${m.establecimiento ? m.establecimiento.nombre : 'Establecimiento'}</span>
+            </div>`;
+          }).join('');
+        }
+        lucide.createIcons();
+      }
+    }
+
+    function switchEstablecimiento(estabId) {
+      if (currentSession && currentSession.activeMembership && currentSession.activeMembership.establecimientoId === estabId) {
+        document.getElementById('profile-dropdown').classList.remove('show');
+        return;
+      }
+      localStorage.setItem('iris_active_estab_id', estabId);
+      showToast('Cambiando de establecimiento...');
+      // Recarga completa: cada uno de los ~17 módulos del Consultorio (y
+      // Ventas/Inventario/Agenda) renderiza sus datos mock desde bindings
+      // top-level una sola vez al cargar la página — recargar es la forma
+      // más simple y segura de que todos vuelvan a pintar con los datos
+      // del establecimiento recién activado, sin tener que ir módulo por
+      // módulo re-invocando cada función de render a mano.
+      setTimeout(() => location.reload(), 500);
+    }
+
+    function irAPerfil() {
+      document.getElementById('profile-dropdown').classList.remove('show');
+      const perfilBtn = document.querySelector('.nav-tabs-bar .tab-btn[data-tab="perfil"]');
+      if (perfilBtn) perfilBtn.click();
+    }
+
+    // ── TAB PERFIL — datos propios + establecimientos + solicitudes
+    // (Tareas 2, 4, 5). Todo poblado en vivo desde currentSession / la
+    // tabla real link_requests, nunca hardcodeado.
+    function renderPerfilTab() {
+      if (!currentSession) return;
+      document.getElementById('perfil-tab-nombre').value = currentSession.user.nombre || '';
+      document.getElementById('perfil-tab-telefono').value = currentSession.user.telefono || '';
+      document.getElementById('perfil-tab-foto').value = currentSession.user.fotoUrl || '';
+      document.getElementById('perfil-tab-email').value = currentSession.user.email || '';
+
+      const estabContainer = document.getElementById('perfil-tab-establecimientos');
+      if (!currentSession.memberships.length) {
+        estabContainer.innerHTML = '<p style="font-size:13px;color:var(--text-2);">Aún no tienes ningún establecimiento vinculado. Usa "Vincularme a otro establecimiento" para solicitar acceso.</p>';
+      } else {
+        estabContainer.innerHTML = currentSession.memberships.map(m => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+            <div style="flex:1;">
+              <div style="font-weight:600;font-size:13px;">${m.establecimiento ? m.establecimiento.nombre : 'Establecimiento'}</div>
+              <div style="font-size:12px;color:var(--text-2);">${ROLES[m.rol] ? ROLES[m.rol].label : m.rol}</div>
+            </div>
+            ${currentSession.activeMembership && currentSession.activeMembership.establecimientoId === m.establecimientoId
+              ? '<span style="font-size:11px;font-weight:600;color:#16A34A;">Activo ahora</span>'
+              : `<button class="btn-outline" style="width:auto;padding:6px 12px;font-size:12px;" onclick="switchEstablecimiento('${m.establecimientoId}')">Cambiar a este</button>`}
+          </div>`).join('');
+      }
+
+      const solicitudesContainer = document.getElementById('perfil-tab-solicitudes');
+      if (window.supabase) {
+        window.supabase.from('link_requests').select('*, establecimientos(nombre)')
+          .eq('user_id', currentSession.user.id).order('created_at', { ascending: false })
+          .then(({ data }) => {
+            if (!data || !data.length) {
+              solicitudesContainer.innerHTML = '<p style="font-size:13px;color:var(--text-2);">No tienes solicitudes.</p>';
+              return;
+            }
+            const estadoLabel = { pendiente: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada' };
+            const estadoColor = { pendiente: '#F59E0B', aprobada: '#16A34A', rechazada: '#DC2626' };
+            solicitudesContainer.innerHTML = data.map(r => `
+              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+                <span>${r.establecimientos ? r.establecimientos.nombre : 'Establecimiento'} — ${ROLES[r.rol_solicitado] ? ROLES[r.rol_solicitado].label : r.rol_solicitado}</span>
+                <span style="font-size:11px;font-weight:600;color:${estadoColor[r.estado]};">${estadoLabel[r.estado]}</span>
+              </div>`).join('');
+          });
+      }
+    }
+
+    async function guardarPerfilTab() {
+      const errorEl = document.getElementById('perfil-tab-error');
+      errorEl.style.display = 'none';
+      const nombre = document.getElementById('perfil-tab-nombre').value.trim();
+      if (!nombre) { errorEl.textContent = 'Ingresa tu nombre'; errorEl.style.display = 'block'; return; }
+      const telefono = document.getElementById('perfil-tab-telefono').value.trim();
+      const fotoUrl = document.getElementById('perfil-tab-foto').value.trim();
+      const { error } = await window.supabase.from('profiles').update({
+        nombre, telefono, foto_url: fotoUrl || null
+      }).eq('id', currentSession.user.id);
+      if (error) { errorEl.textContent = error.message; errorEl.style.display = 'block'; return; }
+      currentSession.user.nombre = nombre;
+      currentSession.user.telefono = telefono;
+      currentSession.user.fotoUrl = fotoUrl;
+      renderHeaderFromSession();
+      showToast('Perfil actualizado');
+    }
+
+    // Agrupa exactamente las mismas llamadas que antes vivían sueltas al
+    // final del script. Se invoca una vez en la carga inicial (abajo) y de
+    // nuevo desde bootstrapSession() tras resetMockDataForClinic(), para
+    // que las tablas reflejen los datos ya reseteados/re-sembrados del
+    // establecimiento activo real (login inicial) en vez de los datos de
+    // demo con los que el script arrancó por defecto.
+    function renderAllModulesData() {
+      renderUsuariosTable();
+      renderPrivilegiosMatrix();
+      renderPropietariosTable();
+      renderVariablesTable();
+      renderVetConfigGeneral();
+      poblarFiltroAgendaEncargados();
+      refreshAgendaPreRegistroBadge();
+
+      // Módulo Ventas — poblar filtros y renderizar todas las sub-vistas
+      poblarFiltrosVentasDashboard();
+      renderVentasDashboard();
+      renderCotizacionesTable();
+      renderFacturasTable();
+      renderNotasCreditoTable();
+      renderDocSoporteTable();
+      renderIngresosEgresosTable();
+      renderProveedoresTable();
+      renderClientesTable();
+
+      // Módulo Inventario — poblar filtros y renderizar todas las sub-vistas
+      document.getElementById('salida-filtro-tipo').innerHTML =
+        '<option value="">Todos</option>' + INVENTARIO_TIPOS_SALIDA.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
+      renderProductosServiciosTable();
+      renderCategoriasTable();
+      renderSalidasTable();
+      renderOrdenesCompraTable();
+      renderComprasTable();
+      renderSiigoResolucionesTable();
+      renderSiigoDispositivosTable();
+    }
+    renderAllModulesData();
+
+    // ── AISLAMIENTO DE DATOS MOCK POR CLÍNICA (Tarea 3) ────────────
+    // Snapshot de TODO el contenido de demo con el que el script arrancó
+    // (los ~25 arrays/objetos mock que alimentan los módulos de
+    // Consultorio/Ventas/Inventario/Agenda), capturado aquí porque es la
+    // primera línea segura donde ya existen todos — exactamente la misma
+    // zona que ya usaba mostrarShellSegunSesion() por el mismo motivo (ver
+    // nota junto a su definición). resetMockDataForClinic() usa este
+    // snapshot para la clínica semilla del prototipo, y arrays/objetos
+    // vacíos para cualquier otra — así una clínica nueva arranca
+    // realmente en cero en todos los módulos, sin tocar ni un solo sitio
+    // de lectura de esos ~25 bindings (se mutan in-place, nunca se
+    // reasignan, así que cualquier función que ya los cerró por closure
+    // sigue viendo los datos correctos después de un reset).
+    const DEMO_SEED = structuredClone({
+      patientData, propietarios, nextPropietarioSeq,
+      USUARIOS_SISTEMA, usuarioIdCounter, USUARIO_PRIVILEGIOS,
+      EVENTOS_SEGUIMIENTO, eventosSeguimientoSeq, DISPONIBILIDAD_MEDICOS,
+      AGENDA_EVENTOS, SIIGO_RESOLUCIONES, siigoResolucionSeq,
+      SIIGO_DISPOSITIVOS, siigoDispositivoSeq,
+      INVENTARIO_SALIDAS, inventarioSalidaIdCounter,
+      INVENTARIO_ORDENES_COMPRA, INVENTARIO_COMPRAS,
+      vacunasCatalogoCustom, desparasitacionTiposCustom,
+      hospitalizacionTiposCustom, hospitalizacionSeq,
+      PLANTILLAS_DOCUMENTOS, CLINIC_INFO, VARIABLES_CATALOGOS,
+      VENTAS_CLIENTES, VENTAS_FACTURAS, VENTAS_COTIZACIONES,
+      VENTAS_NOTAS_CREDITO, VENTAS_DOC_SOPORTE, VENTAS_MOVIMIENTOS,
+      VENTAS_CATALOGO, VENTAS_CATEGORIAS, VENTAS_PROVEEDORES
+    });
+
+    function resetMockDataForClinic(seedDemo) {
+      const seed = seedDemo ? structuredClone(DEMO_SEED) : null;
+
+      Object.keys(patientData).forEach(k => delete patientData[k]);
+      if (seed) Object.assign(patientData, seed.patientData);
+
+      propietarios.length = 0;
+      if (seed) propietarios.push(...seed.propietarios);
+      nextPropietarioSeq = seed ? seed.nextPropietarioSeq : 1;
+      editingPropietarioId = null;
+
+      USUARIOS_SISTEMA.length = 0;
+      if (seed) USUARIOS_SISTEMA.push(...seed.USUARIOS_SISTEMA);
+      usuarioIdCounter = seed ? seed.usuarioIdCounter : 100;
+
+      Object.keys(USUARIO_PRIVILEGIOS).forEach(k => delete USUARIO_PRIVILEGIOS[k]);
+      if (seed) Object.assign(USUARIO_PRIVILEGIOS, seed.USUARIO_PRIVILEGIOS);
+
+      EVENTOS_SEGUIMIENTO.length = 0;
+      if (seed) EVENTOS_SEGUIMIENTO.push(...seed.EVENTOS_SEGUIMIENTO);
+      eventosSeguimientoSeq = seed ? seed.eventosSeguimientoSeq : 1;
+
+      Object.keys(DISPONIBILIDAD_MEDICOS).forEach(k => delete DISPONIBILIDAD_MEDICOS[k]);
+      if (seed) Object.assign(DISPONIBILIDAD_MEDICOS, seed.DISPONIBILIDAD_MEDICOS);
+
+      AGENDA_EVENTOS.length = 0;
+      if (seed) AGENDA_EVENTOS.push(...seed.AGENDA_EVENTOS);
+
+      SIIGO_RESOLUCIONES.length = 0;
+      if (seed) SIIGO_RESOLUCIONES.push(...seed.SIIGO_RESOLUCIONES);
+      siigoResolucionSeq = seed ? seed.siigoResolucionSeq : 1;
+
+      SIIGO_DISPOSITIVOS.length = 0;
+      if (seed) SIIGO_DISPOSITIVOS.push(...seed.SIIGO_DISPOSITIVOS);
+      siigoDispositivoSeq = seed ? seed.siigoDispositivoSeq : 1;
+
+      INVENTARIO_SALIDAS.length = 0;
+      if (seed) INVENTARIO_SALIDAS.push(...seed.INVENTARIO_SALIDAS);
+      inventarioSalidaIdCounter = seed ? seed.inventarioSalidaIdCounter : 1;
+
+      INVENTARIO_ORDENES_COMPRA.length = 0;
+      if (seed) INVENTARIO_ORDENES_COMPRA.push(...seed.INVENTARIO_ORDENES_COMPRA);
+
+      INVENTARIO_COMPRAS.length = 0;
+      if (seed) INVENTARIO_COMPRAS.push(...seed.INVENTARIO_COMPRAS);
+
+      vacunasCatalogoCustom.length = 0;
+      if (seed) vacunasCatalogoCustom.push(...seed.vacunasCatalogoCustom);
+
+      desparasitacionTiposCustom.length = 0;
+      if (seed) desparasitacionTiposCustom.push(...seed.desparasitacionTiposCustom);
+
+      hospitalizacionTiposCustom.length = 0;
+      if (seed) hospitalizacionTiposCustom.push(...seed.hospitalizacionTiposCustom);
+      hospitalizacionSeq = seed ? seed.hospitalizacionSeq : 1;
+
+      PLANTILLAS_DOCUMENTOS.length = 0;
+      if (seed) PLANTILLAS_DOCUMENTOS.push(...seed.PLANTILLAS_DOCUMENTOS);
+
+      Object.keys(CLINIC_INFO).forEach(k => delete CLINIC_INFO[k]);
+      if (seed) Object.assign(CLINIC_INFO, seed.CLINIC_INFO);
+
+      Object.keys(VARIABLES_CATALOGOS).forEach(k => delete VARIABLES_CATALOGOS[k]);
+      if (seed) Object.assign(VARIABLES_CATALOGOS, seed.VARIABLES_CATALOGOS);
+
+      VENTAS_CLIENTES.length = 0;
+      if (seed) VENTAS_CLIENTES.push(...seed.VENTAS_CLIENTES);
+
+      VENTAS_FACTURAS.length = 0;
+      if (seed) VENTAS_FACTURAS.push(...seed.VENTAS_FACTURAS);
+
+      VENTAS_COTIZACIONES.length = 0;
+      if (seed) VENTAS_COTIZACIONES.push(...seed.VENTAS_COTIZACIONES);
+
+      VENTAS_NOTAS_CREDITO.length = 0;
+      if (seed) VENTAS_NOTAS_CREDITO.push(...seed.VENTAS_NOTAS_CREDITO);
+
+      VENTAS_DOC_SOPORTE.length = 0;
+      if (seed) VENTAS_DOC_SOPORTE.push(...seed.VENTAS_DOC_SOPORTE);
+
+      VENTAS_MOVIMIENTOS.length = 0;
+      if (seed) VENTAS_MOVIMIENTOS.push(...seed.VENTAS_MOVIMIENTOS);
+
+      VENTAS_CATALOGO.length = 0;
+      if (seed) VENTAS_CATALOGO.push(...seed.VENTAS_CATALOGO);
+
+      VENTAS_CATEGORIAS.length = 0;
+      if (seed) VENTAS_CATEGORIAS.push(...seed.VENTAS_CATEGORIAS);
+
+      VENTAS_PROVEEDORES.length = 0;
+      if (seed) VENTAS_PROVEEDORES.push(...seed.VENTAS_PROVEEDORES);
+    }
+
+    // Clínica nueva: el único "usuario del sistema" visible en Admin >
+    // Usuarios al arrancar es el propio administrador que la creó — no un
+    // roster vacío sin ni siquiera quien la creó.
+    function seedUsuarioActualComoStaff(membership) {
+      const estab = membership.establecimiento || {};
+      USUARIOS_SISTEMA.push({
+        id: 1,
+        nombre: currentSession.user.nombre || currentSession.user.email,
+        email: currentSession.user.email,
+        telefono: currentSession.user.telefono || '',
+        rol: membership.rol,
+        especialidad: null,
+        estado: 'activo'
+      });
+      USUARIO_PRIVILEGIOS[1] = getDefaultPrivilegiosParaRol(membership.rol);
+      usuarioIdCounter = 100;
+      Object.assign(CLINIC_INFO, {
+        nombre: estab.nombre || '',
+        nit: estab.nit || '',
+        telefono: estab.telefono || '',
+        correo: estab.correo_contacto || '',
+        correoRecordatorios: estab.correo_contacto || ''
+      });
+    }
+
+    // Roles/tabs distintos de "perfil" ocultos por completo cuando el
+    // usuario logueado no tiene ningún establecimiento activo (Tarea 4:
+    // médico/auxiliar/ventas sin clínica llegan directo a Perfil).
+    function aplicarModoSinEstablecimiento() {
+      document.querySelectorAll('.nav-tabs-bar > .tab-btn, .nav-tabs-bar > .tab-dropdown-wrap').forEach(el => { el.style.display = 'none'; });
+      const perfilBtn = document.querySelector('.nav-tabs-bar .tab-btn[data-tab="perfil"]');
+      if (perfilBtn) { perfilBtn.style.display = ''; perfilBtn.click(); }
+    }
+    function aplicarModoConEstablecimiento() {
+      document.querySelectorAll('.nav-tabs-bar > .tab-btn, .nav-tabs-bar > .tab-dropdown-wrap').forEach(el => { el.style.display = ''; });
+      applyTabRoleVisibility();
+    }
+
+    // ── COMPONENTE REUTILIZABLE: verificación de email por código
+    // (Tarea 8) — usado en "Completa tu perfil" y en el correo de
+    // contacto de la clínica si se cambia del valor pre-llenado. Real:
+    // llama a las funciones serverless que envían/validan el código
+    // (api/send-verification-code.js, api/verify-code.js), nunca lo
+    // genera ni lo compara en el cliente.
+    function mountEmailVerifier(containerId, getEmail, onVerified) {
+      const container = document.getElementById(containerId);
+      let verified = false;
+      let userIdForVerification = null;
+
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-outline-accent btn-sm" id="${containerId}-send-btn">Enviar código de verificación</button>
+          <span id="${containerId}-status" style="font-size:12px;color:var(--text-2);"></span>
+        </div>
+        <div style="display:none;margin-top:10px;" id="${containerId}-code-wrap">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="input" style="width:140px;" maxlength="6" id="${containerId}-code-input" placeholder="000000">
+            <button type="button" class="btn btn-primary btn-sm" id="${containerId}-confirm-btn">Confirmar</button>
+            <a class="link-ghost" style="cursor:pointer;" id="${containerId}-resend">Reenviar</a>
+          </div>
+          <span class="field-error" id="${containerId}-error"></span>
+        </div>`;
+
+      async function send() {
+        const email = getEmail();
+        if (!email || !window.supabase) return;
+        const { data: { user } } = await window.supabase.auth.getUser();
+        userIdForVerification = user?.id;
+        document.getElementById(`${containerId}-status`).textContent = 'Enviando...';
+        try {
+          const res = await fetch('/api/send-verification-code', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: userIdForVerification, email })
+          });
+          const data = await res.json();
+          if (!res.ok || data.error) {
+            document.getElementById(`${containerId}-status`).textContent = 'No se pudo enviar el código.';
+            return;
+          }
+          document.getElementById(`${containerId}-status`).textContent = `Código enviado a ${email}`;
+          document.getElementById(`${containerId}-code-wrap`).style.display = 'block';
+        } catch (err) {
+          document.getElementById(`${containerId}-status`).textContent = 'No se pudo enviar el código.';
+        }
+      }
+
+      async function confirmCode() {
+        const code = document.getElementById(`${containerId}-code-input`).value.trim();
+        const errEl = document.getElementById(`${containerId}-error`);
+        errEl.classList.remove('show');
+        const res = await fetch('/api/verify-code', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: userIdForVerification, code })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          errEl.textContent = data.error || 'Código incorrecto';
+          errEl.classList.add('show');
+          return;
+        }
+        verified = true;
+        document.getElementById(`${containerId}-status`).textContent = '✓ Correo verificado';
+        document.getElementById(`${containerId}-code-wrap`).style.display = 'none';
+        document.getElementById(`${containerId}-send-btn`).style.display = 'none';
+        onVerified();
+      }
+
+      document.getElementById(`${containerId}-send-btn`).onclick = send;
+      document.getElementById(`${containerId}-confirm-btn`).onclick = confirmCode;
+      document.getElementById(`${containerId}-resend`).onclick = send;
+
+      return { isVerified: () => verified };
+    }
+
+    // ── ENLACE DE INVITACIÓN (?invite=token) ───────────────────────
+    // Un admin genera este enlace desde Admin > Usuarios; quien entra por
+    // él salta selección de rol y creación/solicitud de establecimiento —
+    // el rol y el establecimiento ya vienen fijados en la fila `invites`
+    // (ver accept_invite() en supabase/schema.sql).
+    const pendingInviteToken = new URLSearchParams(location.search).get('invite') || null;
+
+    // ── ORQUESTADOR DE SESIÓN ───────────────────────────────────────
+    // Reemplaza el viejo interruptor puramente local (iris_session_active
+    // como único estado) por una sesión real de Supabase: decide, cada
+    // vez que se llama, en qué pantalla del auth shell debe quedar el
+    // usuario (perfil incompleto / sin rol / admin sin clínica) o si debe
+    // entrar al app shell con su establecimiento activo resuelto. Se
+    // invoca una sola vez al final del script (misma zona que ya usaba
+    // mostrarShellSegunSesion(), ver su nota) y de nuevo tras cada login/
+    // registro exitoso dentro del script del auth shell.
+    async function bootstrapSession() {
+      if (!window.supabase) { mostrarShellSegunSesion(); return; }
+
+      const { data: { session } } = await window.supabase.auth.getSession();
+      if (!session) {
+        currentSession = null;
+        localStorage.removeItem('iris_session_active');
+        mostrarShellSegunSesion();
+        return;
+      }
+
+      const [{ data: profile }, { data: membershipRows }] = await Promise.all([
+        window.supabase.from('profiles').select('*').eq('id', session.user.id).single(),
+        window.supabase.from('memberships').select('*, establecimientos(*)').eq('user_id', session.user.id).eq('estado', 'activo')
+      ]);
+
+      function irAAuthShell(screenId) {
+        goTo(screenId);
+        document.getElementById('auth-shell').classList.add('active');
+        document.getElementById('app-shell').classList.remove('active');
+      }
+
+      // 1) Perfil incompleto -> completar nombre/teléfono/foto + verificar email
+      if (!profile || !profile.nombre) {
+        prepararScreenPerfil(session.user.email);
+        irAAuthShell('screen-perfil-completar');
+        return;
+      }
+
+      // 2) Sin rol asignado -> selección de rol (una invitación ya trae
+      // el rol consigo y salta esta pantalla)
+      if (!profile.role && !pendingInviteToken) {
+        irAAuthShell('screen-b');
+        return;
+      }
+
+      // 3) Invitación pendiente -> acepta (crea la membership con el rol
+      // fijado en la invitación) antes de seguir evaluando memberships
+      if (pendingInviteToken) {
+        await window.supabase.rpc('accept_invite', { p_token: pendingInviteToken });
+      }
+
+      const memberList = (membershipRows || []).map(m => ({
+        id: m.id, rol: m.rol, establecimientoId: m.establecimiento_id, establecimiento: m.establecimientos
+      }));
+
+      // 4) Admin sin ningún establecimiento -> único camino posible es
+      // crear uno (Restricciones: creación de clínica solo Administrador)
+      if (profile.role === 'admin' && memberList.length === 0 && !pendingInviteToken) {
+        prepararScreenD(session.user.email);
+        irAAuthShell('screen-d');
+        return;
+      }
+
+      // Si se acaba de aceptar una invitación, refresca memberships antes
+      // de resolver cuál queda activa
+      let finalMemberList = memberList;
+      if (pendingInviteToken) {
+        const { data: freshRows } = await window.supabase.from('memberships')
+          .select('*, establecimientos(*)').eq('user_id', session.user.id).eq('estado', 'activo');
+        finalMemberList = (freshRows || []).map(m => ({
+          id: m.id, rol: m.rol, establecimientoId: m.establecimiento_id, establecimiento: m.establecimientos
+        }));
+      }
+
+      // 5) Resolver establecimiento activo: preferencia guardada si sigue
+      // siendo válida, si no el primero disponible
+      let activeMembership = null;
+      const preferredEstabId = localStorage.getItem('iris_active_estab_id');
+      if (preferredEstabId) activeMembership = finalMemberList.find(m => m.establecimientoId === preferredEstabId) || null;
+      if (!activeMembership) activeMembership = finalMemberList[0] || null;
+      if (activeMembership) localStorage.setItem('iris_active_estab_id', activeMembership.establecimientoId);
+      else localStorage.removeItem('iris_active_estab_id');
+
+      currentSession = {
+        user: {
+          id: session.user.id,
+          email: session.user.email,
+          nombre: profile.nombre || '',
+          telefono: profile.telefono || '',
+          fotoUrl: profile.foto_url || '',
+          role: profile.role || null
+        },
+        memberships: finalMemberList,
+        activeMembership
+      };
+
+      currentSimRole = activeMembership ? activeMembership.rol : (profile.role || 'medico');
+
+      const seedDemo = !!(activeMembership && activeMembership.establecimiento && activeMembership.establecimiento.nit === DEMO_ESTABLISHMENT_NIT);
+      resetMockDataForClinic(seedDemo);
+      if (activeMembership && !seedDemo) seedUsuarioActualComoStaff(activeMembership);
+      renderAllModulesData();
+
+      localStorage.setItem('iris_session_active', '1');
+      mostrarShellSegunSesion();
+      renderHeaderFromSession();
+      renderProfileDropdownFromSession();
+
+      // 6) Rol no-admin sin ningún establecimiento -> entra igual al
+      // shell, pero forzado a Perfil (Tarea 4)
+      if (!activeMembership) aplicarModoSinEstablecimiento();
+      else aplicarModoConEstablecimiento();
+    }
+
+    // Llamada real (ver nota junto a mostrarShellSegunSesion()) — debe
+    // ser lo último del script. bootstrapSession() reemplaza al viejo
+    // interruptor puramente local por una sesión real de Supabase, y
+    // termina llamando a mostrarShellSegunSesion() internamente.
+    bootstrapSession();
   </script>
 
   <!-- Toast -->
@@ -16981,7 +17554,9 @@
     </div>
   </div>
 
-  <!-- Modal: Vincularme a otro establecimiento -->
+  <!-- Modal: Vincularme a otro establecimiento — resultados poblados en
+       vivo desde la tabla real `establecimientos` (Supabase), ver
+       openLinkModal()/renderLinkModalResults() -->
   <div class="modal-overlay" id="link-modal" onclick="handleModalOverlayClick(event)">
     <div class="modal-card">
       <div class="modal-header">
@@ -16990,32 +17565,9 @@
       </div>
       <div class="modal-search-wrap">
         <i data-lucide="search" class="modal-search-icon" style="width:16px;height:16px;"></i>
-        <input class="modal-search-input" placeholder="Nombre de la clínica o NIT...">
+        <input class="modal-search-input" id="link-modal-search" placeholder="Nombre de la clínica o NIT..." oninput="renderLinkModalResults()">
       </div>
-      <div class="modal-result">
-        <span class="modal-result-icon">🏥</span>
-        <div class="modal-result-info">
-          <div class="modal-result-name">Clínica Felinos & Caninos</div>
-          <div class="modal-result-meta">NIT 900.123.456-7 · Medellín · 12 profesionales</div>
-        </div>
-        <button class="modal-btn-solic">Solicitar</button>
-      </div>
-      <div class="modal-result">
-        <span class="modal-result-icon">🏥</span>
-        <div class="modal-result-info">
-          <div class="modal-result-name">VetCentro Laureles</div>
-          <div class="modal-result-meta">NIT 900.987.654-3 · Medellín · 7 profesionales</div>
-        </div>
-        <button class="modal-btn-solic">Solicitar</button>
-      </div>
-      <div class="modal-result">
-        <span class="modal-result-icon">🐾</span>
-        <div class="modal-result-info">
-          <div class="modal-result-name">Nanimals Pet Shop</div>
-          <div class="modal-result-meta">NIT 901.234.567-8 · Itagüí · 4 profesionales</div>
-        </div>
-        <button class="modal-btn-solic">Solicitar</button>
-      </div>
+      <div id="link-modal-results"></div>
     </div>
   </div>
 
