@@ -2796,13 +2796,13 @@
           <span class="logo-sub">Sistema de Gestión Clínica Veterinaria</span>
         </div>
 
-        <h2 class="card-title">Ingresa a tu clínica</h2>
-        <p class="card-subtitle" style="margin-bottom:20px;">Gestiona historias clínicas, agenda y facturación</p>
+        <h2 class="card-title" id="login-mode-title">Ingresa a tu clínica</h2>
+        <p class="card-subtitle" style="margin-bottom:20px;" id="login-mode-subtitle">Gestiona historias clínicas, agenda y facturación</p>
 
         <form id="login-form" onsubmit="handleLoginSubmit(event)" novalidate>
           <div class="form-group">
-            <label class="form-label" for="email">Email corporativo</label>
-            <input class="input" type="text" id="email" placeholder="tu@clinica.com" autocomplete="email">
+            <label class="form-label" for="email">Email</label>
+            <input class="input" type="text" id="email" placeholder="tu@correo.com" autocomplete="email">
             <span class="field-error" id="email-error">Este campo es obligatorio</span>
           </div>
 
@@ -2816,7 +2816,7 @@
             </div>
           </div>
 
-          <div class="form-options">
+          <div class="form-options" id="login-mode-remember-row">
             <label class="check-label">
               <input type="checkbox" checked>
               <span>Recordarme</span>
@@ -2839,6 +2839,10 @@
           Continuar con Google
         </button>
 
+        <div class="divider"><span>o</span></div>
+        <div class="text-center">
+          <a class="link-accent" style="cursor:pointer;" id="login-mode-toggle" onclick="toggleAuthMode()">¿No tienes cuenta? Créala aquí</a>
+        </div>
       </div>
     </div>
 
@@ -3058,7 +3062,31 @@
       goToTransition();
     }
 
-    /* ── Login ─────────────────────────────────────────────────── */
+    /* ── Login / Crear cuenta ─────────────────────────────────────
+       screen-a hace las dos cosas con los mismos campos email+password,
+       alternadas por authMode — este es el ÚNICO punto de todo el flujo
+       que crea una cuenta nueva en Supabase Auth (sin metadata de rol ni
+       clínica: eso se decide después, en Completar perfil/Rol/Crear
+       clínica). Antes, crear cuenta solo pasaba como efecto secundario
+       de la pantalla de registro de clínica que se eliminó — sin esto no
+       había NINGUNA forma de registrarse. */
+    let authMode = 'login';
+
+    function toggleAuthMode() {
+      authMode = authMode === 'login' ? 'signup' : 'login';
+      const isSignup = authMode === 'signup';
+      document.getElementById('login-mode-title').textContent = isSignup ? 'Crea tu cuenta' : 'Ingresa a tu clínica';
+      document.getElementById('login-mode-subtitle').textContent = isSignup
+        ? 'Con tu email y una contraseña — el perfil, el rol y la clínica se configuran después'
+        : 'Gestiona historias clínicas, agenda y facturación';
+      document.getElementById('login-btn').textContent = isSignup ? 'Crear cuenta' : 'Ingresar';
+      document.getElementById('login-mode-remember-row').style.display = isSignup ? 'none' : 'flex';
+      document.getElementById('login-mode-toggle').textContent = isSignup ? '¿Ya tienes cuenta? Ingresa aquí' : '¿No tienes cuenta? Créala aquí';
+      const authErrorEl = document.getElementById('login-error-msg');
+      authErrorEl.style.display = 'none';
+      authErrorEl.style.color = '';
+    }
+
     function handleLoginSubmit(e) {
       e.preventDefault();
       const emailEl    = document.getElementById('email');
@@ -3066,6 +3094,7 @@
       const errorEl    = document.getElementById('email-error');
       const authErrorEl = document.getElementById('login-error-msg');
       authErrorEl.style.display = 'none';
+      authErrorEl.style.color = '';
 
       if (!emailEl.value.trim()) {
         emailEl.classList.add('has-error');
@@ -3075,33 +3104,46 @@
       emailEl.classList.remove('has-error');
       errorEl.classList.remove('show');
 
+      const isSignup = authMode === 'signup';
       const btn = document.getElementById('login-btn');
       btn.disabled = true;
-      btn.innerHTML = '<div class="spinner"></div> Ingresando...';
+      btn.innerHTML = `<div class="spinner"></div> ${isSignup ? 'Creando cuenta...' : 'Ingresando...'}`;
 
-      // Login real contra Supabase Auth. Si el cliente todavía no cargó
-      // (import ESM en curso) o las credenciales fallan, se avisa en
-      // login-error-msg y no se avanza — bootstrapSession() (vía
-      // goToTransition()) solo se dispara tras un login exitoso.
+      // Real contra Supabase Auth. Si el cliente todavía no cargó (import
+      // ESM en curso) o falla, se avisa en login-error-msg y no se avanza
+      // — bootstrapSession() (vía goToTransition()) solo se dispara tras
+      // un login/registro exitoso con sesión activa.
       if (!window.supabase) {
         btn.disabled = false;
-        btn.innerHTML = 'Ingresar';
+        btn.innerHTML = isSignup ? 'Crear cuenta' : 'Ingresar';
         authErrorEl.textContent = 'No se pudo conectar con el servidor. Intenta de nuevo en unos segundos.';
         authErrorEl.style.display = 'block';
         return;
       }
 
-      window.supabase.auth.signInWithPassword({
-        email: emailEl.value.trim(),
-        password: passwordEl.value
-      }).then(({ error }) => {
+      const authCall = isSignup
+        ? window.supabase.auth.signUp({ email: emailEl.value.trim(), password: passwordEl.value })
+        : window.supabase.auth.signInWithPassword({ email: emailEl.value.trim(), password: passwordEl.value });
+
+      authCall.then(({ data, error }) => {
+        btn.disabled = false;
+        btn.innerHTML = isSignup ? 'Crear cuenta' : 'Ingresar';
         if (error) {
-          btn.disabled = false;
-          btn.innerHTML = 'Ingresar';
           authErrorEl.textContent = error.message === 'Invalid login credentials'
             ? 'Email o contraseña incorrectos'
             : error.message;
           authErrorEl.style.display = 'block';
+          return;
+        }
+        // Si el proyecto de Supabase exige confirmar el correo antes de
+        // dar sesión activa, signUp() no trae data.session — avisar en
+        // vez de intentar entrar sin sesión real (bootstrapSession()
+        // simplemente rebotaría al login sin explicación).
+        if (isSignup && !data.session) {
+          authErrorEl.style.color = 'var(--text-2)';
+          authErrorEl.textContent = 'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.';
+          authErrorEl.style.display = 'block';
+          toggleAuthMode();
           return;
         }
         goToTransition();
@@ -3115,24 +3157,31 @@
       }
     });
 
-    /* ── Login con Google ──────────────────────────────────────── */
-    function handleGoogleLogin() {
+    /* ── Login con Google (OAuth real de Supabase — requiere el
+       proveedor Google configurado en Authentication > Providers del
+       proyecto de Supabase; si no lo está, signInWithOAuth devuelve un
+       error en vez de fingir un login que luego bootstrapSession()
+       rebotaría sin explicación) ── */
+    async function handleGoogleLogin() {
+      if (!window.supabase) return;
       const btn = document.getElementById('google-btn');
+      const originalHTML = btn.innerHTML;
       btn.disabled = true;
-      btn.innerHTML = '<div class="spinner" style="border-top-color:var(--clinic-accent);border-color:rgba(15,118,110,.2);"></div> Verificando...';
+      btn.innerHTML = '<div class="spinner" style="border-top-color:var(--clinic-accent);border-color:rgba(15,118,110,.2);"></div> Redirigiendo...';
 
-      setTimeout(() => {
+      const { error } = await window.supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: location.href.split('?')[0] }
+      });
+      if (error) {
         btn.disabled = false;
-        btn.innerHTML = `
-          <svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-          </svg>
-          Continuar con Google`;
-        goToTransition();
-      }, 900);
+        btn.innerHTML = originalHTML;
+        const authErrorEl = document.getElementById('login-error-msg');
+        authErrorEl.textContent = 'No se pudo iniciar con Google: ' + error.message;
+        authErrorEl.style.display = 'block';
+      }
+      // Si no hay error, el navegador ya está siendo redirigido a Google
+      // — no hay nada más que hacer aquí.
     }
 
     /* ── Completar perfil personal (Tarea 4/8) ───────────────────
