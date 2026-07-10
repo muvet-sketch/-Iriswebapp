@@ -5628,11 +5628,10 @@
         color: 'Seal Point',
         genero: 'Hembra',
         talla: 'Pequeña',
-        estadoReproductivo: 'Esterilizada',
+        estadoReproductivo: 'Esterilizado',
         animalServicio: false,
         fallecido: false,
         alimentacion: 'Concentrado premium felino',
-        vivienda: 'Apartamento — interior',
         frecuenciaBano: 'Cada 6 semanas',
         pesoHistorico: [
           { fechaISO: '2026-04-07', fecha: '07/04/2026', peso: 3.8 },
@@ -5864,7 +5863,6 @@
         animalServicio: false,
         fallecido: false,
         alimentacion: 'Dieta balanceada raza grande',
-        vivienda: 'Casa — patio',
         frecuenciaBano: 'Cada 4 semanas',
         pesoHistorico: [
           { fechaISO: '2026-04-06', fecha: '06/04/2026', peso: 31.2 },
@@ -5919,7 +5917,6 @@
         animalServicio: false,
         fallecido: false,
         alimentacion: 'Concentrado estándar adulto',
-        vivienda: 'Casa — patio',
         frecuenciaBano: 'Cada 3 semanas',
         pesoHistorico: [
           { fechaISO: '2026-04-04', fecha: '04/04/2026', peso: 11.4 },
@@ -7764,11 +7761,10 @@
       document.getElementById('mascota-genero').value = data.genero || 'Hembra';
       document.getElementById('mascota-peso').value = parseFloat(data.weight) || '';
       document.getElementById('mascota-talla').value = data.talla || 'Pequeña';
-      document.getElementById('mascota-estado-reproductivo').value = data.estadoReproductivo || 'No esterilizado';
+      document.getElementById('mascota-estado-reproductivo').value = data.estadoReproductivo || 'Desconocido';
       document.getElementById('mascota-edad').value = data.age || '';
       document.getElementById('mascota-chip').value = data.chip || '';
       document.getElementById('mascota-alimentacion').value = data.alimentacion || '';
-      document.getElementById('mascota-vivienda').value = data.vivienda || '';
       document.getElementById('mascota-frecuencia-bano').value = data.frecuenciaBano || '';
       document.getElementById('mascota-animal-servicio').checked = !!data.animalServicio;
       document.getElementById('mascota-fallecido').checked = !!data.fallecido;
@@ -7802,7 +7798,6 @@
       data.age = document.getElementById('mascota-edad').value.trim();
       data.chip = document.getElementById('mascota-chip').value.trim();
       data.alimentacion = document.getElementById('mascota-alimentacion').value.trim();
-      data.vivienda = document.getElementById('mascota-vivienda').value.trim();
       data.frecuenciaBano = document.getElementById('mascota-frecuencia-bano').value.trim();
       data.animalServicio = document.getElementById('mascota-animal-servicio').checked;
       data.fallecido = document.getElementById('mascota-fallecido').checked;
@@ -7845,12 +7840,13 @@
       registrandoMascotaPropietarioId = propietarioId;
 
       document.getElementById('registrar-mascota-propietario-label').textContent = `Propietario: ${p.nombre}`;
-      ['nueva-mascota-nombre', 'nueva-mascota-especie', 'nueva-mascota-raza', 'nueva-mascota-color',
+      ['nueva-mascota-nombre', 'nueva-mascota-raza', 'nueva-mascota-color',
        'nueva-mascota-peso', 'nueva-mascota-edad', 'nueva-mascota-chip', 'nueva-mascota-frecuencia-bano',
-       'nueva-mascota-alimentacion', 'nueva-mascota-vivienda'].forEach(id => { document.getElementById(id).value = ''; });
+       'nueva-mascota-alimentacion'].forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('nueva-mascota-especie').value = 'Canino';
       document.getElementById('nueva-mascota-genero').value = 'Hembra';
       document.getElementById('nueva-mascota-talla').value = 'Pequeña';
-      document.getElementById('nueva-mascota-estado-reproductivo').value = 'No esterilizado';
+      document.getElementById('nueva-mascota-estado-reproductivo').value = 'Desconocido';
       document.getElementById('nueva-mascota-animal-servicio').checked = false;
       document.getElementById('nueva-mascota-fallecido').checked = false;
 
@@ -7908,7 +7904,6 @@
         animalServicio: document.getElementById('nueva-mascota-animal-servicio').checked,
         fallecido: document.getElementById('nueva-mascota-fallecido').checked,
         alimentacion: document.getElementById('nueva-mascota-alimentacion').value.trim(),
-        vivienda: document.getElementById('nueva-mascota-vivienda').value.trim(),
         frecuenciaBano: document.getElementById('nueva-mascota-frecuencia-bano').value.trim(),
         pesoHistorico: !isNaN(pesoNum) ? [{ fechaISO: hoyISO, fecha: hoyFmt, peso: pesoNum }] : [],
         timeline: [], consulta: { motivo: '', fisico: '', plan: '' },
@@ -16226,7 +16221,23 @@
         <div class="med-block-grid">
           <div class="input-group">
             <label class="input-label">Especie</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="mascota-especie">
+            <select class="soap-select-control" id="mascota-especie">
+              <option value="Canino">Canino (perro)</option>
+              <option value="Felino">Felino (gato)</option>
+              <option value="Conejo">Conejo</option>
+              <option value="Cobayo">Cobayo / Cuy</option>
+              <option value="Hámster">Hámster</option>
+              <option value="Hurón">Hurón</option>
+              <option value="Ave doméstica">Ave doméstica (ornamental)</option>
+              <option value="Reptil">Reptil</option>
+              <option value="Equino">Equino (caballo)</option>
+              <option value="Bovino">Bovino (res/vaca)</option>
+              <option value="Porcino">Porcino (cerdo)</option>
+              <option value="Ovino">Ovino (oveja)</option>
+              <option value="Caprino">Caprino (cabra)</option>
+              <option value="Aves de corral">Aves de corral (gallina/pollo)</option>
+              <option value="Otro">Otro</option>
+            </select>
           </div>
           <div class="input-group">
             <label class="input-label">Raza</label>
@@ -16260,9 +16271,8 @@
             <label class="input-label">Estado reproductivo</label>
             <select class="soap-select-control" id="mascota-estado-reproductivo">
               <option value="Esterilizado">Esterilizado</option>
-              <option value="Esterilizada">Esterilizada</option>
               <option value="No esterilizado">No esterilizado</option>
-              <option value="No esterilizada">No esterilizada</option>
+              <option value="Desconocido">Desconocido</option>
             </select>
           </div>
           <div class="input-group">
@@ -16282,10 +16292,6 @@
         <div class="input-group">
           <label class="input-label">Alimentación</label>
           <input type="text" class="input-control" style="padding-left:12px;" id="mascota-alimentacion">
-        </div>
-        <div class="input-group">
-          <label class="input-label">Vivienda</label>
-          <input type="text" class="input-control" style="padding-left:12px;" id="mascota-vivienda">
         </div>
 
         <div style="display:flex;gap:24px;">
@@ -17412,7 +17418,23 @@
         <div class="med-block-grid">
           <div class="input-group">
             <label class="input-label">Especie</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-especie">
+            <select class="soap-select-control" id="nueva-mascota-especie">
+              <option value="Canino">Canino (perro)</option>
+              <option value="Felino">Felino (gato)</option>
+              <option value="Conejo">Conejo</option>
+              <option value="Cobayo">Cobayo / Cuy</option>
+              <option value="Hámster">Hámster</option>
+              <option value="Hurón">Hurón</option>
+              <option value="Ave doméstica">Ave doméstica (ornamental)</option>
+              <option value="Reptil">Reptil</option>
+              <option value="Equino">Equino (caballo)</option>
+              <option value="Bovino">Bovino (res/vaca)</option>
+              <option value="Porcino">Porcino (cerdo)</option>
+              <option value="Ovino">Ovino (oveja)</option>
+              <option value="Caprino">Caprino (cabra)</option>
+              <option value="Aves de corral">Aves de corral (gallina/pollo)</option>
+              <option value="Otro">Otro</option>
+            </select>
           </div>
           <div class="input-group">
             <label class="input-label">Raza</label>
@@ -17446,9 +17468,8 @@
             <label class="input-label">Estado reproductivo</label>
             <select class="soap-select-control" id="nueva-mascota-estado-reproductivo">
               <option value="Esterilizado">Esterilizado</option>
-              <option value="Esterilizada">Esterilizada</option>
               <option value="No esterilizado">No esterilizado</option>
-              <option value="No esterilizada">No esterilizada</option>
+              <option value="Desconocido">Desconocido</option>
             </select>
           </div>
           <div class="input-group">
@@ -17468,10 +17489,6 @@
         <div class="input-group">
           <label class="input-label">Alimentación</label>
           <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-alimentacion">
-        </div>
-        <div class="input-group">
-          <label class="input-label">Vivienda</label>
-          <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-vivienda">
         </div>
 
         <div style="display:flex;gap:24px;">
