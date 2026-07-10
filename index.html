@@ -3029,6 +3029,12 @@
     let perfilEmailVerifier = null;
     let clinicaEmailVerifier = null;
     let clinicaCorreoOriginal = '';
+    // Id del usuario autenticado, fijado por bootstrapSession() (vía
+    // prepararScreenPerfil/prepararScreenD) al entrar a cada pantalla —
+    // evita que mountEmailVerifier() tenga que volver a pedirle la sesión
+    // a Supabase (auth.getUser()) justo antes de enviar el código, que es
+    // un round-trip de red adicional y un punto de fallo silencioso de más.
+    let pendingAuthUserId = null;
 
     /* ── Navegación entre pantallas ────────────────────────────── */
     function goTo(id) {
@@ -3187,9 +3193,10 @@
     /* ── Completar perfil personal (Tarea 4/8) ───────────────────
        Primer paso obligatorio tras login/registro — bootstrapSession()
        navega aquí mientras profiles.nombre esté vacío. */
-    function prepararScreenPerfil(email) {
+    function prepararScreenPerfil(email, userId) {
+      pendingAuthUserId = userId;
       document.getElementById('perfil-email-display').textContent = email;
-      perfilEmailVerifier = mountEmailVerifier('perfil-email-verify', () => email, () => {});
+      perfilEmailVerifier = mountEmailVerifier('perfil-email-verify', () => email, () => pendingAuthUserId, () => {});
     }
 
     async function handleCompletarPerfil(e) {
@@ -3235,7 +3242,8 @@
        WhatsApp Business (eliminado, no se traslada a ningún otro
        punto del flujo). Correo pre-llenado con el email de la cuenta,
        editable; si cambia, exige verificación (Tarea 8) antes de crear. */
-    function prepararScreenD(email) {
+    function prepararScreenD(email, userId) {
+      pendingAuthUserId = userId;
       clinicaCorreoOriginal = email;
       document.getElementById('correo-clinica').value = email;
       document.getElementById('clinica-email-verify-group').style.display = 'none';
@@ -3247,7 +3255,7 @@
       const group = document.getElementById('clinica-email-verify-group');
       if (val && val !== clinicaCorreoOriginal) {
         group.style.display = 'block';
-        clinicaEmailVerifier = mountEmailVerifier('clinica-email-verify', () => document.getElementById('correo-clinica').value.trim(), () => {});
+        clinicaEmailVerifier = mountEmailVerifier('clinica-email-verify', () => document.getElementById('correo-clinica').value.trim(), () => pendingAuthUserId, () => {});
       } else {
         group.style.display = 'none';
         clinicaEmailVerifier = null;
@@ -15189,10 +15197,9 @@
     // llama a las funciones serverless que envían/validan el código
     // (api/send-verification-code.js, api/verify-code.js), nunca lo
     // genera ni lo compara en el cliente.
-    function mountEmailVerifier(containerId, getEmail, onVerified) {
+    function mountEmailVerifier(containerId, getEmail, getUserId, onVerified) {
       const container = document.getElementById(containerId);
       let verified = false;
-      let userIdForVerification = null;
 
       container.innerHTML = `
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -15208,26 +15215,38 @@
           <span class="field-error" id="${containerId}-error"></span>
         </div>`;
 
+      function describeError(data) {
+        if (!data || !data.error) return 'No se pudo enviar el código.';
+        const e = data.error;
+        if (typeof e === 'string') return e;
+        if (e.message) return typeof e.message === 'string' ? e.message : JSON.stringify(e.message);
+        return JSON.stringify(e);
+      }
+
       async function send() {
         const email = getEmail();
-        if (!email || !window.supabase) return;
-        const { data: { user } } = await window.supabase.auth.getUser();
-        userIdForVerification = user?.id;
-        document.getElementById(`${containerId}-status`).textContent = 'Enviando...';
+        const userId = getUserId();
+        const statusEl = document.getElementById(`${containerId}-status`);
+        if (!email) return;
+        if (!userId) {
+          statusEl.textContent = 'No se pudo identificar tu sesión. Recarga la página e intenta de nuevo.';
+          return;
+        }
+        statusEl.textContent = 'Enviando...';
         try {
           const res = await fetch('/api/send-verification-code', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: userIdForVerification, email })
+            body: JSON.stringify({ userId, email })
           });
           const data = await res.json();
           if (!res.ok || data.error) {
-            document.getElementById(`${containerId}-status`).textContent = 'No se pudo enviar el código.';
+            statusEl.textContent = describeError(data);
             return;
           }
-          document.getElementById(`${containerId}-status`).textContent = `Código enviado a ${email}`;
+          statusEl.textContent = `Código enviado a ${email}`;
           document.getElementById(`${containerId}-code-wrap`).style.display = 'block';
         } catch (err) {
-          document.getElementById(`${containerId}-status`).textContent = 'No se pudo enviar el código.';
+          statusEl.textContent = 'No se pudo enviar el código: ' + err.message;
         }
       }
 
@@ -15237,7 +15256,7 @@
         errEl.classList.remove('show');
         const res = await fetch('/api/verify-code', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: userIdForVerification, code })
+          body: JSON.stringify({ userId: getUserId(), code })
         });
         const data = await res.json();
         if (!data.ok) {
@@ -15300,7 +15319,7 @@
 
         // 1) Perfil incompleto -> completar nombre/teléfono/foto + verificar email
         if (!profile || !profile.nombre) {
-          prepararScreenPerfil(session.user.email);
+          prepararScreenPerfil(session.user.email, session.user.id);
           irAAuthShell('screen-perfil-completar');
           return;
         }
@@ -15325,7 +15344,7 @@
         // 4) Admin sin ningún establecimiento -> único camino posible es
         // crear uno (Restricciones: creación de clínica solo Administrador)
         if (profile.role === 'admin' && memberList.length === 0 && !pendingInviteToken) {
-          prepararScreenD(session.user.email);
+          prepararScreenD(session.user.email, session.user.id);
           irAAuthShell('screen-d');
           return;
         }
