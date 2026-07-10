@@ -2997,12 +2997,20 @@
       </div>
     </div>
 
-    <!-- PANTALLA F — TRANSICIÓN POST-ACCESO -->
+    <!-- PANTALLA F — TRANSICIÓN POST-ACCESO. bootstrapSession() corre en
+         segundo plano mientras esto se muestra; si falla, muestra el
+         error aquí mismo en vez de dejar al usuario atascado sin ninguna
+         señal (ver catch en bootstrapSession()). -->
     <div class="screen" id="screen-f">
       <div class="card card-sm transition-wrap">
-        <div class="spinner-lg"></div>
+        <div class="spinner-lg" id="screen-f-spinner"></div>
         <h3 style="font-size:16px;font-weight:600;margin-bottom:8px;">Cargando tu clínica...</h3>
         <p style="font-size:13px;color:var(--text-2);">Preparando tu espacio de trabajo</p>
+        <div id="screen-f-error" style="display:none;margin-top:16px;">
+          <p style="font-size:13px;color:var(--danger);margin-bottom:12px;" id="screen-f-error-msg"></p>
+          <button class="btn btn-outline-accent btn-sm" onclick="location.reload()">Reintentar</button>
+          <a class="link-ghost" style="cursor:pointer;display:block;margin-top:10px;" onclick="cerrarSesion()">Cerrar sesión y volver al login</a>
+        </div>
       </div>
     </div>
 
@@ -15219,108 +15227,131 @@
     // mostrarShellSegunSesion(), ver su nota) y de nuevo tras cada login/
     // registro exitoso dentro del script del auth shell.
     async function bootstrapSession() {
-      if (!window.supabase) { mostrarShellSegunSesion(); return; }
+      try {
+        if (!window.supabase) { mostrarShellSegunSesion(); return; }
 
-      const { data: { session } } = await window.supabase.auth.getSession();
-      if (!session) {
-        currentSession = null;
-        localStorage.removeItem('iris_session_active');
-        mostrarShellSegunSesion();
-        return;
-      }
+        const { data: { session } } = await window.supabase.auth.getSession();
+        if (!session) {
+          currentSession = null;
+          localStorage.removeItem('iris_session_active');
+          mostrarShellSegunSesion();
+          return;
+        }
 
-      const [{ data: profile }, { data: membershipRows }] = await Promise.all([
-        window.supabase.from('profiles').select('*').eq('id', session.user.id).single(),
-        window.supabase.from('memberships').select('*, establecimientos(*)').eq('user_id', session.user.id).eq('estado', 'activo')
-      ]);
+        const [{ data: profile }, { data: membershipRows }] = await Promise.all([
+          window.supabase.from('profiles').select('*').eq('id', session.user.id).single(),
+          window.supabase.from('memberships').select('*, establecimientos(*)').eq('user_id', session.user.id).eq('estado', 'activo')
+        ]);
 
-      function irAAuthShell(screenId) {
-        goTo(screenId);
-        document.getElementById('auth-shell').classList.add('active');
-        document.getElementById('app-shell').classList.remove('active');
-      }
+        function irAAuthShell(screenId) {
+          goTo(screenId);
+          document.getElementById('auth-shell').classList.add('active');
+          document.getElementById('app-shell').classList.remove('active');
+        }
 
-      // 1) Perfil incompleto -> completar nombre/teléfono/foto + verificar email
-      if (!profile || !profile.nombre) {
-        prepararScreenPerfil(session.user.email);
-        irAAuthShell('screen-perfil-completar');
-        return;
-      }
+        // 1) Perfil incompleto -> completar nombre/teléfono/foto + verificar email
+        if (!profile || !profile.nombre) {
+          prepararScreenPerfil(session.user.email);
+          irAAuthShell('screen-perfil-completar');
+          return;
+        }
 
-      // 2) Sin rol asignado -> selección de rol (una invitación ya trae
-      // el rol consigo y salta esta pantalla)
-      if (!profile.role && !pendingInviteToken) {
-        irAAuthShell('screen-b');
-        return;
-      }
+        // 2) Sin rol asignado -> selección de rol (una invitación ya trae
+        // el rol consigo y salta esta pantalla)
+        if (!profile.role && !pendingInviteToken) {
+          irAAuthShell('screen-b');
+          return;
+        }
 
-      // 3) Invitación pendiente -> acepta (crea la membership con el rol
-      // fijado en la invitación) antes de seguir evaluando memberships
-      if (pendingInviteToken) {
-        await window.supabase.rpc('accept_invite', { p_token: pendingInviteToken });
-      }
+        // 3) Invitación pendiente -> acepta (crea la membership con el rol
+        // fijado en la invitación) antes de seguir evaluando memberships
+        if (pendingInviteToken) {
+          await window.supabase.rpc('accept_invite', { p_token: pendingInviteToken });
+        }
 
-      const memberList = (membershipRows || []).map(m => ({
-        id: m.id, rol: m.rol, establecimientoId: m.establecimiento_id, establecimiento: m.establecimientos
-      }));
-
-      // 4) Admin sin ningún establecimiento -> único camino posible es
-      // crear uno (Restricciones: creación de clínica solo Administrador)
-      if (profile.role === 'admin' && memberList.length === 0 && !pendingInviteToken) {
-        prepararScreenD(session.user.email);
-        irAAuthShell('screen-d');
-        return;
-      }
-
-      // Si se acaba de aceptar una invitación, refresca memberships antes
-      // de resolver cuál queda activa
-      let finalMemberList = memberList;
-      if (pendingInviteToken) {
-        const { data: freshRows } = await window.supabase.from('memberships')
-          .select('*, establecimientos(*)').eq('user_id', session.user.id).eq('estado', 'activo');
-        finalMemberList = (freshRows || []).map(m => ({
+        const memberList = (membershipRows || []).map(m => ({
           id: m.id, rol: m.rol, establecimientoId: m.establecimiento_id, establecimiento: m.establecimientos
         }));
+
+        // 4) Admin sin ningún establecimiento -> único camino posible es
+        // crear uno (Restricciones: creación de clínica solo Administrador)
+        if (profile.role === 'admin' && memberList.length === 0 && !pendingInviteToken) {
+          prepararScreenD(session.user.email);
+          irAAuthShell('screen-d');
+          return;
+        }
+
+        // Si se acaba de aceptar una invitación, refresca memberships antes
+        // de resolver cuál queda activa
+        let finalMemberList = memberList;
+        if (pendingInviteToken) {
+          const { data: freshRows } = await window.supabase.from('memberships')
+            .select('*, establecimientos(*)').eq('user_id', session.user.id).eq('estado', 'activo');
+          finalMemberList = (freshRows || []).map(m => ({
+            id: m.id, rol: m.rol, establecimientoId: m.establecimiento_id, establecimiento: m.establecimientos
+          }));
+        }
+
+        // 5) Resolver establecimiento activo: preferencia guardada si sigue
+        // siendo válida, si no el primero disponible
+        let activeMembership = null;
+        const preferredEstabId = localStorage.getItem('iris_active_estab_id');
+        if (preferredEstabId) activeMembership = finalMemberList.find(m => m.establecimientoId === preferredEstabId) || null;
+        if (!activeMembership) activeMembership = finalMemberList[0] || null;
+        if (activeMembership) localStorage.setItem('iris_active_estab_id', activeMembership.establecimientoId);
+        else localStorage.removeItem('iris_active_estab_id');
+
+        currentSession = {
+          user: {
+            id: session.user.id,
+            email: session.user.email,
+            nombre: profile.nombre || '',
+            telefono: profile.telefono || '',
+            fotoUrl: profile.foto_url || '',
+            role: profile.role || null
+          },
+          memberships: finalMemberList,
+          activeMembership
+        };
+
+        currentSimRole = activeMembership ? activeMembership.rol : (profile.role || 'medico');
+
+        // A partir de aquí SIEMPRE se entra al app shell (localStorage +
+        // mostrarShellSegunSesion), incluso si algo dentro de
+        // resetMockDataForClinic/renderAllModulesData falla: muchas de las
+        // funciones de render de los 17 módulos se escribieron asumiendo
+        // los datos de demo ya sembrados y nunca se probaron contra un
+        // establecimiento realmente vacío (clínica nueva). Que una de esas
+        // funciones truene no debe dejar al usuario atascado en el spinner
+        // sin ninguna señal — mejor entrar con algún módulo roto que no
+        // entrar nunca.
+        localStorage.setItem('iris_session_active', '1');
+        try {
+          const seedDemo = !!(activeMembership && activeMembership.establecimiento && activeMembership.establecimiento.nit === DEMO_ESTABLISHMENT_NIT);
+          resetMockDataForClinic(seedDemo);
+          if (activeMembership && !seedDemo) seedUsuarioActualComoStaff(activeMembership);
+          renderAllModulesData();
+        } catch (renderErr) {
+          console.error('bootstrapSession(): falló el render de un módulo tras resetMockDataForClinic —', renderErr);
+        }
+
+        mostrarShellSegunSesion();
+        renderHeaderFromSession();
+        renderProfileDropdownFromSession();
+
+        // 6) Rol no-admin sin ningún establecimiento -> entra igual al
+        // shell, pero forzado a Perfil (Tarea 4)
+        if (!activeMembership) aplicarModoSinEstablecimiento();
+        else aplicarModoConEstablecimiento();
+      } catch (err) {
+        console.error('bootstrapSession() falló antes de entrar al shell —', err);
+        goTo('screen-f');
+        document.getElementById('auth-shell').classList.add('active');
+        document.getElementById('app-shell').classList.remove('active');
+        document.getElementById('screen-f-spinner').style.display = 'none';
+        document.getElementById('screen-f-error-msg').textContent = (err && err.message) ? err.message : 'Ocurrió un error inesperado cargando tu sesión.';
+        document.getElementById('screen-f-error').style.display = 'block';
       }
-
-      // 5) Resolver establecimiento activo: preferencia guardada si sigue
-      // siendo válida, si no el primero disponible
-      let activeMembership = null;
-      const preferredEstabId = localStorage.getItem('iris_active_estab_id');
-      if (preferredEstabId) activeMembership = finalMemberList.find(m => m.establecimientoId === preferredEstabId) || null;
-      if (!activeMembership) activeMembership = finalMemberList[0] || null;
-      if (activeMembership) localStorage.setItem('iris_active_estab_id', activeMembership.establecimientoId);
-      else localStorage.removeItem('iris_active_estab_id');
-
-      currentSession = {
-        user: {
-          id: session.user.id,
-          email: session.user.email,
-          nombre: profile.nombre || '',
-          telefono: profile.telefono || '',
-          fotoUrl: profile.foto_url || '',
-          role: profile.role || null
-        },
-        memberships: finalMemberList,
-        activeMembership
-      };
-
-      currentSimRole = activeMembership ? activeMembership.rol : (profile.role || 'medico');
-
-      const seedDemo = !!(activeMembership && activeMembership.establecimiento && activeMembership.establecimiento.nit === DEMO_ESTABLISHMENT_NIT);
-      resetMockDataForClinic(seedDemo);
-      if (activeMembership && !seedDemo) seedUsuarioActualComoStaff(activeMembership);
-      renderAllModulesData();
-
-      localStorage.setItem('iris_session_active', '1');
-      mostrarShellSegunSesion();
-      renderHeaderFromSession();
-      renderProfileDropdownFromSession();
-
-      // 6) Rol no-admin sin ningún establecimiento -> entra igual al
-      // shell, pero forzado a Perfil (Tarea 4)
-      if (!activeMembership) aplicarModoSinEstablecimiento();
-      else aplicarModoConEstablecimiento();
     }
 
     // Llamada real (ver nota junto a mostrarShellSegunSesion()) — debe
