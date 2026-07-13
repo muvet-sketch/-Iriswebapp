@@ -440,3 +440,268 @@ create table if not exists public.verification_codes (
 create index if not exists verification_codes_user_id_idx on public.verification_codes (user_id);
 
 alter table public.verification_codes enable row level security;
+
+-- ============================================================
+-- NÚCLEO DE DATOS CLÍNICOS (fase 1) — propietarios, mascotas
+-- (solo ficha, no las 17 sub-secciones de Historia todavía) y
+-- documentos. Antes vivían solo en arrays JS en memoria
+-- (`propietarios`/`patientData` en index.html), por eso se
+-- perdían en cada login. Acceso por CLÍNICA (establecimiento_id),
+-- no por usuario individual: cualquier membership activa en el
+-- establecimiento puede ver/editar — a diferencia de la tabla
+-- `formularios` (arriba), que queda intacta pero deja de recibir
+-- escrituras nuevas de este flujo.
+-- ============================================================
+
+-- ── FUNCIÓN: user_is_member_of ──────────────────────────────
+-- Igual a user_is_admin_of pero sin filtrar por rol — cualquier
+-- membership 'activo' del establecimiento. security definer por
+-- el mismo motivo (evitar policies RLS recursivas sobre memberships).
+create or replace function public.user_is_member_of(estab uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.memberships
+    where establecimiento_id = estab
+      and user_id = auth.uid()
+      and estado = 'activo'
+  );
+$$;
+
+grant execute on function public.user_is_member_of(uuid) to authenticated;
+
+-- ── TABLA: propietarios ─────────────────────────────────────
+create table if not exists public.propietarios (
+  id                    uuid primary key default gen_random_uuid(),
+  establecimiento_id    uuid not null references public.establecimientos (id) on delete cascade,
+  doc_tipo              text,
+  doc_numero            text,
+  movil                 text,
+  email                 text,
+  nombre                text not null,
+  direccion             text,
+  ciudad                text,
+  contacto_autorizado   text,
+  telefono_alterno      text,
+  telefono_opcional     text,
+  expedicion_documento  text,
+  como_nos_encontro     text,
+  ultima_gestion_time   timestamptz,
+  ultima_gestion_detail text,
+  pdf_path              text,
+  created_by            uuid references auth.users (id) on delete set null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now()
+);
+
+create index if not exists propietarios_establecimiento_id_idx on public.propietarios (establecimiento_id);
+
+alter table public.propietarios enable row level security;
+
+drop policy if exists "propietarios_select_member" on public.propietarios;
+create policy "propietarios_select_member"
+  on public.propietarios for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "propietarios_insert_member" on public.propietarios;
+create policy "propietarios_insert_member"
+  on public.propietarios for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "propietarios_update_member" on public.propietarios;
+create policy "propietarios_update_member"
+  on public.propietarios for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "propietarios_delete_member" on public.propietarios;
+create policy "propietarios_delete_member"
+  on public.propietarios for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: mascotas (ficha, no historia clínica todavía) ────
+create table if not exists public.mascotas (
+  id                   uuid primary key default gen_random_uuid(),
+  establecimiento_id   uuid not null references public.establecimientos (id) on delete cascade,
+  propietario_id       uuid not null references public.propietarios (id) on delete cascade,
+  pet_key              text not null,
+  nombre               text not null,
+  chip                 text,
+  especie              text,
+  raza                 text,
+  edad                 text,
+  peso                 text,
+  color                text,
+  genero               text,
+  talla                text,
+  estado_reproductivo  text,
+  animal_servicio      boolean not null default false,
+  fallecido            boolean not null default false,
+  alimentacion         text,
+  frecuencia_bano      text,
+  peso_historico       jsonb not null default '[]'::jsonb,
+  foto_path            text,
+  created_by           uuid references auth.users (id) on delete set null,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  unique (establecimiento_id, pet_key)
+);
+
+create index if not exists mascotas_establecimiento_id_idx on public.mascotas (establecimiento_id);
+create index if not exists mascotas_propietario_id_idx on public.mascotas (propietario_id);
+
+alter table public.mascotas enable row level security;
+
+drop policy if exists "mascotas_select_member" on public.mascotas;
+create policy "mascotas_select_member"
+  on public.mascotas for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascotas_insert_member" on public.mascotas;
+create policy "mascotas_insert_member"
+  on public.mascotas for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascotas_update_member" on public.mascotas;
+create policy "mascotas_update_member"
+  on public.mascotas for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascotas_delete_member" on public.mascotas;
+create policy "mascotas_delete_member"
+  on public.mascotas for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: documentos (módulo Documentos de Consultorio) ────
+create table if not exists public.documentos (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id         uuid not null references public.mascotas (id) on delete cascade,
+  tipo               text,
+  titulo             text,
+  contenido_html     text,
+  estado             text not null default 'borrador' check (estado in ('borrador','pendiente','firmado')),
+  requiere_firma     boolean not null default true,
+  notificar_propietario boolean not null default true,
+  usuario            text,
+  firma_nombre       text,
+  firma_fecha        text,
+  firma_hora         text,
+  pdf_path           text,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create index if not exists documentos_establecimiento_id_idx on public.documentos (establecimiento_id);
+create index if not exists documentos_mascota_id_idx on public.documentos (mascota_id);
+
+alter table public.documentos enable row level security;
+
+drop policy if exists "documentos_select_member" on public.documentos;
+create policy "documentos_select_member"
+  on public.documentos for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "documentos_insert_member" on public.documentos;
+create policy "documentos_insert_member"
+  on public.documentos for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "documentos_update_member" on public.documentos;
+create policy "documentos_update_member"
+  on public.documentos for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "documentos_delete_member" on public.documentos;
+create policy "documentos_delete_member"
+  on public.documentos for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── STORAGE: bucket `fotos-mascotas` ────────────────────────
+-- Público (a diferencia de `pdfs`) — una foto de mascota no es un
+-- documento de identidad, y así los <img src> del front no
+-- necesitan firmar una URL temporal en cada render. Path:
+-- "<establecimiento_id>/<mascota_id>.<ext>".
+insert into storage.buckets (id, name, public)
+values ('fotos-mascotas', 'fotos-mascotas', true)
+on conflict (id) do nothing;
+
+-- Sin policy de select: el bucket ya es público, así que Supabase permite
+-- GET directo por URL sin pasar por RLS. Una policy "select ... to public"
+-- aquí habilitaría además LISTAR todo el contenido del bucket vía API
+-- (todas las clínicas) — detectado por el advisor de seguridad
+-- (public_bucket_allows_listing) y removido a propósito.
+
+drop policy if exists "fotos_mascotas_insert_member" on storage.objects;
+create policy "fotos_mascotas_insert_member"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'fotos-mascotas'
+    and public.user_is_member_of(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists "fotos_mascotas_update_member" on storage.objects;
+create policy "fotos_mascotas_update_member"
+  on storage.objects for update
+  using (
+    bucket_id = 'fotos-mascotas'
+    and public.user_is_member_of(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists "fotos_mascotas_delete_member" on storage.objects;
+create policy "fotos_mascotas_delete_member"
+  on storage.objects for delete
+  using (
+    bucket_id = 'fotos-mascotas'
+    and public.user_is_member_of(((storage.foldername(name))[1])::uuid)
+  );
+
+-- ── STORAGE: bucket `pdfs` — nuevo prefijo "clinica/<estab>/" ──
+-- El bucket ya existe (ver arriba) con policies por carpeta
+-- "<user_id>/..." para el flujo viejo de `formularios`, que
+-- quedan intactas. Estas 4 policies nuevas cubren el prefijo
+-- "clinica/<establecimiento_id>/..." que usan los PDFs de
+-- propietarios/documentos del núcleo clínico (visibles para toda
+-- la clínica, no solo para quien los subió).
+drop policy if exists "pdfs_insert_clinica_member" on storage.objects;
+create policy "pdfs_insert_clinica_member"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'pdfs'
+    and (storage.foldername(name))[1] = 'clinica'
+    and public.user_is_member_of(((storage.foldername(name))[2])::uuid)
+  );
+
+drop policy if exists "pdfs_select_clinica_member" on storage.objects;
+create policy "pdfs_select_clinica_member"
+  on storage.objects for select
+  using (
+    bucket_id = 'pdfs'
+    and (storage.foldername(name))[1] = 'clinica'
+    and public.user_is_member_of(((storage.foldername(name))[2])::uuid)
+  );
+
+drop policy if exists "pdfs_update_clinica_member" on storage.objects;
+create policy "pdfs_update_clinica_member"
+  on storage.objects for update
+  using (
+    bucket_id = 'pdfs'
+    and (storage.foldername(name))[1] = 'clinica'
+    and public.user_is_member_of(((storage.foldername(name))[2])::uuid)
+  );
+
+drop policy if exists "pdfs_delete_clinica_member" on storage.objects;
+create policy "pdfs_delete_clinica_member"
+  on storage.objects for delete
+  using (
+    bucket_id = 'pdfs'
+    and (storage.foldername(name))[1] = 'clinica'
+    and public.user_is_member_of(((storage.foldername(name))[2])::uuid)
+  );
