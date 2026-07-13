@@ -8083,7 +8083,11 @@
 
       subirFotoMascotaReal(file, petKey, containerId).catch(err => {
         console.error('[IRIS] Error subiendo la foto de la mascota:', err);
-        showToast('La foto se ve localmente, pero no se pudo guardar en el servidor');
+        // Mensaje real del error (Supabase lo trae en .message) en vez de un
+        // genérico — el 400 visto en logs de Storage no traía suficiente
+        // detalle desde afuera para saber si era RLS, bucket o algo más.
+        const detalle = (err && err.message) ? err.message : 'error desconocido';
+        showToast(`La foto se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
       });
     }
 
