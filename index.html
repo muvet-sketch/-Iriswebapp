@@ -1974,7 +1974,7 @@
     /* Tablero de trabajo (workspace de consulta) */
     .tablero-grid {
       display: grid;
-      grid-template-columns: 1fr 340px;
+      grid-template-columns: 1fr 380px;
       gap: 16px;
       align-items: start;
     }
@@ -1987,9 +1987,19 @@
 
     .tablero-vitals-grid {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 10px;
     }
+
+    .tablero-breed-insight {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+    .tablero-breed-insight strong { color: var(--text-1); }
 
     .tablero-problem-item {
       display: flex;
@@ -2017,6 +2027,11 @@
 
     @media (max-width: 1200px) {
       .tablero-grid { grid-template-columns: 1fr; }
+      /* En una sola columna, el SOAP (columna angosta, 2º hijo del grid)
+         debe verse antes que el feed de Historia clínica (1er hijo) — se
+         invierte el orden visual solo en mobile. */
+      .tablero-grid > .tablero-side-col { order: 1; }
+      .tablero-grid > .card:first-child { order: 2; }
     }
 
     .consultas-list-nav {
@@ -4775,13 +4790,27 @@
               <div class="module-pane" id="subtab-tablero">
                 <div class="tablero-grid">
 
-                  <!-- Columna central: Registro de consulta (SOAP) -->
+                  <!-- Columna ancha: Historia clínica (feed completo, mismo renderTimelineNodes que Historia) -->
+                  <div class="card">
+                    <div class="card-header">
+                      <span class="card-title"><i data-lucide="book-open" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Historia clínica</span>
+                      <button class="btn-outline" style="padding: 6px 12px; font-size: 12px;" onclick="kardexAccionSimple('Filtrar historia clínica')">
+                        <i data-lucide="filter" style="width: 12px; height: 12px;"></i> Filtrar
+                      </button>
+                    </div>
+                    <div class="clinical-timeline" id="tablero-historia-feed"></div>
+                  </div>
+
+                  <!-- Columna angosta: Registro de consulta (SOAP, compacto) + Lista de problemas + Navegación rápida + Acciones rápidas -->
+                  <div class="tablero-side-col">
                   <div class="card">
                     <div class="card-header">
                       <span class="card-title"><i data-lucide="stethoscope" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Registro de consulta</span>
-                      <button class="btn-outline" style="padding: 6px 12px; font-size: 12px;" onclick="abrirModuloCompletoDesdeTablero('historia')">
-                        <i data-lucide="arrow-left" style="width: 12px; height: 12px;"></i> Volver a Historia
-                      </button>
+                      <div style="display:flex;gap:6px;">
+                        <button class="btn-outline" style="padding:6px;" title="Imprimir consulta" onclick="kardexAccionSimple('Imprimir consulta')"><i data-lucide="printer" style="width:14px;height:14px;"></i></button>
+                        <button class="btn-outline" style="padding:6px;" title="Compartir consulta" onclick="kardexAccionSimple('Compartir consulta')"><i data-lucide="share-2" style="width:14px;height:14px;"></i></button>
+                        <button class="btn-outline" style="padding:6px;" title="Volver a Historia" onclick="abrirModuloCompletoDesdeTablero('historia')"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i></button>
+                      </div>
                     </div>
 
                     <div class="soap-meta-row">
@@ -4861,53 +4890,44 @@
                     </div>
 
                     <div style="display:flex;justify-content:flex-end;margin-top:20px;">
-                      <button class="btn-primary" onclick="guardarConsulta('tablero-soap-', 'tablero-soap-exam-body')">
+                      <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="guardarConsulta('tablero-soap-', 'tablero-soap-exam-body')">
                         <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
                       </button>
                     </div>
                   </div>
 
-                  <!-- Columna derecha: Problem List + Navegación rápida + Historia reciente + Acciones rápidas -->
-                  <div class="tablero-side-col">
-                    <div class="card">
-                      <div class="card-header">
-                        <span class="card-title"><i data-lucide="list-checks" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Lista de problemas</span>
-                        <button class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="toggleTableroNuevoProblema()"><i data-lucide="plus" style="width:12px;height:12px;"></i></button>
-                      </div>
-                      <div id="tablero-problem-list"></div>
-                      <div id="tablero-add-problem-form" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-                        <input type="text" id="tablero-nuevo-problema-texto" class="input-control" style="padding-left:12px;" placeholder="Ej: Otitis externa">
-                        <div style="display:flex;gap:8px;margin-top:8px;">
-                          <button class="btn-secondary" style="flex:1;padding:6px;font-size:12px;" onclick="toggleTableroNuevoProblema()">Cancelar</button>
-                          <button class="btn-primary" style="flex:1;padding:6px;font-size:12px;" onclick="agregarTableroProblema()">Agregar</button>
-                        </div>
+                  <div class="card">
+                    <div class="card-header">
+                      <span class="card-title"><i data-lucide="list-checks" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Lista de problemas</span>
+                      <button class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="toggleTableroNuevoProblema()"><i data-lucide="plus" style="width:12px;height:12px;"></i></button>
+                    </div>
+                    <div id="tablero-problem-list"></div>
+                    <div id="tablero-add-problem-form" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+                      <input type="text" id="tablero-nuevo-problema-texto" class="input-control" style="padding-left:12px;" placeholder="Ej: Otitis externa">
+                      <div style="display:flex;gap:8px;margin-top:8px;">
+                        <button class="btn-secondary" style="flex:1;padding:6px;font-size:12px;" onclick="toggleTableroNuevoProblema()">Cancelar</button>
+                        <button class="btn-primary" style="flex:1;padding:6px;font-size:12px;" onclick="agregarTableroProblema()">Agregar</button>
                       </div>
                     </div>
+                  </div>
 
-                    <div class="card">
-                      <div class="card-header">
-                        <span class="card-title"><i data-lucide="zap" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Navegación rápida</span>
-                      </div>
-                      <div id="tablero-quicknav-body"></div>
+                  <div class="card">
+                    <div class="card-header">
+                      <span class="card-title"><i data-lucide="zap" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Navegación rápida</span>
                     </div>
+                    <div id="tablero-quicknav-body"></div>
+                  </div>
 
-                    <div class="card">
-                      <div class="card-header">
-                        <span class="card-title"><i data-lucide="history" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Historia reciente</span>
-                      </div>
-                      <div class="clinical-timeline" id="tablero-timeline-mini"></div>
+                  <div class="card">
+                    <div class="card-header">
+                      <span class="card-title"><i data-lucide="rocket" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Acciones rápidas</span>
                     </div>
-
-                    <div class="card">
-                      <div class="card-header">
-                        <span class="card-title"><i data-lucide="rocket" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Acciones rápidas</span>
-                      </div>
-                      <div class="tablero-quick-actions">
-                        <button class="btn-outline" onclick="openVacunacionModal('create', selectedPetKey)"><i data-lucide="syringe" style="width:14px;height:14px;"></i> Registrar vacunación</button>
-                        <button class="btn-outline" onclick="openDesparasitacionModal('create', selectedPetKey)"><i data-lucide="shield-check" style="width:14px;height:14px;"></i> Registrar desparasitación</button>
-                        <button class="btn-outline" onclick="openOrdenModal('create', selectedPetKey)"><i data-lucide="clipboard-list" style="width:14px;height:14px;"></i> Nueva orden (examen/imagen)</button>
-                      </div>
+                    <div class="tablero-quick-actions">
+                      <button class="btn-outline" onclick="openVacunacionModal('create', selectedPetKey)"><i data-lucide="syringe" style="width:14px;height:14px;"></i> Registrar vacunación</button>
+                      <button class="btn-outline" onclick="openDesparasitacionModal('create', selectedPetKey)"><i data-lucide="shield-check" style="width:14px;height:14px;"></i> Registrar desparasitación</button>
+                      <button class="btn-outline" onclick="openOrdenModal('create', selectedPetKey)"><i data-lucide="clipboard-list" style="width:14px;height:14px;"></i> Nueva orden (examen/imagen)</button>
                     </div>
+                  </div>
                   </div>
 
                 </div>
@@ -6699,6 +6719,21 @@
           if (agendaCalendar) agendaCalendar.updateSize();
         }
         if (targetTab === 'perfil') renderPerfilTab();
+
+        // Cada click en el tab Consultorio del navbar vuelve siempre al
+        // buscador de propietarios/mascotas (cierra Kardex si estaba abierto
+        // y deselecciona la mascota activa). Flujos que necesitan aterrizar
+        // en un paciente específico (ej. irAHistoriaDesdePerfil) hacen el
+        // click del tab ANTES de llamar a selectPet(), así este reset no
+        // pisa esa selección posterior.
+        if (targetTab === 'consultorio') {
+          if (document.getElementById('kardex-view').classList.contains('active')) {
+            document.getElementById('kardex-view').classList.remove('active');
+            document.querySelector('.consultorio-wrapper').style.display = '';
+            kardexContext = null;
+          }
+          deselectPet();
+        }
       });
     });
 
@@ -8011,9 +8046,12 @@
     // logout/login o a otro dispositivo (antes solo quedaba la Data URL en
     // memoria, ver TODO que había aquí).
     function handleFotoInputChange(input, containerId) {
-      if (!input.files || !input.files[0] || !selectedPetKey) return;
+      // selectedPetKey es null mientras se ve el Kardex (abrirKardex() solo
+      // fija kardexContext.petKey, no selectedPetKey) — sin este fallback,
+      // cambiar la foto desde el header del Kardex cortaba acá en silencio.
+      const petKey = selectedPetKey || (kardexContext && kardexContext.petKey);
+      if (!input.files || !input.files[0] || !petKey) return;
       const file = input.files[0];
-      const petKey = selectedPetKey;
       const reader = new FileReader();
       reader.onload = e => {
         patientData[petKey].fotoUrl = e.target.result;
@@ -8033,7 +8071,15 @@
 
     async function subirFotoMascotaReal(file, petKey, containerId) {
       const data = patientData[petKey];
-      if (!window.supabase || !data || !data.mascotaId || !currentSession || !currentSession.activeMembership) return;
+      // Antes esto era un solo `if (...) return;` silencioso — si cualquiera
+      // de estas condiciones fallaba, la foto se veía cambiada localmente
+      // (preview de FileReader) pero nunca se subía, y no quedaba ningún
+      // rastro (ni consola ni toast) de por qué. Se separa cada condición
+      // para que, si vuelve a pasar, quede claro cuál fue.
+      if (!window.supabase) { console.error('[IRIS] subirFotoMascotaReal: window.supabase no está inicializado'); showToast('No se pudo guardar la foto: sin conexión a la base de datos'); return; }
+      if (!data) { console.error('[IRIS] subirFotoMascotaReal: no hay patientData para petKey', petKey); showToast('No se pudo guardar la foto: mascota no encontrada'); return; }
+      if (!data.mascotaId) { console.error('[IRIS] subirFotoMascotaReal: la mascota no tiene mascotaId (no viene de Supabase)', petKey); showToast('No se pudo guardar la foto: esta mascota no está sincronizada con el servidor'); return; }
+      if (!currentSession || !currentSession.activeMembership) { console.error('[IRIS] subirFotoMascotaReal: no hay sesión/establecimiento activo', currentSession); showToast('No se pudo guardar la foto: no hay sesión activa'); return; }
       const establecimientoId = currentSession.activeMembership.establecimientoId;
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const path = `${establecimientoId}/${data.mascotaId}.${ext}`;
@@ -8600,7 +8646,7 @@
       if (e.target === document.getElementById('nueva-consulta-modal')) closeNuevaConsultaModal();
     }
 
-    function guardarConsulta(idPrefix, examBodyId) {
+    async function guardarConsulta(idPrefix, examBodyId) {
       idPrefix = idPrefix || 'soap-';
       examBodyId = examBodyId || 'soap-exam-body';
 
@@ -8620,6 +8666,8 @@
       const data = patientData[selectedPetKey];
       const motivo = document.getElementById(idPrefix + 'motivo').value;
       const fechaValue = document.getElementById(idPrefix + 'fecha').value;
+      const fechaHoraISO = fechaValue ? new Date(fechaValue).toISOString() : new Date().toISOString();
+      const usuario = 'Dr. Sebastián Ríos · MP 4567-CO';
 
       // Hallazgos de examen físico por sistema (solo los evaluados)
       const examBody = document.getElementById(examBodyId);
@@ -8635,6 +8683,7 @@
 
       // Signos vitales (solo presentes en el Tablero de trabajo, no en el modal clásico)
       const vitalTempEl = document.getElementById(idPrefix + 'vital-temp');
+      let vitals = { temp: null, fc: null, fr: null, crt: null };
       let vitalsLine = '';
       if (vitalTempEl) {
         const parts = [];
@@ -8642,6 +8691,12 @@
         const fc = document.getElementById(idPrefix + 'vital-fc').value.trim();
         const fr = document.getElementById(idPrefix + 'vital-fr').value.trim();
         const crt = document.getElementById(idPrefix + 'vital-crt').value.trim();
+        vitals = {
+          temp: temp ? parseFloat(temp) : null,
+          fc: fc ? parseInt(fc, 10) : null,
+          fr: fr ? parseInt(fr, 10) : null,
+          crt: crt || null
+        };
         if (temp) parts.push(`Temp ${temp}°C`);
         if (fc) parts.push(`FC ${fc} lpm`);
         if (fr) parts.push(`FR ${fr} rpm`);
@@ -8654,19 +8709,50 @@
         summary += `<br>Examen físico por sistema: ${examFindings.join(' · ')}`;
       }
 
-      data.timeline.unshift({
-        type: motivo,
-        date: formatFechaConsulta(fechaValue),
-        title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
-        summary: summary,
-        vet: 'Dr. Sebastián Ríos · MP 4567-CO'
-      });
+      const btn = document.getElementById(idPrefix === 'soap-' ? 'soap-guardar-btn' : 'tablero-soap-guardar-btn');
+      if (btn) btn.disabled = true;
 
-      renderHistoriaTimeline(data);
-      if (idPrefix === 'soap-') closeNuevaConsultaModal();
-      tableroModoActivo = false;
-      switchSubTab('historia');
-      showToast('Consulta guardada');
+      try {
+        if (window.supabase && data.mascotaId && currentSession && currentSession.activeMembership) {
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+
+          const { error } = await window.supabase.from('consultas').insert({
+            establecimiento_id: currentSession.activeMembership.establecimientoId,
+            mascota_id: data.mascotaId,
+            fecha_hora: fechaHoraISO,
+            motivo: motivo || null,
+            subjetivo: sEl.value.trim(),
+            objetivo: oEl.value.trim(),
+            assessment: aEl.value.trim(),
+            plan: pEl.value.trim(),
+            vital_temp: vitals.temp, vital_fc: vitals.fc, vital_fr: vitals.fr, vital_crt: vitals.crt,
+            examen_fisico: examFindings,
+            usuario,
+            created_by: userId
+          });
+          if (error) throw error;
+        }
+
+        data.timeline.unshift({
+          type: motivo,
+          date: formatFechaConsulta(fechaValue),
+          title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
+          summary: summary,
+          vet: usuario
+        });
+
+        renderHistoriaTimeline(data);
+        if (idPrefix === 'soap-') closeNuevaConsultaModal();
+        tableroModoActivo = false;
+        switchSubTab('historia');
+        showToast('Consulta guardada');
+      } catch (err) {
+        console.error('[IRIS] Error guardando la consulta en Supabase:', err);
+        showToast('No se pudo guardar la consulta — intenta de nuevo');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     }
 
     // ── TABLERO DE TRABAJO (workspace de consulta, ver botón "Nueva Consulta") ──
@@ -8698,7 +8784,7 @@
 
       renderTableroProblemList(selectedPetKey);
       document.getElementById('tablero-add-problem-form').style.display = 'none';
-      renderTimelineNodes('tablero-timeline-mini', data.timeline.slice(0, 3));
+      renderTimelineNodes('tablero-historia-feed', data.timeline);
       renderNavegacionRapidaDefault();
 
       switchSubTab('tablero');
@@ -8706,21 +8792,41 @@
 
     // Contenido por defecto de "Navegación rápida" al abrir el Tablero, antes
     // de hacer click en cualquier módulo del sidebar de 17.
+    // Nota genérica por especie (no reclamos clínicos de raza inventados) —
+    // igual de honesta que el resto de este prototipo, que es data mock.
+    const ESPECIE_INSIGHT = {
+      Felino: 'En felinos, vigilar enfermedad renal crónica y problemas dentales — más frecuentes con la edad. Revisar antecedentes familiares.',
+      Canino: 'En caninos, vigilar displasia de cadera y enfermedad periodontal según raza/tamaño. Revisar antecedentes familiares.'
+    };
+
+    function especieInsightHtml(data) {
+      const nota = ESPECIE_INSIGHT[data.species] || 'Sin datos de predisposición registrados para esta especie — revisar antecedentes familiares y mantener seguimiento preventivo.';
+      return `
+        <div class="tablero-breed-insight">
+          <strong><i data-lucide="info" style="width:12px;height:12px;vertical-align:-1px;"></i> Datos de la especie</strong>
+          <p style="margin-top:4px;">${nota}</p>
+        </div>
+      `;
+    }
+
     function renderNavegacionRapidaDefault() {
       document.querySelectorAll('.sidebar-item').forEach(item => item.classList.remove('quicknav-selected'));
       const data = patientData[selectedPetKey];
       const eventos = EVENTOS_SEGUIMIENTO.filter(e => e.petKey === selectedPetKey && e.estado === 'pendiente');
       const TIPO_EVENTO_LABEL = { vacunacion: 'Próxima vacunación', desparasitacion: 'Próxima desparasitación', control: 'Próximo control', otro: 'Próximo seguimiento' };
-      const eventosHtml = eventos
-        .map(e => `<div class="info-label">${TIPO_EVENTO_LABEL[e.tipoEvento] || 'Próximo evento'}</div><div class="info-value">${formatFechaCorta(e.fechaSugeridaISO)}</div>`)
-        .join('');
+      const eventosHtml = eventos.length
+        ? `<div class="info-label" style="margin-top:8px;">Próximos vencimientos</div>` +
+          eventos.map(e => `<div class="info-value">${TIPO_EVENTO_LABEL[e.tipoEvento] || 'Próximo evento'} — ${formatFechaCorta(e.fechaSugeridaISO)}</div>`).join('')
+        : '';
 
       document.getElementById('tablero-quicknav-body').innerHTML = `
         <div class="info-label">Microchip / Código</div>
         <div class="info-value">${data.chip || '—'}</div>
         ${eventosHtml}
         <p style="font-size:12px;color:var(--text-2);margin-top:4px;">Selecciona un módulo del menú izquierdo para ver su detalle aquí.</p>
+        ${especieInsightHtml(data)}
       `;
+      lucide.createIcons();
     }
 
     // Se dispara desde switchSubTab() cuando el Tablero está activo y se
@@ -8783,7 +8889,8 @@
       }
 
       document.getElementById('tablero-quicknav-body').innerHTML = bodyHtml +
-        `<button class="btn-outline" style="margin-top:10px;width:100%;padding:7px;font-size:12px;" onclick="abrirModuloCompletoDesdeTablero('${subtabName}')">Abrir ${label} completo <i data-lucide="arrow-right" style="width:12px;height:12px;"></i></button>`;
+        `<button class="btn-outline" style="margin-top:10px;width:100%;padding:7px;font-size:12px;" onclick="abrirModuloCompletoDesdeTablero('${subtabName}')">Abrir ${label} completo <i data-lucide="arrow-right" style="width:12px;height:12px;"></i></button>` +
+        especieInsightHtml(data);
       lucide.createIcons();
     }
 
@@ -9799,12 +9906,13 @@
       if (e.target === document.getElementById('formula-modal')) closeFormulaModal();
     }
 
-    function guardarFormula() {
+    async function guardarFormula() {
       const isEdit = !!editingFormulaContext;
       const petKey = isEdit ? editingFormulaContext.petKey : selectedPetKey;
       const data = patientData[petKey];
       const fechaISO = document.getElementById('formula-fecha').value;
       const diagnostico = document.getElementById('formula-diagnostico').value.trim();
+      const usuario = 'Dr. Sebastián Ríos';
 
       const medicamentos = [...document.querySelectorAll('#formula-meds-list .med-block')].map(block => ({
         nombre: block.querySelector('[data-med-field="nombre"]').value.trim(),
@@ -9818,18 +9926,48 @@
         fecha: formatFechaCorta(fechaISO),
         diagnostico: diagnostico,
         medicamentos: medicamentos,
-        usuario: 'Dr. Sebastián Ríos'
+        usuario
       };
 
-      if (isEdit) {
-        data.formulas[editingFormulaContext.index] = record;
-      } else {
-        data.formulas.unshift(record);
-      }
+      const saveBtn = document.getElementById('formula-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
 
-      renderFormulasTable(petKey);
-      closeFormulaModal();
-      showToast(isEdit ? 'Fórmula médica actualizada' : 'Fórmula médica guardada');
+      try {
+        if (window.supabase && data.mascotaId && currentSession && currentSession.activeMembership) {
+          const filaForm = { fecha: fechaISO, diagnostico: diagnostico || null, medicamentos, usuario };
+
+          if (isEdit && data.formulas[editingFormulaContext.index].dbId) {
+            const { error } = await window.supabase.from('formulas_medicas')
+              .update({ ...filaForm, updated_at: new Date().toISOString() })
+              .eq('id', data.formulas[editingFormulaContext.index].dbId);
+            if (error) throw error;
+            record.dbId = data.formulas[editingFormulaContext.index].dbId;
+          } else {
+            const { data: userData } = await window.supabase.auth.getUser();
+            const userId = userData && userData.user ? userData.user.id : null;
+            const { data: inserted, error } = await window.supabase.from('formulas_medicas')
+              .insert({ ...filaForm, establecimiento_id: currentSession.activeMembership.establecimientoId, mascota_id: data.mascotaId, created_by: userId })
+              .select().single();
+            if (error) throw error;
+            record.dbId = inserted.id;
+          }
+        }
+
+        if (isEdit) {
+          data.formulas[editingFormulaContext.index] = record;
+        } else {
+          data.formulas.unshift(record);
+        }
+
+        renderFormulasTable(petKey);
+        closeFormulaModal();
+        showToast(isEdit ? 'Fórmula médica actualizada' : 'Fórmula médica guardada');
+      } catch (err) {
+        console.error('[IRIS] Error guardando la fórmula médica en Supabase:', err);
+        showToast('No se pudo guardar la fórmula médica — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
     }
 
     // ── MÓDULO: VACUNACIONES ─────────────────────────────────────
@@ -13786,7 +13924,7 @@
       tbody.innerHTML = propietarios.map(p => {
         const mascotas = getMascotasDePropietario(p.id);
         const chips = mascotas.length
-          ? mascotas.map(([petKey, d]) => `<span class="pet-chip-badge ${d.avatarClass}" style="cursor:pointer;" onclick="selectPet('${petKey}'); document.querySelector('.nav-tabs-bar .tab-btn[data-tab=\\'consultorio\\']').click();"><i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:12px;height:12px;"></i> ${d.name}</span>`).join(' ')
+          ? mascotas.map(([petKey, d]) => `<span class="pet-chip-badge ${d.avatarClass}" style="cursor:pointer;" onclick="document.querySelector('.nav-tabs-bar .tab-btn[data-tab=\\'consultorio\\']').click(); selectPet('${petKey}');"><i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:12px;height:12px;"></i> ${d.name}</span>`).join(' ')
           : '<span class="gestion-detail">Sin mascotas registradas</span>';
         const gestion = getUltimaGestionPropietario(p.nombre);
         return `
@@ -16545,6 +16683,53 @@
       };
     }
 
+    // A diferencia de formatFechaConsulta() (que hardcodea el texto "Justo
+    // ahora", pensado solo para el momento de guardar una consulta nueva),
+    // esta formatea una fecha/hora ISO ya pasada, para reconstruir el
+    // timeline con consultas viejas cargadas desde Supabase.
+    function formatFechaHoraCorta(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const pad = n => String(n).padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function construirConsultaDesdeFila(r) {
+      const vitalsParts = [];
+      if (r.vital_temp != null) vitalsParts.push(`Temp ${r.vital_temp}°C`);
+      if (r.vital_fc != null) vitalsParts.push(`FC ${r.vital_fc} lpm`);
+      if (r.vital_fr != null) vitalsParts.push(`FR ${r.vital_fr} rpm`);
+      if (r.vital_crt) vitalsParts.push(`TLLC ${r.vital_crt}`);
+      const vitalsLine = vitalsParts.length ? ` (${vitalsParts.join(' · ')})` : '';
+
+      let summary = `S: ${r.subjetivo || ''}<br>O: ${r.objetivo || ''}${vitalsLine}<br>A: ${r.assessment || ''}<br>P: ${r.plan || ''}`;
+      const examFindings = Array.isArray(r.examen_fisico) ? r.examen_fisico : [];
+      if (examFindings.length) {
+        summary += `<br>Examen físico por sistema: ${examFindings.join(' · ')}`;
+      }
+
+      return {
+        dbId: r.id,
+        type: r.motivo || 'Consulta general',
+        date: formatFechaHoraCorta(r.fecha_hora),
+        dateSortKey: r.fecha_hora,
+        title: (r.assessment || '').length > 90 ? r.assessment.slice(0, 90) + '…' : (r.assessment || ''),
+        summary,
+        vet: r.usuario || ''
+      };
+    }
+
+    function construirFormulaDesdeFila(r) {
+      return {
+        dbId: r.id,
+        fechaISO: r.fecha,
+        fecha: formatFechaCorta(r.fecha),
+        diagnostico: r.diagnostico || '',
+        medicamentos: Array.isArray(r.medicamentos) ? r.medicamentos : [],
+        usuario: r.usuario || ''
+      };
+    }
+
     // Clínica recién creada (o clínica demo la primerísima vez): siembra en
     // Supabase el contenido de DEMO_SEED.propietarios/patientData/documentos
     // UNA sola vez (solo si seedDemoSiVacio y la tabla está realmente vacía —
@@ -16633,24 +16818,31 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
-          window.supabase.from('examenes').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
+          window.supabase.from('examenes').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
+          window.supabase.from('consultas').select('*').eq('establecimiento_id', establecimientoId).order('fecha_hora', { ascending: false }),
+          window.supabase.from('formulas_medicas').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
         if (docRes.error) throw docRes.error;
         if (examRes.error) throw examRes.error;
-        return { propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [] };
+        if (consultaRes.error) throw consultaRes.error;
+        if (formulaRes.error) throw formulaRes.error;
+        return {
+          propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
+          consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || []
+        };
       }
 
-      let { propRows, petRows, docRows, examRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -16670,6 +16862,23 @@
       examRows.forEach(r => {
         const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
         if (pet) pet.examenes.push(construirExamenDesdeFila(r));
+      });
+
+      // consultas es hoy la única fuente real de `timeline` (vacunaciones/
+      // desparasitaciones que también empujan al timeline siguen en memoria
+      // pura, sin persistir) — se ordena por fecha desc al final por si en
+      // el futuro se suma otra fuente real a este mismo array.
+      consultaRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (pet) pet.timeline.push(construirConsultaDesdeFila(r));
+      });
+      Object.values(patientData).forEach(pet => {
+        pet.timeline.sort((a, b) => new Date(b.dateSortKey || 0) - new Date(a.dateSortKey || 0));
+      });
+
+      formulaRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (pet) pet.formulas.push(construirFormulaDesdeFila(r));
       });
     }
 
@@ -17066,7 +17275,7 @@
 
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeNuevaConsultaModal()">Cancelar</button>
-        <button class="btn-primary" onclick="guardarConsulta()">Guardar consulta</button>
+        <button class="btn-primary" id="soap-guardar-btn" onclick="guardarConsulta()">Guardar consulta</button>
       </div>
     </div>
   </div>
