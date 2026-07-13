@@ -4412,121 +4412,70 @@
                 </div>
               </div>
 
-              <!-- Subtab: Exámenes de laboratorio — mismo listado de Órdenes/
-                   Resultados de arriba, filtrado a tipo 'prueba' (ver
-                   ORDENES_TABLE_TARGETS/RESULTADOS_TABLE_TARGETS). -->
+              <!-- Subtab: Exámenes de laboratorio — flujo propio,
+                   autocontenido (patientData[petKey].examenes, tipo
+                   'laboratorio'), NO reutiliza Órdenes/Resultados de
+                   arriba. Ver openExamenModal()/renderExamenesTable(). -->
               <div class="module-pane" id="subtab-laboratorio">
                 <div class="card">
                   <div class="card-header">
                     <span class="card-title"><i data-lucide="test-tube-2" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Exámenes de laboratorio</span>
-                    <button class="btn-outline module-create-btn" style="padding: 6px 12px; font-size: 12px;" onclick="openOrdenModal('create', selectedPetKey, null, 'prueba')">
-                      <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar orden
+                    <button class="btn-outline module-create-btn" style="padding: 6px 12px; font-size: 12px;" onclick="openExamenModal('laboratorio', 'create', selectedPetKey)">
+                      <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar examen de laboratorio
                     </button>
                   </div>
                   <table class="results-table">
                     <thead>
                       <tr>
+                        <th>Opc.</th>
                         <th>Fecha</th>
-                        <th>Tipo de orden</th>
-                        <th>Detalle</th>
-                        <th>Cantidad</th>
-                        <th>Prioridad</th>
-                        <th>Estado</th>
+                        <th>Diagnóstico presuntivo</th>
+                        <th>Pruebas de laboratorio</th>
+                        <th>Relacionado</th>
                         <th>Usuario</th>
-                        <th style="text-align: right;">Acciones</th>
                       </tr>
                     </thead>
-                    <tbody id="laboratorio-ordenes-table-body">
+                    <tbody id="laboratorio-examenes-table-body">
                       <!-- Dinámico por JS -->
                     </tbody>
                   </table>
-                  <div class="placeholder-content" id="laboratorio-ordenes-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
+                  <div class="placeholder-content" id="laboratorio-examenes-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
                     <div class="placeholder-icon"><i data-lucide="test-tube-2" style="width: 24px; height: 24px;"></i></div>
-                    <p class="placeholder-text" style="font-size: 12px;">No hay órdenes de laboratorio registradas</p>
-                  </div>
-                </div>
-
-                <div class="card" style="margin-top:16px;">
-                  <div class="card-header">
-                    <span class="card-title"><i data-lucide="file-check-2" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Resultados</span>
-                  </div>
-                  <table class="results-table">
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Tipo</th>
-                        <th>Detalle</th>
-                        <th>Estado</th>
-                        <th>Usuario</th>
-                        <th style="text-align: right;">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody id="laboratorio-resultados-table-body">
-                      <!-- Dinámico por JS -->
-                    </tbody>
-                  </table>
-                  <div class="placeholder-content" id="laboratorio-resultados-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
-                    <div class="placeholder-icon"><i data-lucide="file-check-2" style="width: 24px; height: 24px;"></i></div>
-                    <p class="placeholder-text" style="font-size: 12px;">No hay resultados de laboratorio registrados</p>
+                    <p class="placeholder-text" style="font-size: 12px;">No hay exámenes de laboratorio registrados</p>
                   </div>
                 </div>
               </div>
 
-              <!-- Subtab: Imágenes diagnósticas — mismo listado, filtrado a
-                   tipo 'imagen'. -->
+              <!-- Subtab: Imágenes diagnósticas — misma estructura que
+                   Laboratorio (flujo propio, ver openExamenModal('imagen', ...)),
+                   terminología distinta, registro separado (patientData[petKey].examenes,
+                   filtrado por tipo). -->
               <div class="module-pane" id="subtab-imagenes">
                 <div class="card">
                   <div class="card-header">
                     <span class="card-title"><i data-lucide="image" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Imágenes diagnósticas</span>
-                    <button class="btn-outline module-create-btn" style="padding: 6px 12px; font-size: 12px;" onclick="openOrdenModal('create', selectedPetKey, null, 'imagen')">
-                      <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar orden
+                    <button class="btn-outline module-create-btn" style="padding: 6px 12px; font-size: 12px;" onclick="openExamenModal('imagen', 'create', selectedPetKey)">
+                      <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar imagen diagnóstica
                     </button>
                   </div>
                   <table class="results-table">
                     <thead>
                       <tr>
+                        <th>Opc.</th>
                         <th>Fecha</th>
-                        <th>Tipo de orden</th>
-                        <th>Detalle</th>
-                        <th>Cantidad</th>
-                        <th>Prioridad</th>
-                        <th>Estado</th>
+                        <th>Diagnóstico presuntivo</th>
+                        <th>Imágenes diagnósticas</th>
+                        <th>Relacionado</th>
                         <th>Usuario</th>
-                        <th style="text-align: right;">Acciones</th>
                       </tr>
                     </thead>
-                    <tbody id="imagenes-ordenes-table-body">
+                    <tbody id="imagenes-examenes-table-body">
                       <!-- Dinámico por JS -->
                     </tbody>
                   </table>
-                  <div class="placeholder-content" id="imagenes-ordenes-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
+                  <div class="placeholder-content" id="imagenes-examenes-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
                     <div class="placeholder-icon"><i data-lucide="image" style="width: 24px; height: 24px;"></i></div>
-                    <p class="placeholder-text" style="font-size: 12px;">No hay órdenes de imágenes diagnósticas registradas</p>
-                  </div>
-                </div>
-
-                <div class="card" style="margin-top:16px;">
-                  <div class="card-header">
-                    <span class="card-title"><i data-lucide="file-check-2" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Resultados</span>
-                  </div>
-                  <table class="results-table">
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Tipo</th>
-                        <th>Detalle</th>
-                        <th>Estado</th>
-                        <th>Usuario</th>
-                        <th style="text-align: right;">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody id="imagenes-resultados-table-body">
-                      <!-- Dinámico por JS -->
-                    </tbody>
-                  </table>
-                  <div class="placeholder-content" id="imagenes-resultados-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
-                    <div class="placeholder-icon"><i data-lucide="file-check-2" style="width: 24px; height: 24px;"></i></div>
-                    <p class="placeholder-text" style="font-size: 12px;">No hay resultados de imágenes diagnósticas registrados</p>
+                    <p class="placeholder-text" style="font-size: 12px;">No hay imágenes diagnósticas registradas</p>
                   </div>
                 </div>
               </div>
@@ -6054,6 +6003,7 @@
           }
         ],
         resultados: [],
+        examenes: [],
         vacunaciones: [],
         desparasitaciones: [],
         peluquerias: [],
@@ -6208,6 +6158,7 @@
         ordenes: [],
         documentos: [],
         resultados: [],
+        examenes: [],
         vacunaciones: [],
         desparasitaciones: [],
         peluquerias: [],
@@ -6264,6 +6215,7 @@
         ordenes: [],
         documentos: [],
         resultados: [],
+        examenes: [],
         vacunaciones: [],
         desparasitaciones: [],
         peluquerias: [],
@@ -6813,6 +6765,7 @@
       renderOrdenesTable(petKey);
       renderDocumentosTable(petKey);
       renderResultadosTable(petKey);
+      renderExamenesTable(petKey);
       renderHospitalizacionesTable(petKey);
       renderCirugiasTable(petKey);
       renderSeguimientosCentralTable(petKey);
@@ -8306,7 +8259,7 @@
         timeline: [], consulta: { motivo: '', fisico: '', plan: '' },
         formulas: [], ordenes: [], documentos: [], resultados: [], vacunaciones: [], desparasitaciones: [],
         peluquerias: [], guarderias: [], remisiones: [], mensajes: [], seguimientos: [], hospitalizaciones: [], cirugias: [],
-        problemas: []
+        problemas: [], examenes: []
       };
     }
 
@@ -8953,6 +8906,7 @@
       if (selectedPetKey) renderOrdenesTable(selectedPetKey);
       if (selectedPetKey) renderDocumentosTable(selectedPetKey);
       if (selectedPetKey) renderResultadosTable(selectedPetKey);
+      if (selectedPetKey) renderExamenesTable(selectedPetKey);
       if (selectedPetKey) renderHospitalizacionesTable(selectedPetKey);
       if (selectedPetKey) renderCirugiasTable(selectedPetKey);
       if (selectedPetKey) renderSeguimientosCentralTable(selectedPetKey);
@@ -9009,6 +8963,11 @@
         const record = patientData[petKey].resultados[Number(idx)];
         if (!record) return null;
         return { title: 'Resultado', html: resultadoViewContentHTML(record) };
+      } else if (moduleKey === 'examen') {
+        const [petKey, idx] = recordId.split(':');
+        const record = patientData[petKey].examenes[Number(idx)];
+        if (!record) return null;
+        return { title: getExamenTitulo(record.tipo), html: examenViewContentHTML(record, petKey, Number(idx)) };
       } else if (moduleKey === 'hospitalizacion') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].hospitalizaciones[Number(idx)];
@@ -9116,6 +9075,10 @@
       } else if (moduleKey === 'resultado') {
         const [petKey, idx] = recordId.split(':');
         openResultadoModal('edit', petKey, Number(idx));
+      } else if (moduleKey === 'examen') {
+        const [petKey, idx] = recordId.split(':');
+        const record = patientData[petKey].examenes[Number(idx)];
+        if (record) openExamenModal(record.tipo, 'edit', petKey, Number(idx));
       } else if (moduleKey === 'hospitalizacion') {
         const [petKey, idx] = recordId.split(':');
         openHospitalizacionModal('edit', petKey, Number(idx));
@@ -9469,6 +9432,11 @@
             renderResultadosTable(petKey);
           }, 250);
         }
+      } else if (moduleKey === 'examen') {
+        const [petKey, idxStr] = recordId.split(':');
+        const idx = Number(idxStr);
+        const row = document.querySelector(`tr[data-examen-row="${idx}"]`);
+        eliminarExamenReal(petKey, idx, row);
       } else if (moduleKey === 'hospitalizacion') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
@@ -11432,17 +11400,13 @@
 
     let editingOrdenContext = null; // { petKey, index } cuando se edita, null al crear
 
-    // "Órdenes" (todos los tipos) muestra TODO; "Exámenes de laboratorio" e
-    // "Imágenes diagnósticas" son el mismo listado filtrado por tipo — un
-    // mismo pedido (ej. tipo 'prueba') aparece a la vez en la tabla general
-    // Y en su tab dedicado, por eso renderOrdenesTable() refresca los 3
-    // tbodies en cada llamada (crear/editar/eliminar orden, registrar
-    // resultado) en vez de que cada call site tenga que acordarse de cuál
-    // panel está activo.
+    // "Órdenes" (todos los tipos, ej. productos/servicios de Inventario)
+    // sigue siendo el tab general sin cambios. Exámenes de laboratorio e
+    // Imágenes diagnósticas dejaron de reutilizar este listado — tienen su
+    // propio flujo autocontenido (ver MÓDULO: EXÁMENES DE LABORATORIO /
+    // IMÁGENES DIAGNÓSTICAS más abajo, patientData[petKey].examenes).
     const ORDENES_TABLE_TARGETS = [
-      { tbodyId: 'ordenes-table-body', emptyId: 'ordenes-empty-state', filter: null, counterSubtab: 'ordenes' },
-      { tbodyId: 'laboratorio-ordenes-table-body', emptyId: 'laboratorio-ordenes-empty-state', filter: o => o.tipo === 'prueba', counterSubtab: 'laboratorio' },
-      { tbodyId: 'imagenes-ordenes-table-body', emptyId: 'imagenes-ordenes-empty-state', filter: o => o.tipo === 'imagen', counterSubtab: 'imagenes' }
+      { tbodyId: 'ordenes-table-body', emptyId: 'ordenes-empty-state', filter: null, counterSubtab: 'ordenes' }
     ];
 
     function renderOrdenesRowsHTML(petKey, indices) {
@@ -11823,13 +11787,11 @@
       );
     }
 
-    // Mismo criterio que ORDENES_TABLE_TARGETS/renderOrdenesTable: un
-    // resultado de tipo 'prueba' aparece a la vez en la tabla general de
-    // Resultados (dentro de "Órdenes") y en "Exámenes de laboratorio".
+    // Resultados vinculados a Órdenes (tab general) — Exámenes de
+    // laboratorio/Imágenes diagnósticas ya no muestran este listado (ver
+    // nota junto a ORDENES_TABLE_TARGETS).
     const RESULTADOS_TABLE_TARGETS = [
-      { tbodyId: 'resultados-table-body', emptyId: 'resultados-empty-state', filter: null },
-      { tbodyId: 'laboratorio-resultados-table-body', emptyId: 'laboratorio-resultados-empty-state', filter: r => r.ordenTipo === 'prueba' },
-      { tbodyId: 'imagenes-resultados-table-body', emptyId: 'imagenes-resultados-empty-state', filter: r => r.ordenTipo === 'imagen' }
+      { tbodyId: 'resultados-table-body', emptyId: 'resultados-empty-state', filter: null }
     ];
 
     function renderResultadosRowsHTML(petKey, indices) {
@@ -11917,6 +11879,481 @@
         <div class="info-label" style="margin-top:8px;">Médico radiólogo/interpretante</div>
         <div class="info-value">${record.medicoInterpretante || '—'}</div>
       `;
+    }
+
+    // ── MÓDULO: EXÁMENES DE LABORATORIO / IMÁGENES DIAGNÓSTICAS ──────
+    // Flujo propio, autocontenido y de un solo paso (spec basada en OkVet)
+    // — reemplaza, SOLO en estos dos subtabs, el modal/tabla genéricos de
+    // Órdenes/Resultados (que siguen intactos para el resto de
+    // Consultorio/Inventario). Un registro por examen
+    // (patientData[petKey].examenes, campo tipo: 'laboratorio'|'imagen')
+    // con uno o más bloques repetibles "pruebas" — cada bloque:
+    // profesional, prueba/examen (catálogo ampliable, mismo patrón
+    // "+Registrar X" que Vacunaciones) cantidad y un archivo de resultado
+    // opcional. Persistencia real (fase 1 extendida, ver CLAUDE.md/
+    // schema.sql): tabla `examenes` (pruebas como jsonb) + bucket `pdfs`
+    // ya existente, prefijo "clinica/<estab>/examenes/<id>/".
+    const PRUEBAS_LABORATORIO_BASE = [
+      'Hemograma completo', 'Química sanguínea', 'Perfil hepático', 'Perfil renal',
+      'Uroanálisis', 'Coprológico', 'Otro'
+    ];
+    let pruebasLaboratorioCatalogCustom = []; // agregadas vía "+Registrar nuevo" (mock, en memoria)
+    function getPruebasLaboratorioCatalogo() { return [...PRUEBAS_LABORATORIO_BASE, ...pruebasLaboratorioCatalogCustom]; }
+
+    const IMAGENES_DIAGNOSTICAS_CATALOGO_BASE = ['Radiografía', 'Ecografía', 'Tomografía', 'Endoscopia', 'Otro'];
+    let imagenesDiagnosticasCatalogCustom = [];
+    function getImagenesDiagnosticasCatalogo() { return [...IMAGENES_DIAGNOSTICAS_CATALOGO_BASE, ...imagenesDiagnosticasCatalogCustom]; }
+
+    function getExamenCatalogo(tipo) { return tipo === 'laboratorio' ? getPruebasLaboratorioCatalogo() : getImagenesDiagnosticasCatalogo(); }
+    function getExamenBloqueLabel(tipo) { return tipo === 'laboratorio' ? 'Prueba de laboratorio' : 'Imagen diagnóstica'; }
+    function getExamenCampoLabel(tipo) { return tipo === 'laboratorio' ? 'Prueba/Examen' : 'Imagen diagnóstica'; }
+    function getExamenTitulo(tipo) { return tipo === 'laboratorio' ? 'Examen de laboratorio' : 'Imagen diagnóstica'; }
+
+    let examenModalTipo = null;         // 'laboratorio' | 'imagen' — fija todo el modal mientras está abierto
+    let editingExamenContext = null;    // { petKey, index } al editar, null al crear
+    let examenBlockUidSeq = 0;          // uid estable por bloque, independiente de su posición visual (no hay que renumerar al eliminar uno del medio)
+    let examenPendingFiles = {};        // { [uid]: File } archivo nuevo elegido en esta sesión del modal
+    let examenExistingFiles = {};       // { [uid]: { path, nombre } } archivo ya guardado, se conserva si no se reemplaza/quita
+
+    function registrarNuevaPruebaExamen(uid) {
+      const tipo = examenModalTipo;
+      const nombre = window.prompt(tipo === 'laboratorio' ? 'Nombre de la nueva prueba de laboratorio:' : 'Nombre de la nueva imagen diagnóstica:');
+      if (!nombre || !nombre.trim()) return;
+      const valor = nombre.trim();
+      if (tipo === 'laboratorio') {
+        if (!getPruebasLaboratorioCatalogo().includes(valor)) pruebasLaboratorioCatalogCustom.push(valor);
+      } else {
+        if (!getImagenesDiagnosticasCatalogo().includes(valor)) imagenesDiagnosticasCatalogCustom.push(valor);
+      }
+      const select = document.querySelector(`#examen-blocks-list .examen-block[data-block-uid="${uid}"] [data-examen-field="prueba"]`);
+      if (select) {
+        select.innerHTML = '<option value="">Seleccionar...</option>' +
+          getExamenCatalogo(tipo).map(p => `<option value="${p}" ${p === valor ? 'selected' : ''}>${p}</option>`).join('');
+      }
+    }
+
+    // "+ Agregar usuario" dentro de un bloque — reutiliza el modal real de
+    // Admin > Usuarios (openUsuarioModal) en vez de un alta rápida
+    // paralela; guardarUsuario() refresca el select de Profesional del
+    // bloque que lo abrió (ver hook ahí) cuando este puntero está fijado.
+    let examenAgregandoUsuarioUid = null;
+    function agregarUsuarioDesdeExamen(uid) {
+      examenAgregandoUsuarioUid = uid;
+      openUsuarioModal('create');
+    }
+
+    function handleExamenResultadoFileChange(uid, input) {
+      const file = input.files[0];
+      if (!file) return;
+      examenPendingFiles[uid] = file;
+      delete examenExistingFiles[uid];
+      renderExamenResultadoFileLabel(uid);
+    }
+
+    function removeExamenResultadoFile(uid) {
+      delete examenPendingFiles[uid];
+      delete examenExistingFiles[uid];
+      const input = document.querySelector(`#examen-blocks-list .examen-block[data-block-uid="${uid}"] input[type="file"]`);
+      if (input) input.value = '';
+      renderExamenResultadoFileLabel(uid);
+    }
+
+    function renderExamenResultadoFileLabel(uid) {
+      const el = document.querySelector(`#examen-blocks-list .examen-block[data-block-uid="${uid}"] [data-examen-resultado-label]`);
+      if (!el) return;
+      const pending = examenPendingFiles[uid];
+      const existing = examenExistingFiles[uid];
+      const nombre = pending ? pending.name : (existing ? existing.nombre : '');
+      el.innerHTML = nombre
+        ? `<span>${nombre}</span> <button type="button" class="med-block-remove" style="display:inline-flex;" onclick="removeExamenResultadoFile(${uid})"><i data-lucide="x" style="width:12px;height:12px;"></i></button>`
+        : '';
+      lucide.createIcons();
+    }
+
+    function examenBlockTemplate(uid, block) {
+      block = block || {};
+      const tipo = examenModalTipo;
+      const profesionales = USUARIOS_SISTEMA.filter(u => u.estado === 'activo');
+      const profesionalOptions = profesionales.map(u => `<option value="${u.nombre}" ${block.profesional === u.nombre ? 'selected' : ''}>${u.nombre}</option>`).join('');
+      const pruebaOptions = getExamenCatalogo(tipo).map(p => `<option value="${p}" ${block.prueba === p ? 'selected' : ''}>${p}</option>`).join('');
+      if (block.resultadoPath) examenExistingFiles[uid] = { path: block.resultadoPath, nombre: block.resultadoNombre };
+      const existing = examenExistingFiles[uid];
+      const nombreArchivo = existing ? existing.nombre : '';
+      return `
+        <div class="orden-block examen-block" data-block-uid="${uid}">
+          <div class="orden-block-header">
+            <span class="med-block-title">${getExamenBloqueLabel(tipo)}</span>
+            <div class="orden-block-header-actions">
+              <button type="button" class="med-block-remove" onclick="removeExamenBlock(${uid})">
+                <i data-lucide="x" style="width:12px;height:12px;"></i> Eliminar
+              </button>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label">Profesional</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select class="soap-select-control" data-examen-field="profesional" style="flex:1;">
+                <option value="">Seleccionar...</option>
+                ${profesionalOptions}
+              </select>
+              <button type="button" class="btn-outline" style="padding:9px 12px;font-size:12px;flex-shrink:0;white-space:nowrap;" onclick="agregarUsuarioDesdeExamen(${uid})">+ Agregar usuario</button>
+            </div>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label">${getExamenCampoLabel(tipo)}</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select class="soap-select-control" data-examen-field="prueba" style="flex:1;">
+                <option value="">Seleccionar...</option>
+                ${pruebaOptions}
+              </select>
+              <button type="button" class="btn-outline" style="padding:9px 12px;font-size:12px;flex-shrink:0;white-space:nowrap;" onclick="registrarNuevaPruebaExamen(${uid})">+ Registrar nuevo</button>
+            </div>
+          </div>
+
+          <div class="input-group" style="max-width:140px;">
+            <label class="input-label">Cantidad</label>
+            <input type="number" min="1" class="input-control" style="padding-left:12px;" data-examen-field="cantidad" value="${block.cantidad || 1}">
+          </div>
+
+          <div class="input-group">
+            <label class="input-label">Resultado</label>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <button type="button" class="btn-outline" style="padding:9px 12px;font-size:12px;" onclick="this.nextElementSibling.click()">
+                <i data-lucide="upload" style="width:12px;height:12px;"></i> Seleccionar archivo
+              </button>
+              <input type="file" accept=".pdf,image/*" style="display:none;" onchange="handleExamenResultadoFileChange(${uid}, this)">
+              <span data-examen-resultado-label style="font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:6px;">${nombreArchivo ? `<span>${nombreArchivo}</span> <button type="button" class="med-block-remove" style="display:inline-flex;" onclick="removeExamenResultadoFile(${uid})"><i data-lucide="x" style="width:12px;height:12px;"></i></button>` : ''}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renumberExamenBlockTitles() {
+      const bloqueLabel = getExamenBloqueLabel(examenModalTipo);
+      document.querySelectorAll('#examen-blocks-list .examen-block .med-block-title').forEach(el => { el.textContent = bloqueLabel; });
+    }
+
+    function renderExamenBlocks(bloques) {
+      examenBlockUidSeq = 0;
+      examenPendingFiles = {};
+      examenExistingFiles = {};
+      const list = document.getElementById('examen-blocks-list');
+      list.innerHTML = bloques.map(b => examenBlockTemplate(examenBlockUidSeq++, b)).join('');
+      lucide.createIcons();
+    }
+
+    function addExamenBlock() {
+      const list = document.getElementById('examen-blocks-list');
+      list.insertAdjacentHTML('beforeend', examenBlockTemplate(examenBlockUidSeq++, {}));
+      lucide.createIcons();
+    }
+
+    function removeExamenBlock(uid) {
+      const list = document.getElementById('examen-blocks-list');
+      if (list.children.length <= 1) return; // al menos un bloque
+      const block = list.querySelector(`.examen-block[data-block-uid="${uid}"]`);
+      if (block) block.remove();
+      delete examenPendingFiles[uid];
+      delete examenExistingFiles[uid];
+    }
+
+    function openExamenModal(tipo, mode, petKey, examenIndex) {
+      examenModalTipo = tipo;
+      const data = patientData[petKey];
+      editingExamenContext = (mode === 'edit') ? { petKey, index: examenIndex } : null;
+
+      const avatar = document.getElementById('examen-pet-avatar');
+      avatar.textContent = data.avatarText;
+      avatar.className = `soap-modal-pet-avatar ${data.avatarClass}`;
+      document.getElementById('examen-pet-name').textContent = data.name;
+      document.getElementById('examen-pet-weight-chip').textContent = data.weight;
+
+      document.getElementById('examen-modal-titulo').textContent = getExamenTitulo(tipo);
+      document.getElementById('examen-add-block-label').textContent = `Agregar ${getExamenBloqueLabel(tipo).toLowerCase()}`;
+
+      const saveBtn = document.getElementById('examen-save-btn');
+
+      if (mode === 'edit') {
+        const record = data.examenes[examenIndex];
+        document.getElementById('examen-fecha').value = record.fechaISO;
+        document.getElementById('examen-diagnostico').value = record.diagnosticoPresuntivo || '';
+        renderExamenBlocks(record.pruebas.length ? record.pruebas : [{}]);
+        saveBtn.textContent = 'Guardar cambios';
+      } else {
+        document.getElementById('examen-fecha').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('examen-diagnostico').value = '';
+        renderExamenBlocks([{}]);
+        saveBtn.textContent = 'Guardar';
+      }
+
+      document.getElementById('examen-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeExamenModal() {
+      document.getElementById('examen-modal').classList.remove('show');
+      editingExamenContext = null;
+      examenModalTipo = null;
+      examenPendingFiles = {};
+      examenExistingFiles = {};
+    }
+
+    function handleExamenModalOverlayClick(e) {
+      if (e.target === document.getElementById('examen-modal')) closeExamenModal();
+    }
+
+    async function guardarExamen() {
+      const tipo = examenModalTipo;
+      const isEdit = !!editingExamenContext;
+      const petKey = isEdit ? editingExamenContext.petKey : selectedPetKey;
+      const data = patientData[petKey];
+
+      const fechaISO = document.getElementById('examen-fecha').value;
+      const diagnosticoPresuntivo = document.getElementById('examen-diagnostico').value.trim();
+      if (!fechaISO) { showToast('Completa la fecha'); return; }
+
+      const blocks = [...document.querySelectorAll('#examen-blocks-list .examen-block')];
+      const bloquesInfo = blocks.map(block => ({
+        uid: Number(block.getAttribute('data-block-uid')),
+        profesional: block.querySelector('[data-examen-field="profesional"]').value,
+        prueba: block.querySelector('[data-examen-field="prueba"]').value,
+        cantidad: parseInt(block.querySelector('[data-examen-field="cantidad"]').value, 10) || 1
+      }));
+      if (bloquesInfo.some(b => !b.profesional || !b.prueba)) {
+        showToast('Completa profesional y ' + getExamenCampoLabel(tipo).toLowerCase() + ' en cada bloque');
+        return;
+      }
+
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || '';
+
+      const saveBtn = document.getElementById('examen-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        let examenId = isEdit ? data.examenes[editingExamenContext.index].id : null;
+
+        // Metadata sin resultadoPath todavía — hace falta el id del examen
+        // para construir la ruta de storage de cada archivo (mismo criterio
+        // de 2 pasos que mascota.foto_path/documento.pdf_path).
+        const pruebasMetaSinArchivo = bloquesInfo.map(b => ({
+          profesional: b.profesional, prueba: b.prueba, cantidad: b.cantidad,
+          resultadoPath: examenExistingFiles[b.uid] ? examenExistingFiles[b.uid].path : null,
+          resultadoNombre: examenExistingFiles[b.uid] ? examenExistingFiles[b.uid].nombre : null
+        }));
+
+        if (!examenId) {
+          const { data: inserted, error: insertError } = await window.supabase.from('examenes').insert({
+            establecimiento_id: establecimientoId, mascota_id: data.mascotaId, tipo,
+            fecha: fechaISO, diagnostico_presuntivo: diagnosticoPresuntivo || null,
+            pruebas: pruebasMetaSinArchivo, usuario: usuarioNombre, created_by: userId
+          }).select().single();
+          if (insertError) throw insertError;
+          examenId = inserted.id;
+        }
+
+        // Subir archivos nuevos elegidos en esta sesión del modal.
+        const pruebasFinal = [];
+        for (let i = 0; i < bloquesInfo.length; i++) {
+          const b = bloquesInfo[i];
+          const file = examenPendingFiles[b.uid];
+          let resultadoPath = pruebasMetaSinArchivo[i].resultadoPath;
+          let resultadoNombre = pruebasMetaSinArchivo[i].resultadoNombre;
+          if (file) {
+            const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+            resultadoPath = `clinica/${establecimientoId}/examenes/${examenId}/${i}-${Date.now()}.${ext}`;
+            const { error: uploadError } = await window.supabase.storage.from('pdfs')
+              .upload(resultadoPath, file, { contentType: file.type || 'application/octet-stream', upsert: true });
+            if (uploadError) throw uploadError;
+            resultadoNombre = file.name;
+          }
+          pruebasFinal.push({ profesional: b.profesional, prueba: b.prueba, cantidad: b.cantidad, resultadoPath, resultadoNombre });
+        }
+
+        const { error: updateError } = await window.supabase.from('examenes').update({
+          fecha: fechaISO, diagnostico_presuntivo: diagnosticoPresuntivo || null,
+          pruebas: pruebasFinal, usuario: usuarioNombre, updated_at: new Date().toISOString()
+        }).eq('id', examenId);
+        if (updateError) throw updateError;
+
+        const record = {
+          id: examenId, tipo, fecha: formatFechaCorta(fechaISO), fechaISO,
+          diagnosticoPresuntivo, pruebas: pruebasFinal, usuario: usuarioNombre
+        };
+
+        if (isEdit) {
+          data.examenes[editingExamenContext.index] = record;
+        } else {
+          data.examenes.unshift(record);
+          // Timeline solo al crear (mismo criterio que Vacunaciones/Desparasitaciones)
+          data.timeline.unshift({
+            type: getExamenTitulo(tipo),
+            date: record.fecha,
+            title: `${getExamenTitulo(tipo)} — ${bloquesInfo.map(b => b.prueba).join(', ')}`,
+            summary: diagnosticoPresuntivo || '—',
+            vet: usuarioNombre
+          });
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderExamenesTable(petKey);
+        closeExamenModal();
+        showToast(isEdit ? 'Registro actualizado' : 'Registro guardado');
+      } catch (err) {
+        console.error('[IRIS] Error guardando examen en Supabase:', err);
+        showToast('No se pudo guardar el registro — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    }
+
+    function construirExamenDesdeFila(r) {
+      return {
+        id: r.id, tipo: r.tipo,
+        fechaISO: r.fecha, fecha: formatFechaCorta(r.fecha),
+        diagnosticoPresuntivo: r.diagnostico_presuntivo || '',
+        pruebas: Array.isArray(r.pruebas) ? r.pruebas : [],
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function descargarResultadoExamen(petKey, examenIndex, pruebaIndex) {
+      const record = patientData[petKey] && patientData[petKey].examenes[examenIndex];
+      const prueba = record && record.pruebas[pruebaIndex];
+      if (!prueba || !prueba.resultadoPath) { showToast('Este registro no tiene un archivo de resultado adjunto'); return; }
+      if (!window.supabase) return;
+      const { data, error } = await window.supabase.storage.from('pdfs').createSignedUrl(prueba.resultadoPath, 3600);
+      if (error) { console.error('[IRIS] Error firmando URL del resultado de examen:', error); showToast('No se pudo generar el enlace de descarga'); return; }
+      window.open(data.signedUrl, '_blank');
+    }
+
+    // Elimina de verdad (fila + archivos en storage), a diferencia de
+    // varios otros módulos de este archivo que todavía solo hacen
+    // splice() local (fuera del alcance de esta sesión tocarlos). El
+    // fade-out visual corre igual aunque el delete remoto falle —
+    // showToast avisa si el registro quedó desincronizado del servidor.
+    async function eliminarExamenReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.examenes[idx];
+      const quitarLocal = () => {
+        data.examenes.splice(idx, 1);
+        renderExamenesTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const paths = (record.pruebas || []).filter(p => p.resultadoPath).map(p => p.resultadoPath);
+        if (paths.length) await window.supabase.storage.from('pdfs').remove(paths);
+        const { error } = await window.supabase.from('examenes').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando examen en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function examenPruebasResumenHTML(petKey, examenIndex, tipo, pruebas) {
+      const campoLabel = getExamenCampoLabel(tipo);
+      return pruebas.map((p, pi) => `
+        <div style="font-size:12px;line-height:1.7;${pi > 0 ? 'margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);' : ''}">
+          <div>Profesional: ${p.profesional}</div>
+          <div>${campoLabel}: ${p.prueba}</div>
+          <div>Cantidad: ${p.cantidad}</div>
+          <div>Resultado: ${p.resultadoPath
+            ? `<a href="#" onclick="event.preventDefault(); descargarResultadoExamen('${petKey}', ${examenIndex}, ${pi});" class="link-ghost">${p.resultadoNombre}</a>`
+            : '—'}</div>
+        </div>
+      `).join('');
+    }
+
+    function examenViewContentHTML(record, petKey, idx) {
+      const campoLabel = getExamenCampoLabel(record.tipo);
+      const pruebasHTML = record.pruebas.map((p, pi) => `
+        <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#FAFBFD;">
+          <div style="font-size:12px;">Profesional: ${p.profesional}</div>
+          <div style="font-size:12px;">${campoLabel}: ${p.prueba}</div>
+          <div style="font-size:12px;">Cantidad: ${p.cantidad}</div>
+          <div style="font-size:12px;">Resultado: ${p.resultadoPath
+            ? `<a href="#" onclick="event.preventDefault(); descargarResultadoExamen('${petKey}', ${idx}, ${pi});" class="link-ghost">${p.resultadoNombre}</a>`
+            : '—'}</div>
+        </div>
+      `).join('');
+      return `
+        <div class="info-label">Fecha</div>
+        <div class="info-value">${record.fecha}</div>
+        <div class="info-label" style="margin-top:8px;">Diagnóstico presuntivo</div>
+        <div class="info-value">${record.diagnosticoPresuntivo || '—'}</div>
+        <div class="info-label" style="margin-top:8px;">${record.tipo === 'laboratorio' ? 'Pruebas de laboratorio' : 'Imágenes diagnósticas'}</div>
+        ${pruebasHTML}
+        <div class="info-label" style="margin-top:8px;">Usuario</div>
+        <div class="info-value">${record.usuario}</div>
+      `;
+    }
+
+    const EXAMENES_TABLE_TARGETS = [
+      { tbodyId: 'laboratorio-examenes-table-body', emptyId: 'laboratorio-examenes-empty-state', tipo: 'laboratorio', counterSubtab: 'laboratorio' },
+      { tbodyId: 'imagenes-examenes-table-body', emptyId: 'imagenes-examenes-empty-state', tipo: 'imagen', counterSubtab: 'imagenes' }
+    ];
+
+    function renderExamenesTable(petKey) {
+      const data = patientData[petKey];
+      const canEdit = getRowActionsForRole().includes('editar');
+      const menuActions = getRowActionsForRole().filter(a => a !== 'editar');
+      EXAMENES_TABLE_TARGETS.forEach(target => {
+        const tbody = document.getElementById(target.tbodyId);
+        if (!tbody) return;
+        const emptyState = document.getElementById(target.emptyId);
+        const indices = data.examenes.map((e, i) => i).filter(i => data.examenes[i].tipo === target.tipo);
+
+        if (!indices.length) {
+          tbody.innerHTML = '';
+          if (emptyState) emptyState.style.display = 'flex';
+        } else {
+          if (emptyState) emptyState.style.display = 'none';
+          tbody.innerHTML = indices.map(i => {
+            const e = data.examenes[i];
+            const extraActions = [
+              { icon: 'stethoscope', label: 'Seguimientos', onclick: `switchSubTab('seguimientos')` },
+              { icon: 'file-text', label: 'Documentos', onclick: `switchSubTab('patient-documentos')` }
+            ];
+            return `
+              <tr data-examen-row="${i}">
+                <td style="white-space:nowrap;">
+                  <div style="display:flex;align-items:center;gap:2px;">
+                    ${canEdit ? `<button class="row-actions-btn" title="Editar" onclick="rowActionEditar('examen', '${petKey}:${i}')"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>` : ''}
+                    ${renderRowActionsMenu('examen', `${petKey}:${i}`, extraActions, menuActions)}
+                  </div>
+                </td>
+                <td>${e.fecha}</td>
+                <td>${e.diagnosticoPresuntivo || '—'}</td>
+                <td>${examenPruebasResumenHTML(petKey, i, target.tipo, e.pruebas)}</td>
+                <td>Consulta</td>
+                <td>${e.usuario}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+
+        const counter = document.querySelector(`.sidebar-item[data-subtab="${target.counterSubtab}"] .sidebar-counter`);
+        if (counter) counter.textContent = indices.length;
+      });
+
+      lucide.createIcons();
     }
 
     // ── MÓDULO: HOSPITALIZACIONES/AMBULATORIOS Y KARDEX (Parte 2) ──
@@ -13623,6 +14060,7 @@
       const rol = document.getElementById('usuario-rol-select').value;
       const especialidad = rol === 'medico' ? document.getElementById('usuario-especialidad-select').value : null;
       const telefono = document.getElementById('usuario-telefono-input').value.trim() || '—';
+      const wasCreatingNewUser = !editingUsuarioId;
 
       if (editingUsuarioId) {
         const user = USUARIOS_SISTEMA.find(u => u.id === editingUsuarioId);
@@ -13643,6 +14081,20 @@
       renderUsuariosTable();
       closeUsuarioModal();
       showToast(editingUsuarioId ? 'Usuario actualizado' : 'Usuario creado');
+
+      // Si el modal se abrió desde "+ Agregar usuario" dentro de un bloque
+      // de Examen de laboratorio/Imagen diagnóstica (ver
+      // agregarUsuarioDesdeExamen), refresca el select de Profesional de
+      // ese bloque con el usuario recién creado ya seleccionado.
+      if (wasCreatingNewUser && examenAgregandoUsuarioUid !== null) {
+        const select = document.querySelector(`#examen-blocks-list .examen-block[data-block-uid="${examenAgregandoUsuarioUid}"] [data-examen-field="profesional"]`);
+        if (select) {
+          const profesionales = USUARIOS_SISTEMA.filter(u => u.estado === 'activo');
+          select.innerHTML = '<option value="">Seleccionar...</option>' +
+            profesionales.map(u => `<option value="${u.nombre}" ${u.nombre === nombre ? 'selected' : ''}>${u.nombre}</option>`).join('');
+        }
+        examenAgregandoUsuarioUid = null;
+      }
     }
 
     // ── A.2 — DETALLE DE USUARIO (Ver/Editar → 3 tabs) ──────────────
@@ -16181,22 +16633,24 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
-          window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
+          window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
+          window.supabase.from('examenes').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
         if (docRes.error) throw docRes.error;
-        return { propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [] };
+        if (examRes.error) throw examRes.error;
+        return { propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [] };
       }
 
-      let { propRows, petRows, docRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -16211,6 +16665,11 @@
       docRows.forEach(r => {
         const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
         if (pet) pet.documentos.push(construirDocumentoDesdeFila(r));
+      });
+
+      examRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (pet) pet.examenes.push(construirExamenDesdeFila(r));
       });
     }
 
@@ -16357,7 +16816,21 @@
     // registro exitoso dentro del script del auth shell.
     async function bootstrapSession() {
       try {
-        if (!window.supabase) { mostrarShellSegunSesion(); return; }
+        // El cliente Supabase se crea en un <script type="module"> aparte
+        // (ver <head>), que es asíncrono por naturaleza (fetch a esm.sh) —
+        // en una recarga en frío (F5) puede no estar listo todavía cuando
+        // este script clásico llega a la llamada final de bootstrapSession().
+        // Antes esto caía directo a mostrarShellSegunSesion(), que solo mira
+        // el flag iris_session_active (ya en '1' de la sesión real anterior)
+        // y muestra el app-shell SIN recargar sesión/datos reales — quedaba
+        // con el estado inicial hardcodeado (sin nombre de usuario, clientes
+        // de ejemplo del prototipo). Se espera el evento 'supabase-ready'
+        // (ya emitido por ese script, antes sin ningún listener) y se
+        // reintenta, en vez de resignarse al estado sin sesión.
+        if (!window.supabase) {
+          window.addEventListener('supabase-ready', () => bootstrapSession(), { once: true });
+          return;
+        }
 
         const { data: { session } } = await window.supabase.auth.getSession();
         if (!session) {
@@ -17230,6 +17703,48 @@
         <button class="btn-secondary" onclick="closeResultadoModal()">Cerrar</button>
         <button class="btn-secondary" onclick="guardarResultado('borrador')">Guardar como borrador</button>
         <button class="btn-primary" onclick="guardarResultado('finalizado')">Guardar resultado</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Registrar/editar examen de laboratorio o imagen diagnóstica
+       — flujo propio, autocontenido, un solo paso (ver openExamenModal()).
+       Un solo modal parametrizado por tipo; los textos se adaptan por JS. -->
+  <div class="modal-overlay" id="examen-modal" onclick="handleExamenModalOverlayClick(event)">
+    <div class="soap-modal-card" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <div class="soap-modal-pet-avatar" id="examen-pet-avatar">L</div>
+          <div>
+            <div class="soap-modal-pet-name" id="examen-pet-name">Luna</div>
+            <span class="pet-chip-tag" id="examen-pet-weight-chip">4.2 kg</span>
+          </div>
+        </div>
+        <button class="soap-modal-close" onclick="closeExamenModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <div class="soap-modal-body">
+        <div class="info-label" id="examen-modal-titulo" style="font-size:13px;font-weight:600;color:var(--text-1);margin-bottom:4px;">Examen de laboratorio</div>
+
+        <div class="input-group">
+          <label class="input-label" for="examen-fecha">Fecha</label>
+          <input type="date" id="examen-fecha" class="input-control" style="padding-left:12px;max-width:220px;">
+        </div>
+
+        <div id="examen-blocks-list"></div>
+        <button type="button" class="btn-outline" onclick="addExamenBlock()">
+          <i data-lucide="plus" style="width:14px;height:14px;"></i> <span id="examen-add-block-label">Agregar prueba de laboratorio</span>
+        </button>
+
+        <div class="input-group" style="margin-top:6px;">
+          <label class="input-label" for="examen-diagnostico">Diagnóstico presuntivo</label>
+          <textarea class="soap-textarea" id="examen-diagnostico" placeholder="Diagnóstico presuntivo aplicable a este registro..."></textarea>
+        </div>
+      </div>
+
+      <div class="soap-modal-footer">
+        <button class="btn-secondary" onclick="closeExamenModal()">Cancelar</button>
+        <button class="btn-primary" id="examen-save-btn" onclick="guardarExamen()">Guardar</button>
       </div>
     </div>
   </div>

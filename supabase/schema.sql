@@ -705,3 +705,56 @@ create policy "pdfs_delete_clinica_member"
     and (storage.foldername(name))[1] = 'clinica'
     and public.user_is_member_of(((storage.foldername(name))[2])::uuid)
   );
+
+-- ── TABLA: examenes (Exámenes de laboratorio / Imágenes diagnósticas) ──
+-- Un registro por "orden" del flujo propio de Laboratorio/Imágenes
+-- (independiente de la tabla mock `ordenes` de index.html, que sigue
+-- existiendo aparte para Inventario/otros tipos). tipo distingue
+-- 'laboratorio' de 'imagen' -- misma tabla, dos subtabs de Consultorio.
+-- pruebas es jsonb (mismo criterio que mascotas.peso_historico) en vez
+-- de una tabla hija: cada elemento es un bloque repetible del modal
+-- { profesional, prueba, cantidad, resultadoPath, resultadoNombre }.
+create table if not exists public.examenes (
+  id                      uuid primary key default gen_random_uuid(),
+  establecimiento_id      uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id              uuid not null references public.mascotas (id) on delete cascade,
+  tipo                    text not null check (tipo in ('laboratorio','imagen')),
+  fecha                   date not null,
+  diagnostico_presuntivo  text,
+  pruebas                 jsonb not null default '[]'::jsonb,
+  usuario                 text,
+  created_by              uuid references auth.users (id) on delete set null,
+  created_at              timestamptz not null default now(),
+  updated_at              timestamptz not null default now()
+);
+
+create index if not exists examenes_establecimiento_id_idx on public.examenes (establecimiento_id);
+create index if not exists examenes_mascota_id_idx on public.examenes (mascota_id);
+
+alter table public.examenes enable row level security;
+
+drop policy if exists "examenes_select_member" on public.examenes;
+create policy "examenes_select_member"
+  on public.examenes for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "examenes_insert_member" on public.examenes;
+create policy "examenes_insert_member"
+  on public.examenes for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "examenes_update_member" on public.examenes;
+create policy "examenes_update_member"
+  on public.examenes for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "examenes_delete_member" on public.examenes;
+create policy "examenes_delete_member"
+  on public.examenes for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- Reutiliza el bucket privado `pdfs` ya existente (prefijo "clinica/<estab>/...",
+-- policies ya cubren cualquier archivo bajo ese prefijo para miembros de la
+-- clínica) -- sin bucket nuevo. Los resultados de examenes van en
+-- "clinica/<establecimiento_id>/examenes/<examen_id>/<n>-<nombre>".
