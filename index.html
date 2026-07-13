@@ -1974,11 +1974,12 @@
     /* Tablero de trabajo (workspace de consulta) */
     .tablero-grid {
       display: grid;
-      grid-template-columns: 1fr 380px;
+      grid-template-columns: 1fr 300px 380px;
       gap: 16px;
       align-items: start;
     }
 
+    .tablero-center-col,
     .tablero-side-col {
       display: flex;
       flex-direction: column;
@@ -2027,11 +2028,13 @@
 
     @media (max-width: 1200px) {
       .tablero-grid { grid-template-columns: 1fr; }
-      /* En una sola columna, el SOAP (columna angosta, 2º hijo del grid)
-         debe verse antes que el feed de Historia clínica (1er hijo) — se
-         invierte el orden visual solo en mobile. */
+      /* En una sola columna, el SOAP (columna angosta, 3er hijo del grid)
+         debe verse antes que Navegación rápida/Acciones (2º hijo) y que el
+         feed de Historia clínica (1er hijo) — se invierte el orden visual
+         solo en mobile. */
       .tablero-grid > .tablero-side-col { order: 1; }
-      .tablero-grid > .card:first-child { order: 2; }
+      .tablero-grid > .tablero-center-col { order: 2; }
+      .tablero-grid > .card:first-child { order: 3; }
     }
 
     .consultas-list-nav {
@@ -4247,7 +4250,7 @@
                 <div class="card">
                   <div class="card-header">
                     <span class="card-title"><i data-lucide="stethoscope" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Consultas Clínicas</span>
-                    <button class="btn-outline module-create-btn" style="padding: 6px 12px; font-size: 12px;"><i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar Consulta</button>
+                    <button class="btn-outline module-create-btn" style="padding: 6px 12px; font-size: 12px;" onclick="abrirTableroTrabajo()"><i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar Consulta</button>
                   </div>
                   <div class="consulta-grid">
                     <div class="consultas-list-nav">
@@ -4801,7 +4804,28 @@
                     <div class="clinical-timeline" id="tablero-historia-feed"></div>
                   </div>
 
-                  <!-- Columna angosta: Registro de consulta (SOAP, compacto) + Lista de problemas + Navegación rápida + Acciones rápidas -->
+                  <!-- Columna central: Navegación rápida + Acciones rápidas -->
+                  <div class="tablero-center-col">
+                  <div class="card">
+                    <div class="card-header">
+                      <span class="card-title"><i data-lucide="zap" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Navegación rápida</span>
+                    </div>
+                    <div id="tablero-quicknav-body"></div>
+                  </div>
+
+                  <div class="card">
+                    <div class="card-header">
+                      <span class="card-title"><i data-lucide="rocket" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Acciones rápidas</span>
+                    </div>
+                    <div class="tablero-quick-actions">
+                      <button class="btn-outline" onclick="openVacunacionModal('create', selectedPetKey)"><i data-lucide="syringe" style="width:14px;height:14px;"></i> Registrar vacunación</button>
+                      <button class="btn-outline" onclick="openDesparasitacionModal('create', selectedPetKey)"><i data-lucide="shield-check" style="width:14px;height:14px;"></i> Registrar desparasitación</button>
+                      <button class="btn-outline" onclick="openOrdenModal('create', selectedPetKey)"><i data-lucide="clipboard-list" style="width:14px;height:14px;"></i> Nueva orden (examen/imagen)</button>
+                    </div>
+                  </div>
+                  </div>
+
+                  <!-- Columna angosta: Registro de consulta (SOAP, compacto) + Lista de problemas -->
                   <div class="tablero-side-col">
                   <div class="card">
                     <div class="card-header">
@@ -4908,24 +4932,6 @@
                         <button class="btn-secondary" style="flex:1;padding:6px;font-size:12px;" onclick="toggleTableroNuevoProblema()">Cancelar</button>
                         <button class="btn-primary" style="flex:1;padding:6px;font-size:12px;" onclick="agregarTableroProblema()">Agregar</button>
                       </div>
-                    </div>
-                  </div>
-
-                  <div class="card">
-                    <div class="card-header">
-                      <span class="card-title"><i data-lucide="zap" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Navegación rápida</span>
-                    </div>
-                    <div id="tablero-quicknav-body"></div>
-                  </div>
-
-                  <div class="card">
-                    <div class="card-header">
-                      <span class="card-title"><i data-lucide="rocket" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Acciones rápidas</span>
-                    </div>
-                    <div class="tablero-quick-actions">
-                      <button class="btn-outline" onclick="openVacunacionModal('create', selectedPetKey)"><i data-lucide="syringe" style="width:14px;height:14px;"></i> Registrar vacunación</button>
-                      <button class="btn-outline" onclick="openDesparasitacionModal('create', selectedPetKey)"><i data-lucide="shield-check" style="width:14px;height:14px;"></i> Registrar desparasitación</button>
-                      <button class="btn-outline" onclick="openOrdenModal('create', selectedPetKey)"><i data-lucide="clipboard-list" style="width:14px;height:14px;"></i> Nueva orden (examen/imagen)</button>
                     </div>
                   </div>
                   </div>
@@ -6572,8 +6578,20 @@
     // originó el bug la última vez.
 
     // Cierra la sesión simulada y regresa al login (pantalla A del auth shell)
-    function cerrarSesion() {
-      if (window.supabase) window.supabase.auth.signOut();
+    // `await` sobre signOut() es a propósito: window.supabase es un cliente
+    // único compartido por toda la página (SPA, nunca recarga — ver nota de
+    // arriba). Si esto disparaba signOut() sin esperarlo y el usuario volvía
+    // a loguearse rápido, la respuesta tardía de signOut() podía resolver
+    // DESPUÉS de que signInWithPassword() ya hubiera fijado la sesión nueva
+    // en ese mismo cliente, y terminaba limpiándola en silencio — el login
+    // se veía exitoso (currentSession de la app ya estaba poblado por
+    // bootstrapSession()) pero window.supabase.auth ya no tenía sesión real,
+    // así que cualquier llamada autenticada posterior (ej. subir foto de
+    // mascota a Storage) se mandaba como anon y fallaba por RLS sin ningún
+    // error visible hasta ese punto. Esperar a que termine el signOut antes
+    // de permitir un login nuevo cierra esa ventana de carrera.
+    async function cerrarSesion() {
+      if (window.supabase) await window.supabase.auth.signOut();
       currentSession = null;
       localStorage.removeItem('iris_session_active');
       localStorage.removeItem('iris_sim_role');
@@ -8457,6 +8475,7 @@
         return;
       }
       tableroModoActivo = (subtabName === 'tablero');
+      actualizarBotonNuevaConsultaHeader();
 
       closeAllRowMenus();
 
@@ -8553,6 +8572,24 @@
       }
 
       // Re-inicializar iconos en panel dinámico
+      lucide.createIcons();
+    }
+
+    // Botón principal del header del paciente (id="btn-nueva-consulta"): es
+    // "Nueva Consulta" mientras se navega el perfil/módulos del paciente, y
+    // se convierte en "Finalizar consulta" mientras el Tablero de trabajo
+    // está activo (tableroModoActivo) — un solo botón, nunca los dos a la
+    // vez. Se llama desde switchSubTab() cada vez que cambia ese estado.
+    function actualizarBotonNuevaConsultaHeader() {
+      const btn = document.getElementById('btn-nueva-consulta');
+      if (!btn) return;
+      if (tableroModoActivo) {
+        btn.innerHTML = '<i data-lucide="check-circle-2" style="width: 14px; height: 14px;"></i> Finalizar consulta';
+        btn.onclick = () => guardarConsulta('tablero-soap-', 'tablero-soap-exam-body');
+      } else {
+        btn.innerHTML = '<i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Consulta';
+        btn.onclick = abrirTableroTrabajo;
+      }
       lucide.createIcons();
     }
 
@@ -8857,14 +8894,16 @@
             (ultima.proximoControl ? `<div class="info-label">Próximo control</div><div class="info-value">${ultima.proximoControl}</div>` : '')
           : `<div class="info-value" style="color:var(--text-2);">Sin desparasitaciones registradas.</div>`;
       } else if (subtabName === 'laboratorio' || subtabName === 'imagenes') {
-        const tipoOrden = subtabName === 'laboratorio' ? 'prueba' : 'imagen';
-        const registros = (data.ordenes || []).filter(o => o.tipo === tipoOrden);
+        // Laboratorio/Imágenes ya no usan data.ordenes (ver comentario junto a
+        // ORDENES_TABLE_TARGETS) — su flujo propio guarda en data.examenes.
+        const tipoExamen = subtabName === 'laboratorio' ? 'laboratorio' : 'imagen';
+        const registros = (data.examenes || []).filter(e => e.tipo === tipoExamen);
         bodyHtml = registros.length
-          ? registros.slice(0, 3).map(o => `
-              <div class="info-label">${o.detalle}</div>
-              <div class="info-value">${o.fecha} · <span class="status-badge status-badge-${o.estado}">${o.estado === 'completado' ? 'Completado' : 'Pendiente'}</span></div>
+          ? registros.slice(0, 3).map(e => `
+              <div class="info-label">${e.diagnosticoPresuntivo || (subtabName === 'laboratorio' ? 'Examen de laboratorio' : 'Imagen diagnóstica')}</div>
+              <div class="info-value">${e.fecha} · ${(e.pruebas || []).length} ${subtabName === 'laboratorio' ? 'prueba' : 'imagen'}${(e.pruebas || []).length === 1 ? '' : 's'}</div>
             `).join('')
-          : `<div class="info-value" style="color:var(--text-2);">Sin órdenes registradas para este módulo.</div>`;
+          : `<div class="info-value" style="color:var(--text-2);">Sin exámenes registrados para este módulo.</div>`;
       } else if (subtabName === 'hospitalizaciones') {
         const activa = (data.hospitalizaciones || []).find(h => h.estado === 'activa');
         bodyHtml = activa
