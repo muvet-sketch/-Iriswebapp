@@ -1971,20 +1971,43 @@
       gap: 16px;
     }
 
-    /* Tablero de trabajo (workspace de consulta) */
+    /* Tablero de trabajo (workspace de consulta) — pantalla completa, mismo
+       patrón que .kardex-view: oculta .consultorio-wrapper mientras está
+       activo (ver abrirTableroTrabajo()/cerrarTableroAConsultorio()). */
+    .tablero-view {
+      flex: 1; display: none; height: 100%; width: 100%; overflow-y: auto;
+      background-color: var(--bg-app);
+    }
+    .tablero-view.active { display: flex; flex-direction: column; }
+    .tablero-header {
+      background-color: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 16px 24px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; flex-wrap: wrap;
+    }
+    .tablero-header-left { display: flex; align-items: center; gap: 16px; }
+    .tablero-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tablero-body { flex: 1; padding: 20px 24px; }
+
     .tablero-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 232px 1.5fr 1fr;
       gap: 16px;
       align-items: start;
     }
 
+    .tablero-nav-col,
     .tablero-center-col,
     .tablero-side-col {
       display: flex;
       flex-direction: column;
       gap: 16px;
     }
+
+    /* Lista de navegación por módulo clínico — clon de .sidebar-menu/
+       .sidebar-item (mismo look & feel que el sidebar de 17), pero acotada
+       a los 10 módulos relevantes durante una consulta activa. */
+    .tablero-nav-col .sidebar-menu { padding: 4px; }
 
     .tablero-vitals-grid {
       display: grid;
@@ -2015,24 +2038,33 @@
 
     .tablero-problem-item:last-child { border-bottom: none; }
 
-    .tablero-quick-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+    /* Panel de detalle "Navegación rápida" — mini-lista de registros del
+       módulo seleccionado en .tablero-nav-col, ver renderTableroModuloDetalle() */
+    .tablero-quicknav-header-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-bottom: 8px;
     }
-
-    .tablero-quick-actions .btn-outline {
-      justify-content: flex-start;
-      width: 100%;
+    .tablero-quicknav-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-1); }
+    .tablero-quicknav-record {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 8px 0; border-bottom: 1px solid var(--border); cursor: pointer;
     }
+    .tablero-quicknav-record:last-child { border-bottom: none; }
+    .tablero-quicknav-record:hover .tablero-quicknav-record-title { color: var(--clinic-accent); }
+    .tablero-quicknav-record-title { font-size: 13px; font-weight: 600; color: var(--text-1); }
+    .tablero-quicknav-record-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
 
-    @media (max-width: 1200px) {
+    @media (max-width: 1300px) {
+      .tablero-grid { grid-template-columns: 200px 1fr; }
+      .tablero-grid > .tablero-side-col { grid-column: 1 / -1; order: 3; }
+    }
+    @media (max-width: 860px) {
       .tablero-grid { grid-template-columns: 1fr; }
-      /* En una sola columna, el SOAP (columna angosta, 2º hijo del grid)
-         debe verse antes que Navegación rápida/Acciones (1er hijo) — se
-         invierte el orden visual solo en mobile. */
-      .tablero-grid > .tablero-side-col { order: 1; }
-      .tablero-grid > .tablero-center-col { order: 2; }
+      /* En una sola columna: nav de módulos, luego SOAP, luego Navegación
+         rápida/Lista de problemas — mismo criterio de reordenar solo en mobile. */
+      .tablero-grid > .tablero-nav-col { grid-column: 1; order: 1; }
+      .tablero-grid > .tablero-center-col { grid-column: 1; order: 2; }
+      .tablero-grid > .tablero-side-col { grid-column: 1; order: 3; }
     }
 
     .consultas-list-nav {
@@ -4787,150 +4819,179 @@
                 </div>
               </div>
 
-              <!-- Subtab: Tablero de trabajo (workspace de consulta, ver abrirTableroTrabajo()) -->
-              <div class="module-pane" id="subtab-tablero">
-                <div class="tablero-grid">
-
-                  <!-- Columna izquierda: Navegación rápida + Acciones rápidas -->
-                  <div class="tablero-center-col">
-                  <div class="card">
-                    <div class="card-header">
-                      <span class="card-title"><i data-lucide="zap" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Navegación rápida</span>
-                    </div>
-                    <div id="tablero-quicknav-body"></div>
-                  </div>
-
-                  <div class="card">
-                    <div class="card-header">
-                      <span class="card-title"><i data-lucide="rocket" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Acciones rápidas</span>
-                    </div>
-                    <div class="tablero-quick-actions">
-                      <button class="btn-outline" onclick="openVacunacionModal('create', selectedPetKey)"><i data-lucide="syringe" style="width:14px;height:14px;"></i> Registrar vacunación</button>
-                      <button class="btn-outline" onclick="openDesparasitacionModal('create', selectedPetKey)"><i data-lucide="shield-check" style="width:14px;height:14px;"></i> Registrar desparasitación</button>
-                      <button class="btn-outline" onclick="openOrdenModal('create', selectedPetKey)"><i data-lucide="clipboard-list" style="width:14px;height:14px;"></i> Nueva orden (examen/imagen)</button>
-                    </div>
-                  </div>
-                  </div>
-
-                  <!-- Columna derecha: Registro de consulta (SOAP, compacto) + Lista de problemas -->
-                  <div class="tablero-side-col">
-                  <div class="card">
-                    <div class="card-header">
-                      <span class="card-title"><i data-lucide="stethoscope" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Registro de consulta</span>
-                      <div style="display:flex;gap:6px;">
-                        <button class="btn-outline" style="padding:6px;" title="Imprimir consulta" onclick="kardexAccionSimple('Imprimir consulta')"><i data-lucide="printer" style="width:14px;height:14px;"></i></button>
-                        <button class="btn-outline" style="padding:6px;" title="Compartir consulta" onclick="kardexAccionSimple('Compartir consulta')"><i data-lucide="share-2" style="width:14px;height:14px;"></i></button>
-                        <button class="btn-outline" style="padding:6px;" title="Volver a Historia" onclick="abrirModuloCompletoDesdeTablero('historia')"><i data-lucide="arrow-left" style="width:14px;height:14px;"></i></button>
-                      </div>
-                    </div>
-
-                    <div class="soap-meta-row">
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-fecha">Fecha y hora de consulta</label>
-                        <input type="datetime-local" id="tablero-soap-fecha" class="input-control" style="padding-left:12px;">
-                      </div>
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-motivo">Motivo de consulta</label>
-                        <select id="tablero-soap-motivo" class="soap-select-control">
-                          <option value="Consulta general">Consulta general</option>
-                          <option value="Urgencia">Urgencia</option>
-                          <option value="Vacunación">Vacunación</option>
-                          <option value="Control">Control</option>
-                          <option value="Revisión">Revisión</option>
-                          <option value="Otro">Otro</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div class="soap-block" style="margin-top:18px;">
-                      <div class="soap-letter">S</div>
-                      <div class="soap-block-body">
-                        <label class="soap-block-label">Subjetivo</label>
-                        <textarea class="soap-textarea" id="tablero-soap-s" placeholder="Anamnesis, motivo relatado por el propietario, duración de signos, medicamentos administrados en casa"></textarea>
-                      </div>
-                    </div>
-
-                    <div class="soap-block" style="margin-top:18px;">
-                      <div class="soap-letter">O</div>
-                      <div class="soap-block-body">
-                        <label class="soap-block-label">Objetivo</label>
-                        <div class="tablero-vitals-grid">
-                          <div class="input-group">
-                            <label class="input-label" for="tablero-soap-vital-temp">Temp (°C)</label>
-                            <input type="number" step="0.1" id="tablero-soap-vital-temp" class="input-control" style="padding-left:12px;" placeholder="38.5">
-                          </div>
-                          <div class="input-group">
-                            <label class="input-label" for="tablero-soap-vital-fc">FC (lpm)</label>
-                            <input type="number" id="tablero-soap-vital-fc" class="input-control" style="padding-left:12px;" placeholder="140">
-                          </div>
-                          <div class="input-group">
-                            <label class="input-label" for="tablero-soap-vital-fr">FR (rpm)</label>
-                            <input type="number" id="tablero-soap-vital-fr" class="input-control" style="padding-left:12px;" placeholder="28">
-                          </div>
-                          <div class="input-group">
-                            <label class="input-label" for="tablero-soap-vital-crt">TLLC</label>
-                            <input type="text" id="tablero-soap-vital-crt" class="input-control" style="padding-left:12px;" placeholder="< 2s">
-                          </div>
-                        </div>
-                        <textarea class="soap-textarea" id="tablero-soap-o" style="margin-top:8px;" placeholder="Hallazgos del examen físico, mucosas, hidratación, etc."></textarea>
-                      </div>
-                    </div>
-
-                    <div class="soap-block" style="margin-top:18px;">
-                      <div class="soap-letter">A</div>
-                      <div class="soap-block-body">
-                        <label class="soap-block-label">Assessment <span class="soap-required">*</span></label>
-                        <textarea class="soap-textarea" id="tablero-soap-a" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
-                      </div>
-                    </div>
-
-                    <div class="soap-block" style="margin-top:18px;">
-                      <div class="soap-letter">P</div>
-                      <div class="soap-block-body">
-                        <label class="soap-block-label">Plan <span class="soap-required">*</span></label>
-                        <textarea class="soap-textarea" id="tablero-soap-p" placeholder="Plan terapéutico, procedimientos realizados, seguimiento (fecha próximo control), observaciones"></textarea>
-                      </div>
-                    </div>
-
-                    <div style="margin-top:12px;">
-                      <div class="soap-exam-toggle" id="tablero-soap-exam-toggle" onclick="toggleExamSystems('tablero-soap-exam-toggle', 'tablero-soap-exam-body')">
-                        <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
-                        <span>+ Examen físico por sistema</span>
-                      </div>
-                      <div class="soap-exam-body" id="tablero-soap-exam-body"></div>
-                    </div>
-
-                    <div style="display:flex;justify-content:flex-end;margin-top:20px;">
-                      <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="guardarConsulta('tablero-soap-', 'tablero-soap-exam-body')">
-                        <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="card">
-                    <div class="card-header">
-                      <span class="card-title"><i data-lucide="list-checks" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Lista de problemas</span>
-                      <button class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="toggleTableroNuevoProblema()"><i data-lucide="plus" style="width:12px;height:12px;"></i></button>
-                    </div>
-                    <div id="tablero-problem-list"></div>
-                    <div id="tablero-add-problem-form" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-                      <input type="text" id="tablero-nuevo-problema-texto" class="input-control" style="padding-left:12px;" placeholder="Ej: Otitis externa">
-                      <div style="display:flex;gap:8px;margin-top:8px;">
-                        <button class="btn-secondary" style="flex:1;padding:6px;font-size:12px;" onclick="toggleTableroNuevoProblema()">Cancelar</button>
-                        <button class="btn-primary" style="flex:1;padding:6px;font-size:12px;" onclick="agregarTableroProblema()">Agregar</button>
-                      </div>
-                    </div>
-                  </div>
-                  </div>
-
-                </div>
-              </div>
-
             </div>
           </section>
 
         </div>
 
+      </div>
+
+      <!-- Vista Tablero de trabajo (pantalla completa, workspace de
+           consulta — mismo patrón que Kardex: oculta .consultorio-wrapper,
+           ver abrirTableroTrabajo()/cerrarTableroAConsultorio()). Reemplaza
+           al viejo pane embebido #subtab-tablero. -->
+      <div class="tablero-view" id="tablero-view">
+        <div class="tablero-header">
+          <div class="tablero-header-left">
+            <button class="btn-outline back-btn" onclick="cerrarTableroAConsultorio()">
+              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver
+            </button>
+            <div class="pet-photo-circle-wrap" style="width:56px;height:56px;">
+              <div class="pet-photo-circle" id="tablero-pet-photo" style="width:56px;height:56px;font-size:18px;">?</div>
+            </div>
+            <div>
+              <div class="pet-name-title" id="tablero-pet-name">—</div>
+              <div class="pet-meta-item" id="tablero-pet-meta" style="color:var(--text-2);font-size:12px;">—</div>
+            </div>
+            <div class="role-sim-widget">
+              <div class="role-sim-select-wrap">
+                <i data-lucide="eye" style="width:13px;height:13px;"></i>
+                <span>Viendo como:</span>
+                <select class="role-sim-select" onchange="setSimRole(this.value)">
+                  <option value="admin">Administrador</option>
+                  <option value="medico" selected>Médico Veterinario</option>
+                  <option value="auxiliar">Auxiliar</option>
+                  <option value="ventas">Ventas</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="tablero-header-actions">
+            <button class="btn-outline" style="font-size:12px;padding:7px 12px;" title="Imprimir consulta" onclick="kardexAccionSimple('Imprimir consulta')"><i data-lucide="printer" style="width:13px;height:13px;"></i> Imprimir</button>
+            <button class="btn-outline" style="font-size:12px;padding:7px 12px;" title="Compartir consulta" onclick="kardexAccionSimple('Compartir consulta')"><i data-lucide="share-2" style="width:13px;height:13px;"></i> Compartir</button>
+            <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="guardarConsulta('tablero-soap-', 'tablero-soap-exam-body')">
+              <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
+            </button>
+          </div>
+        </div>
+
+        <div class="tablero-body">
+          <div class="tablero-grid">
+
+            <!-- Columna izquierda: navegación por módulo clínico (acota los
+                 17 del sidebar normal a los 10 relevantes durante una
+                 consulta activa — ver TABLERO_QUICKNAV_MODULOS) -->
+            <div class="tablero-nav-col">
+              <div class="card">
+                <div class="card-header">
+                  <span class="card-title"><i data-lucide="layout-list" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Módulos</span>
+                </div>
+                <nav class="sidebar-menu" id="tablero-nav-list">
+                  <!-- Dinámico por JS — ver renderTableroNavList() -->
+                </nav>
+              </div>
+            </div>
+
+            <!-- Columna central: Registro de consulta (SOAP) -->
+            <div class="tablero-center-col">
+              <div class="card">
+                <div class="card-header">
+                  <span class="card-title"><i data-lucide="stethoscope" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Registro de consulta</span>
+                </div>
+
+                <div class="soap-meta-row">
+                  <div class="input-group">
+                    <label class="input-label" for="tablero-soap-fecha">Fecha y hora de consulta</label>
+                    <input type="datetime-local" id="tablero-soap-fecha" class="input-control" style="padding-left:12px;">
+                  </div>
+                  <div class="input-group">
+                    <label class="input-label" for="tablero-soap-motivo">Motivo de consulta</label>
+                    <select id="tablero-soap-motivo" class="soap-select-control">
+                      <option value="Consulta general">Consulta general</option>
+                      <option value="Urgencia">Urgencia</option>
+                      <option value="Vacunación">Vacunación</option>
+                      <option value="Control">Control</option>
+                      <option value="Revisión">Revisión</option>
+                      <option value="Otro">Otro</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="soap-block" style="margin-top:18px;">
+                  <div class="soap-letter">S</div>
+                  <div class="soap-block-body">
+                    <label class="soap-block-label">Subjetivo</label>
+                    <textarea class="soap-textarea" id="tablero-soap-s" placeholder="Anamnesis, motivo relatado por el propietario, duración de signos, medicamentos administrados en casa"></textarea>
+                  </div>
+                </div>
+
+                <div class="soap-block" style="margin-top:18px;">
+                  <div class="soap-letter">O</div>
+                  <div class="soap-block-body">
+                    <label class="soap-block-label">Objetivo</label>
+                    <div class="tablero-vitals-grid">
+                      <div class="input-group">
+                        <label class="input-label" for="tablero-soap-vital-temp">Temp (°C)</label>
+                        <input type="number" step="0.1" id="tablero-soap-vital-temp" class="input-control" style="padding-left:12px;" placeholder="38.5">
+                      </div>
+                      <div class="input-group">
+                        <label class="input-label" for="tablero-soap-vital-fc">FC (lpm)</label>
+                        <input type="number" id="tablero-soap-vital-fc" class="input-control" style="padding-left:12px;" placeholder="140">
+                      </div>
+                      <div class="input-group">
+                        <label class="input-label" for="tablero-soap-vital-fr">FR (rpm)</label>
+                        <input type="number" id="tablero-soap-vital-fr" class="input-control" style="padding-left:12px;" placeholder="28">
+                      </div>
+                      <div class="input-group">
+                        <label class="input-label" for="tablero-soap-vital-crt">TLLC</label>
+                        <input type="text" id="tablero-soap-vital-crt" class="input-control" style="padding-left:12px;" placeholder="< 2s">
+                      </div>
+                    </div>
+                    <textarea class="soap-textarea" id="tablero-soap-o" style="margin-top:8px;" placeholder="Hallazgos del examen físico, mucosas, hidratación, etc."></textarea>
+                  </div>
+                </div>
+
+                <div class="soap-block" style="margin-top:18px;">
+                  <div class="soap-letter">A</div>
+                  <div class="soap-block-body">
+                    <label class="soap-block-label">Assessment <span class="soap-required">*</span></label>
+                    <textarea class="soap-textarea" id="tablero-soap-a" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
+                  </div>
+                </div>
+
+                <div class="soap-block" style="margin-top:18px;">
+                  <div class="soap-letter">P</div>
+                  <div class="soap-block-body">
+                    <label class="soap-block-label">Plan <span class="soap-required">*</span></label>
+                    <textarea class="soap-textarea" id="tablero-soap-p" placeholder="Plan terapéutico, procedimientos realizados, seguimiento (fecha próximo control), observaciones"></textarea>
+                  </div>
+                </div>
+
+                <div style="margin-top:12px;">
+                  <div class="soap-exam-toggle" id="tablero-soap-exam-toggle" onclick="toggleExamSystems('tablero-soap-exam-toggle', 'tablero-soap-exam-body')">
+                    <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
+                    <span>+ Examen físico por sistema</span>
+                  </div>
+                  <div class="soap-exam-body" id="tablero-soap-exam-body"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Columna derecha: Navegación rápida (detalle del módulo
+                 seleccionado a la izquierda) + Lista de problemas -->
+            <div class="tablero-side-col">
+              <div class="card">
+                <div id="tablero-quicknav-body"></div>
+              </div>
+
+              <div class="card">
+                <div class="card-header">
+                  <span class="card-title"><i data-lucide="list-checks" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Lista de problemas</span>
+                  <button class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="toggleTableroNuevoProblema()"><i data-lucide="plus" style="width:12px;height:12px;"></i></button>
+                </div>
+                <div id="tablero-problem-list"></div>
+                <div id="tablero-add-problem-form" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+                  <input type="text" id="tablero-nuevo-problema-texto" class="input-control" style="padding-left:12px;" placeholder="Ej: Otitis externa">
+                  <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="btn-secondary" style="flex:1;padding:6px;font-size:12px;" onclick="toggleTableroNuevoProblema()">Cancelar</button>
+                    <button class="btn-primary" style="flex:1;padding:6px;font-size:12px;" onclick="agregarTableroProblema()">Agregar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
       </div>
 
       <!-- Vista Kardex / Trazabilidad (pantalla completa, ver Parte 2) -->
@@ -6249,7 +6310,6 @@
     let hospitalizacionSeq = 2; // hosp-1 ya usado en el mock de Luna
 
     let selectedPetKey = null;
-    let tableroModoActivo = false; // true mientras el pane #subtab-tablero está activo (ver switchSubTab)
     let editingMascotaPetKey = null; // petKey en edición dentro del modal "Editar mascota"
 
     // Propietarios — array único de verdad para el buscador de Consultorio,
@@ -6813,7 +6873,6 @@
     // ACCIONES DE SELECCIÓN DE PACIENTE (Simulación)
     function selectPet(petKey) {
       selectedPetKey = petKey;
-      tableroModoActivo = false;
       const data = patientData[petKey];
 
       if (!data) return;
@@ -6904,7 +6963,6 @@
 
     function deselectPet() {
       selectedPetKey = null;
-      tableroModoActivo = false;
       document.getElementById('consultorio-patient-view').classList.remove('active');
       document.getElementById('consultorio-search-view').style.display = 'flex';
     }
@@ -7572,6 +7630,7 @@
       refreshAgendaPersonalCalendarEvents();
       if (document.getElementById('agenda-view-personal').classList.contains('active')) renderAgendaPersonalActiveView();
       if (selectedPetKey) renderCitasPacienteTable(selectedPetKey);
+      if (evento.petKey) refrescarTableroQuicknavSi('citas', evento.petKey);
       const wasEditing = !!agendaEditingId;
       closeAgendaEventoModal();
       showToast(wasEditing ? 'Evento actualizado' : 'Evento creado');
@@ -8506,17 +8565,6 @@
         return; // Módulo sin privilegio de negocio para este rol — bloqueado (ver SUBTAB_ROLE_RESTRICTIONS)
       }
 
-      // Mientras el Tablero de trabajo está activo, un click en el sidebar de
-      // 17 módulos NO navega — solo actualiza la card "Navegación rápida" del
-      // Tablero (ver actualizarNavegacionRapidaTablero). Para navegar de
-      // verdad al módulo completo se usa abrirModuloCompletoDesdeTablero().
-      if (tableroModoActivo && subtabName !== 'tablero') {
-        actualizarNavegacionRapidaTablero(subtabName);
-        return;
-      }
-      tableroModoActivo = (subtabName === 'tablero');
-      actualizarBotonNuevaConsultaHeader();
-
       closeAllRowMenus();
 
       // Modificar items del sidebar
@@ -8548,12 +8596,9 @@
       document.getElementById('subtab-remisiones').classList.remove('active');
       document.getElementById('subtab-mensajes').classList.remove('active');
       document.getElementById('subtab-generic').classList.remove('active');
-      document.getElementById('subtab-tablero').classList.remove('active');
 
       // Mostrar el panel correcto
-      if (subtabName === 'tablero') {
-        document.getElementById('subtab-tablero').classList.add('active');
-      } else if (subtabName === 'historia') {
+      if (subtabName === 'historia') {
         document.getElementById('subtab-historia').classList.add('active');
       } else if (subtabName === 'consultas') {
         document.getElementById('subtab-consultas').classList.add('active');
@@ -8612,24 +8657,6 @@
       }
 
       // Re-inicializar iconos en panel dinámico
-      lucide.createIcons();
-    }
-
-    // Botón principal del header del paciente (id="btn-nueva-consulta"): es
-    // "Nueva Consulta" mientras se navega el perfil/módulos del paciente, y
-    // se convierte en "Finalizar consulta" mientras el Tablero de trabajo
-    // está activo (tableroModoActivo) — un solo botón, nunca los dos a la
-    // vez. Se llama desde switchSubTab() cada vez que cambia ese estado.
-    function actualizarBotonNuevaConsultaHeader() {
-      const btn = document.getElementById('btn-nueva-consulta');
-      if (!btn) return;
-      if (tableroModoActivo) {
-        btn.innerHTML = '<i data-lucide="check-circle-2" style="width: 14px; height: 14px;"></i> Finalizar consulta';
-        btn.onclick = () => guardarConsulta('tablero-soap-', 'tablero-soap-exam-body');
-      } else {
-        btn.innerHTML = '<i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Consulta';
-        btn.onclick = abrirTableroTrabajo;
-      }
       lucide.createIcons();
     }
 
@@ -8741,6 +8768,20 @@
       if (!valid) return;
 
       const data = patientData[selectedPetKey];
+      // selectedPetKey puede quedar apuntando a una mascota que ya no está
+      // en patientData (ej. otra clínica/dispositivo la eliminó o la
+      // trasladó mientras esta pantalla seguía abierta) — mismo caso ya
+      // contemplado en bootstrapSession() (ver su nota junto a
+      // "si patientData se acaba de reconstruir"). Sin este guard,
+      // data.mascotaId truena más abajo con un TypeError críptico en vez de
+      // avisarle al usuario que tiene que volver a buscar la mascota.
+      if (!data) {
+        showToast('Esta mascota ya no está disponible — vuelve a buscarla');
+        if (idPrefix === 'tablero-soap-') cerrarTableroAConsultorio();
+        else closeNuevaConsultaModal();
+        deselectPet();
+        return;
+      }
       const motivo = document.getElementById(idPrefix + 'motivo').value;
       const fechaValue = document.getElementById(idPrefix + 'fecha').value;
       const fechaHoraISO = fechaValue ? new Date(fechaValue).toISOString() : new Date().toISOString();
@@ -8821,7 +8862,7 @@
 
         renderHistoriaTimeline(data);
         if (idPrefix === 'soap-') closeNuevaConsultaModal();
-        tableroModoActivo = false;
+        if (idPrefix === 'tablero-soap-') cerrarTableroAConsultorio();
         switchSubTab('historia');
         showToast('Consulta guardada');
       } catch (err) {
@@ -8837,9 +8878,37 @@
     // principal de captura SOAP (el modal clásico se conserva intacto por si
     // se usa desde otro lugar). Reutiliza EXAM_SYSTEMS/renderExamSystems() y
     // guardarConsulta() con un prefijo de ids distinto ('tablero-soap-').
+    let tableroActiveModulo = null; // key del módulo seleccionado en .tablero-nav-col (ver TABLERO_QUICKNAV_MODULOS)
+
+    function mountTableroHeader(petKey) {
+      const data = patientData[petKey];
+      const photoEl = document.getElementById('tablero-pet-photo');
+      if (data.fotoUrl) {
+        photoEl.innerHTML = `<img src="${data.fotoUrl}" alt="${data.name}">`;
+        photoEl.className = 'pet-photo-circle';
+      } else {
+        photoEl.textContent = data.avatarText;
+        photoEl.className = `pet-photo-circle ${data.avatarClass}`;
+      }
+      document.getElementById('tablero-pet-name').textContent = data.name;
+      document.getElementById('tablero-pet-meta').textContent = `${data.species} · ${data.breed} · Propietario: ${data.owner}`;
+    }
+
+    // Tablero de trabajo — pantalla completa de consulta (mismo patrón que
+    // abrirKardex()/cerrarKardexAConsultorio(): oculta .consultorio-wrapper
+    // en vez de navegar dentro del sidebar de 17).
     function abrirTableroTrabajo() {
       const role = ROLES[currentSimRole];
       if (!role.canNewConsult || !selectedPetKey) return; // Sin privilegio — mismo criterio que el modal clásico
+      // selectedPetKey puede quedar apuntando a una mascota que ya no está
+      // en patientData (ver guard equivalente en guardarConsulta) — evita
+      // abrir un Tablero para una mascota fantasma que luego truena en
+      // cualquier render (mountTableroHeader, renderTableroNavList, etc.).
+      if (!patientData[selectedPetKey]) {
+        showToast('Esta mascota ya no está disponible — vuelve a buscarla');
+        deselectPet();
+        return;
+      }
 
       document.getElementById('tablero-soap-fecha').value = getNowDatetimeLocalValue();
       document.getElementById('tablero-soap-motivo').value = 'Consulta general';
@@ -8859,13 +8928,27 @@
 
       renderTableroProblemList(selectedPetKey);
       document.getElementById('tablero-add-problem-form').style.display = 'none';
+
+      mountTableroHeader(selectedPetKey);
+      renderTableroNavList();
+      tableroActiveModulo = null;
       renderNavegacionRapidaDefault();
 
-      switchSubTab('tablero');
+      document.getElementById('consultorio-patient-view').classList.remove('active');
+      document.querySelector('.consultorio-wrapper').style.display = 'none';
+      document.getElementById('tablero-view').classList.add('active');
+      lucide.createIcons();
+    }
+
+    function cerrarTableroAConsultorio() {
+      document.getElementById('tablero-view').classList.remove('active');
+      document.querySelector('.consultorio-wrapper').style.display = '';
+      document.getElementById('consultorio-patient-view').classList.add('active');
+      tableroActiveModulo = null;
     }
 
     // Contenido por defecto de "Navegación rápida" al abrir el Tablero, antes
-    // de hacer click en cualquier módulo del sidebar de 17.
+    // de hacer click en cualquier módulo del nav izquierdo.
     // Nota genérica por especie (no reclamos clínicos de raza inventados) —
     // igual de honesta que el resto de este prototipo, que es data mock.
     const ESPECIE_INSIGHT = {
@@ -8884,7 +8967,7 @@
     }
 
     function renderNavegacionRapidaDefault() {
-      document.querySelectorAll('.sidebar-item').forEach(item => item.classList.remove('quicknav-selected'));
+      document.querySelectorAll('#tablero-nav-list .sidebar-item').forEach(item => item.classList.remove('active'));
       const data = patientData[selectedPetKey];
       const eventos = EVENTOS_SEGUIMIENTO.filter(e => e.petKey === selectedPetKey && e.estado === 'pendiente');
       const TIPO_EVENTO_LABEL = { vacunacion: 'Próxima vacunación', desparasitacion: 'Próxima desparasitación', control: 'Próximo control', otro: 'Próximo seguimiento' };
@@ -8894,86 +8977,192 @@
         : '';
 
       document.getElementById('tablero-quicknav-body').innerHTML = `
+        <div class="card-header">
+          <span class="card-title"><i data-lucide="zap" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Navegación rápida</span>
+        </div>
         <div class="info-label">Microchip / Código</div>
         <div class="info-value">${data.chip || '—'}</div>
         ${eventosHtml}
-        <p style="font-size:12px;color:var(--text-2);margin-top:4px;">Selecciona un módulo del menú izquierdo para ver su detalle aquí.</p>
+        <p style="font-size:12px;color:var(--text-2);margin-top:4px;">Selecciona un módulo del menú izquierdo para consultar sus registros o cargar uno nuevo.</p>
         ${especieInsightHtml(data)}
       `;
       lucide.createIcons();
     }
 
-    // Se dispara desde switchSubTab() cuando el Tablero está activo y se
-    // clickea un módulo del sidebar de 17 — actualiza esta card en vez de
-    // navegar fuera de la pantalla de consulta.
-    function actualizarNavegacionRapidaTablero(subtabName) {
-      if (!selectedPetKey) return;
-      const data = patientData[selectedPetKey];
+    // Módulos clínicos del nav de .tablero-nav-col — subconjunto de los 17
+    // del sidebar normal, enfocado en lo que se consulta/registra durante
+    // una consulta activa. Cada entrada reutiliza el modal de crear/editar
+    // que ya tiene ese módulo completo (no se duplica lógica de guardado).
+    const TABLERO_NAV_ORDEN = ['vacunaciones', 'desparasitaciones', 'formulas', 'laboratorio', 'imagenes', 'cirugias', 'seguimientos', 'ordenes', 'remisiones', 'citas'];
 
-      document.querySelectorAll('.sidebar-item').forEach(item => {
-        item.classList.toggle('quicknav-selected', item.getAttribute('data-subtab') === subtabName);
-      });
-
-      const item = document.querySelector(`.sidebar-item[data-subtab="${subtabName}"]`);
-      const label = item ? item.querySelector('span').textContent : subtabName;
-      let bodyHtml = '';
-
-      if (subtabName === 'vacunaciones') {
-        const ultima = (data.vacunaciones || [])[0];
-        bodyHtml = ultima
-          ? `<div class="info-label">Última vacuna</div><div class="info-value">${ultima.vacuna} — ${ultima.fecha}</div>` +
-            (ultima.proximaVacunacion ? `<div class="info-label">Próxima vacunación</div><div class="info-value">${ultima.proximaVacunacion}</div>` : '')
-          : `<div class="info-value" style="color:var(--text-2);">Sin vacunaciones registradas.</div>`;
-      } else if (subtabName === 'desparasitaciones') {
-        const ultima = (data.desparasitaciones || [])[0];
-        bodyHtml = ultima
-          ? `<div class="info-label">Última desparasitación</div><div class="info-value">${ultima.tipo} — ${ultima.fecha}</div>` +
-            (ultima.proximoControl ? `<div class="info-label">Próximo control</div><div class="info-value">${ultima.proximoControl}</div>` : '')
-          : `<div class="info-value" style="color:var(--text-2);">Sin desparasitaciones registradas.</div>`;
-      } else if (subtabName === 'laboratorio' || subtabName === 'imagenes') {
-        // Laboratorio/Imágenes ya no usan data.ordenes (ver comentario junto a
-        // ORDENES_TABLE_TARGETS) — su flujo propio guarda en data.examenes.
-        const tipoExamen = subtabName === 'laboratorio' ? 'laboratorio' : 'imagen';
-        const registros = (data.examenes || []).filter(e => e.tipo === tipoExamen);
-        bodyHtml = registros.length
-          ? registros.slice(0, 3).map(e => `
-              <div class="info-label">${e.diagnosticoPresuntivo || (subtabName === 'laboratorio' ? 'Examen de laboratorio' : 'Imagen diagnóstica')}</div>
-              <div class="info-value">${e.fecha} · ${(e.pruebas || []).length} ${subtabName === 'laboratorio' ? 'prueba' : 'imagen'}${(e.pruebas || []).length === 1 ? '' : 's'}</div>
-            `).join('')
-          : `<div class="info-value" style="color:var(--text-2);">Sin exámenes registrados para este módulo.</div>`;
-      } else if (subtabName === 'hospitalizaciones') {
-        const activa = (data.hospitalizaciones || []).find(h => h.estado === 'activa');
-        bodyHtml = activa
-          ? `<div class="info-label">Hospitalización activa</div><div class="info-value">${activa.tipo} — ingreso ${activa.fechaIngreso}</div>`
-          : `<div class="info-value" style="color:var(--text-2);">Sin hospitalizaciones activas.</div>`;
-      } else if (subtabName === 'formulas') {
-        const ultima = (data.formulas || [])[0];
-        bodyHtml = ultima
-          ? `<div class="info-label">Última fórmula</div><div class="info-value">${ultima.diagnostico || '—'} — ${ultima.fecha}</div>`
-          : `<div class="info-value" style="color:var(--text-2);">Sin fórmulas registradas.</div>`;
-      } else {
-        const arrayKeyByModulo = {
-          historia: 'timeline', consultas: 'timeline', cirugias: 'cirugias', ordenes: 'ordenes',
-          peluqueria: 'peluquerias', guarderia: 'guarderias', seguimientos: 'seguimientos',
-          'patient-documentos': 'documentos', remisiones: 'remisiones', mensajes: 'mensajes'
-        };
-        const arrayKey = arrayKeyByModulo[subtabName];
-        const registros = arrayKey ? (data[arrayKey] || []) : null;
-        bodyHtml = registros
-          ? `<div class="info-label">Registros en ${label}</div><div class="info-value">${registros.length}</div>`
-          : `<div class="info-value" style="color:var(--text-2);">Sin resumen rápido disponible para este módulo.</div>`;
+    const TABLERO_QUICKNAV_MODULOS = {
+      vacunaciones: {
+        label: 'Vacunaciones', icon: 'syringe',
+        getRecords: data => (data.vacunaciones || []).map((r, idx) => ({ idx, r })),
+        line: r => r.vacuna,
+        sub: r => `${r.fecha}${r.proximaVacunacion ? ' · Próx: ' + r.proximaVacunacion : ''}`,
+        openCreate: petKey => openVacunacionModal('create', petKey),
+        openEdit: (petKey, idx) => openVacunacionModal('edit', petKey, idx)
+      },
+      desparasitaciones: {
+        label: 'Desparasitaciones', icon: 'shield-check',
+        getRecords: data => (data.desparasitaciones || []).map((r, idx) => ({ idx, r })),
+        line: r => r.tipo,
+        sub: r => `${r.fecha}${r.proximoControl ? ' · Próx: ' + r.proximoControl : ''}`,
+        openCreate: petKey => openDesparasitacionModal('create', petKey),
+        openEdit: (petKey, idx) => openDesparasitacionModal('edit', petKey, idx)
+      },
+      formulas: {
+        label: 'Fórmulas médicas', icon: 'file-text',
+        getRecords: data => (data.formulas || []).map((r, idx) => ({ idx, r })),
+        line: r => r.diagnostico || 'Fórmula médica',
+        sub: r => r.fecha,
+        openCreate: petKey => openFormulaModal('create', petKey),
+        openEdit: (petKey, idx) => openFormulaModal('edit', petKey, idx)
+      },
+      laboratorio: {
+        label: 'Exámenes de laboratorio', icon: 'test-tube-2',
+        getRecords: data => (data.examenes || []).map((r, idx) => ({ idx, r })).filter(x => x.r.tipo === 'laboratorio'),
+        line: r => r.diagnosticoPresuntivo || 'Examen de laboratorio',
+        sub: r => `${r.fecha} · ${(r.pruebas || []).length} prueba${(r.pruebas || []).length === 1 ? '' : 's'}`,
+        openCreate: petKey => openExamenModal('laboratorio', 'create', petKey),
+        openEdit: (petKey, idx) => openExamenModal('laboratorio', 'edit', petKey, idx)
+      },
+      imagenes: {
+        label: 'Imágenes diagnósticas', icon: 'image',
+        getRecords: data => (data.examenes || []).map((r, idx) => ({ idx, r })).filter(x => x.r.tipo === 'imagen'),
+        line: r => r.diagnosticoPresuntivo || 'Imagen diagnóstica',
+        sub: r => `${r.fecha} · ${(r.pruebas || []).length} imagen${(r.pruebas || []).length === 1 ? '' : 'es'}`,
+        openCreate: petKey => openExamenModal('imagen', 'create', petKey),
+        openEdit: (petKey, idx) => openExamenModal('imagen', 'edit', petKey, idx)
+      },
+      cirugias: {
+        label: 'Cirugías/procedimientos', icon: 'scissors',
+        getRecords: data => (data.cirugias || []).map((r, idx) => ({ idx, r })),
+        line: r => r.tipo,
+        sub: r => `${r.fecha} · ${r.hora}`,
+        openCreate: petKey => openCirugiaModal('create', petKey),
+        openEdit: (petKey, idx) => openCirugiaModal('edit', petKey, idx)
+      },
+      ordenes: {
+        label: 'Órdenes', icon: 'clipboard-list',
+        getRecords: data => (data.ordenes || []).map((r, idx) => ({ idx, r })),
+        line: r => r.tipoLabel,
+        sub: r => `${r.fecha} · ${r.detalle}`,
+        openCreate: petKey => openOrdenModal('create', petKey),
+        openEdit: (petKey, idx) => openOrdenModal('edit', petKey, idx)
+      },
+      seguimientos: {
+        label: 'Seguimientos', icon: 'phone-call',
+        getRecords: data => (data.seguimientos || []).map((r, idx) => ({ idx, r })),
+        line: r => r.tipo,
+        sub: r => `${r.fecha}${r.motivo ? ' · ' + r.motivo : ''}`,
+        openCreate: petKey => openSeguimientoFormModal('create', petKey),
+        openEdit: (petKey, idx) => openSeguimientoFormModal('edit', petKey, idx)
+      },
+      remisiones: {
+        label: 'Remisiones', icon: 'external-link',
+        getRecords: data => (data.remisiones || []).map((r, idx) => ({ idx, r })),
+        line: r => r.centroDestino,
+        sub: r => `${r.fecha} · ${r.profesional}`,
+        openCreate: petKey => openRemisionModal('create', petKey),
+        openEdit: (petKey, idx) => openRemisionModal('edit', petKey, idx)
+      },
+      citas: {
+        label: 'Citas', icon: 'clock',
+        getRecords: (data, petKey) => AGENDA_EVENTOS.filter(e => e.petKey === petKey)
+          .sort((a, b) => b.startISO.localeCompare(a.startISO))
+          .map(r => ({ idx: r.id, r })),
+        line: r => AGENDA_TIPO_LABELS[r.tipo] || r.tipo,
+        sub: r => formatearFechaHoraAgenda(r),
+        openCreate: () => openCitaModalDesdePaciente(),
+        openEdit: (petKey, id) => abrirEventoAgendaPorId(id)
       }
+    };
 
-      document.getElementById('tablero-quicknav-body').innerHTML = bodyHtml +
-        `<button class="btn-outline" style="margin-top:10px;width:100%;padding:7px;font-size:12px;" onclick="abrirModuloCompletoDesdeTablero('${subtabName}')">Abrir ${label} completo <i data-lucide="arrow-right" style="width:12px;height:12px;"></i></button>` +
-        especieInsightHtml(data);
+    function renderTableroNavList() {
+      const data = patientData[selectedPetKey];
+      document.getElementById('tablero-nav-list').innerHTML = TABLERO_NAV_ORDEN.map(key => {
+        const cfg = TABLERO_QUICKNAV_MODULOS[key];
+        const count = cfg.getRecords(data, selectedPetKey).length;
+        return `
+          <div class="sidebar-item" data-tablero-modulo="${key}" onclick="switchTableroModulo('${key}')">
+            <div class="sidebar-label-group">
+              <i data-lucide="${cfg.icon}" class="sidebar-icon"></i>
+              <span>${cfg.label}</span>
+            </div>
+            <span class="sidebar-counter">${count}</span>
+          </div>
+        `;
+      }).join('');
       lucide.createIcons();
     }
 
-    // Navegación real (sale del modo Tablero) desde el link "Abrir X completo"
+    // Click en un módulo del nav izquierdo del Tablero — actualiza la card
+    // "Navegación rápida" con la mini-lista de registros de ese módulo (ver
+    // TABLERO_QUICKNAV_MODULOS), sin salir de la pantalla de consulta.
+    function switchTableroModulo(key) {
+      tableroActiveModulo = key;
+      document.querySelectorAll('#tablero-nav-list .sidebar-item').forEach(item => {
+        item.classList.toggle('active', item.getAttribute('data-tablero-modulo') === key);
+      });
+      renderTableroModuloDetalle(key);
+    }
+
+    function renderTableroModuloDetalle(key) {
+      if (!selectedPetKey) return;
+      const cfg = TABLERO_QUICKNAV_MODULOS[key];
+      const data = patientData[selectedPetKey];
+      const registros = cfg.getRecords(data, selectedPetKey);
+
+      const listHtml = registros.length
+        ? registros.slice(0, 6).map(({ idx, r }) => `
+            <div class="tablero-quicknav-record" onclick="abrirTableroRegistro('${key}', '${idx}')">
+              <div>
+                <div class="tablero-quicknav-record-title">${cfg.line(r)}</div>
+                <div class="tablero-quicknav-record-sub">${cfg.sub(r)}</div>
+              </div>
+              <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--text-2);"></i>
+            </div>
+          `).join('')
+        : `<div class="info-value" style="color:var(--text-2);">Sin registros de ${cfg.label.toLowerCase()}.</div>`;
+
+      document.getElementById('tablero-quicknav-body').innerHTML = `
+        <div class="tablero-quicknav-header-row">
+          <span class="tablero-quicknav-title"><i data-lucide="${cfg.icon}" style="width:14px;height:14px;color:var(--clinic-accent);"></i> ${cfg.label}</span>
+          <button class="btn-outline" style="padding:5px 8px;font-size:11px;" onclick="abrirTableroRegistroNuevo('${key}')"><i data-lucide="plus" style="width:12px;height:12px;"></i> Registrar</button>
+        </div>
+        ${listHtml}
+        <button class="btn-outline" style="margin-top:10px;width:100%;padding:7px;font-size:12px;" onclick="abrirModuloCompletoDesdeTablero('${key}')">Ver ${cfg.label.toLowerCase()} completo <i data-lucide="arrow-right" style="width:12px;height:12px;"></i></button>
+        ${especieInsightHtml(data)}
+      `;
+      lucide.createIcons();
+    }
+
+    function abrirTableroRegistroNuevo(key) {
+      TABLERO_QUICKNAV_MODULOS[key].openCreate(selectedPetKey);
+    }
+
+    function abrirTableroRegistro(key, idOrIdx) {
+      const idx = key === 'citas' ? idOrIdx : parseInt(idOrIdx, 10);
+      TABLERO_QUICKNAV_MODULOS[key].openEdit(selectedPetKey, idx);
+    }
+
+    // Refresca la mini-lista de "Navegación rápida" (si está mostrando justo
+    // este módulo) y el contador de su fila en el nav — se llama desde cada
+    // guardarX() relevante, mismo criterio que el ya existente
+    // "if (selectedPetKey === petKey) renderHistoriaTimeline(data)".
+    function refrescarTableroQuicknavSi(key, petKey) {
+      if (selectedPetKey !== petKey || !document.getElementById('tablero-view').classList.contains('active')) return;
+      if (tableroActiveModulo === key) renderTableroModuloDetalle(key);
+      const cfg = TABLERO_QUICKNAV_MODULOS[key];
+      const counterEl = document.querySelector(`#tablero-nav-list .sidebar-item[data-tablero-modulo="${key}"] .sidebar-counter`);
+      if (counterEl) counterEl.textContent = cfg.getRecords(patientData[petKey], petKey).length;
+    }
+
+    // Navegación real (sale del Tablero) desde el link "Ver X completo"
     function abrirModuloCompletoDesdeTablero(subtabName) {
-      tableroModoActivo = false;
-      document.querySelectorAll('.sidebar-item').forEach(item => item.classList.remove('quicknav-selected'));
+      cerrarTableroAConsultorio();
       switchSubTab(subtabName);
     }
 
@@ -10036,6 +10225,7 @@
         }
 
         renderFormulasTable(petKey);
+        refrescarTableroQuicknavSi('formulas', petKey);
         closeFormulaModal();
         showToast(isEdit ? 'Fórmula médica actualizada' : 'Fórmula médica guardada');
       } catch (err) {
@@ -10203,6 +10393,7 @@
       }
 
       renderVacunacionesTable(petKey);
+      refrescarTableroQuicknavSi('vacunaciones', petKey);
       closeVacunacionModal();
       showToast(isEdit ? 'Vacunación actualizada' : 'Vacunación registrada');
       if (!isEdit && record.proximaVacunacionISO) {
@@ -10391,6 +10582,7 @@
       }
 
       renderDesparasitacionesTable(petKey);
+      refrescarTableroQuicknavSi('desparasitaciones', petKey);
       closeDesparasitacionModal();
       showToast(isEdit ? 'Desparasitación actualizada' : 'Desparasitación registrada');
       if (!isEdit && record.proximoControlISO) {
@@ -10947,6 +11139,7 @@
       }
 
       renderRemisionesTable(petKey);
+      refrescarTableroQuicknavSi('remisiones', petKey);
       closeRemisionModal();
       showToast(isEdit ? 'Remisión actualizada' : 'Remisión registrada');
     }
@@ -11369,6 +11562,7 @@
       }
 
       renderCirugiasTable(petKey);
+      refrescarTableroQuicknavSi('cirugias', petKey);
       closeCirugiaModal();
       showToast(isEdit ? 'Procedimiento actualizado' : 'Procedimiento registrado');
     }
@@ -11760,6 +11954,7 @@
       }
 
       renderOrdenesTable(petKey);
+      refrescarTableroQuicknavSi('ordenes', petKey);
       closeOrdenModal();
       showToast(isEdit ? 'Orden actualizada' : (nuevasOrdenes.length > 1 ? 'Órdenes registradas' : 'Orden registrada'));
     }
@@ -12421,6 +12616,7 @@
         }
 
         renderExamenesTable(petKey);
+        refrescarTableroQuicknavSi(tipo === 'imagen' ? 'imagenes' : 'laboratorio', petKey);
         closeExamenModal();
         showToast(isEdit ? 'Registro actualizado' : 'Registro guardado');
       } catch (err) {
@@ -13505,6 +13701,7 @@
 
       closeSeguimientoFormModal();
       renderSeguimientosCentralTable(petKey);
+      refrescarTableroQuicknavSi('seguimientos', petKey);
       if (kardexContext && kardexContext.petKey === petKey) {
         renderSeguimientosTable();
         renderKardexTrazabilidad();
