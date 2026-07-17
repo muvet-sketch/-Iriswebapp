@@ -6339,14 +6339,50 @@
               </span>
             </td>
             <td style="text-align: right;">
-              <button class="btn-select-row" onclick="event.stopPropagation(); abrirPerfilPropietario('${p.id}')">
-                Ver perfil <i data-lucide="arrow-right" style="width: 14px; height: 14px;"></i>
-              </button>
+              <div style="display:flex; gap:2px; justify-content:flex-end;">
+                <button class="row-actions-btn" title="Perfil Tutor" onclick="event.stopPropagation(); abrirPerfilPropietario('${p.id}')">
+                  <i data-lucide="user" style="width:16px;height:16px;"></i>
+                </button>
+                <button class="row-actions-btn" title="Historia clínica paciente" onclick="event.stopPropagation(); irAHistoriaClinicaDesdeBusqueda('${p.id}')">
+                  <i data-lucide="stethoscope" style="width:16px;height:16px;"></i>
+                </button>
+                <button class="row-actions-btn propietarios-consulta-btn" title="Iniciar consulta" onclick="event.stopPropagation(); iniciarConsultaDesdeBusqueda('${p.id}')">
+                  <i data-lucide="clipboard-plus" style="width:16px;height:16px;"></i>
+                </button>
+                <button class="row-actions-btn" title="Facturación / estado de cuenta" onclick="event.stopPropagation(); abrirFacturacionDesdeBusqueda()">
+                  <i data-lucide="credit-card" style="width:16px;height:16px;"></i>
+                </button>
+              </div>
             </td>
           </tr>
         `;
       }).join('');
       lucide.createIcons();
+    }
+
+    // Acciones de la columna ACCIONES del buscador de propietarios (Parte
+    // B.1) — reutilizan getMascotasDePropietario()/irAHistoriaDesdePerfil()/
+    // abrirTableroTrabajo() en vez de duplicar su lógica. Si el propietario
+    // tiene varias mascotas se usa la primera (mismo criterio simplificado
+    // que el resto del buscador, que no distingue mascota antes de entrar
+    // al perfil de Historia).
+    function irAHistoriaClinicaDesdeBusqueda(propietarioId) {
+      const mascotas = getMascotasDePropietario(propietarioId);
+      if (!mascotas.length) { showToast('Este propietario no tiene mascotas registradas'); return; }
+      irAHistoriaDesdePerfil(mascotas[0][0]);
+    }
+
+    function iniciarConsultaDesdeBusqueda(propietarioId) {
+      if (!ROLES[currentSimRole].canNewConsult) return; // botón ya oculto para este rol vía applySimRole()
+      const mascotas = getMascotasDePropietario(propietarioId);
+      if (!mascotas.length) { showToast('Este propietario no tiene mascotas registradas'); return; }
+      document.querySelector('.nav-tabs-bar .tab-btn[data-tab="consultorio"]').click();
+      selectPet(mascotas[0][0]);
+      abrirTableroTrabajo();
+    }
+
+    function abrirFacturacionDesdeBusqueda() {
+      showToast('Facturación / estado de cuenta disponible próximamente');
     }
 
     // ── MÓDULO: AGENDA (FullCalendar) ──────────────────────────────
@@ -6627,6 +6663,12 @@
       // Botón "+ Nueva Consulta"
       const btnNueva = document.getElementById('btn-nueva-consulta');
       if (btnNueva) btnNueva.style.display = role.canNewConsult ? 'inline-flex' : 'none';
+
+      // Botón "Iniciar consulta" en ACCIONES del buscador de propietarios —
+      // mismo privilegio que "+ Nueva Consulta"
+      document.querySelectorAll('.propietarios-consulta-btn').forEach(btn => {
+        btn.style.display = role.canNewConsult ? 'flex' : 'none';
+      });
 
       // Botones de creación/registro dentro de cada módulo (modo solo-lectura)
       document.querySelectorAll('.module-create-btn').forEach(btn => {
