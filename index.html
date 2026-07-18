@@ -1501,6 +1501,27 @@
       background-color: var(--border);
     }
 
+    /* Popover de datos del propietario (hover = vista rápida, click = fija
+       con botones de copiar) — disparado desde #pet-profile-owner. */
+    .owner-popover-wrap { position: relative; }
+    .owner-popover-trigger:hover { color: var(--clinic-accent); }
+    .owner-popover {
+      position: absolute; top: calc(100% + 8px); left: 0; min-width: 240px;
+      background-color: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      box-shadow: var(--shadow-lg); z-index: 200; display: none; padding: 12px 14px;
+      animation: slideDown 0.15s ease-out;
+    }
+    .owner-popover.show { display: block; }
+    .owner-popover-header {
+      font-size: 13px; font-weight: 700; color: var(--text-1); margin-bottom: 8px;
+      padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+    .owner-popover-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; }
+    .owner-popover-row-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .owner-popover-label { font-size: 10px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.4px; }
+    .owner-popover-value { font-size: 12.5px; color: var(--text-1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .owner-popover-profile-btn { display: flex; width: 100%; justify-content: center; margin-top: 8px; padding: 6px 10px; font-size: 12px; }
+
     .pet-header-right {
       display: flex;
       align-items: center;
@@ -1677,6 +1698,7 @@
     }
 
     .trend-up { color: var(--success); }
+    .trend-down { color: var(--danger); }
     .trend-neutral { color: var(--text-2); }
 
     .dashboard-center-grid {
@@ -2339,16 +2361,17 @@
 
     /* Tabs dentro de un modal (clon de .kardex-tabs adaptado a .modal-card,
        sin el padding/flex de pantalla completa) — usado por el modal de
-       Producto/servicio (General/Precio) y por Configuración de
-       facturación (Siigo/Facturación POS). */
-    .prod-modal-tabs, .factconfig-tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-    .prod-modal-tab-btn, .factconfig-tab-btn {
+       Producto/servicio (General/Precio), por Configuración de
+       facturación (Siigo/Facturación POS) y por Facturación del propietario
+       (Estado de cuenta/Facturas/Cotizaciones). */
+    .prod-modal-tabs, .factconfig-tabs, .facturacion-tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .prod-modal-tab-btn, .factconfig-tab-btn, .facturacion-tab-btn {
       background: none; border: none; padding: 10px 2px; font-size: 13px; font-weight: 600;
       color: var(--text-2); cursor: pointer; border-bottom: 2px solid transparent; transition: var(--transition); font-family: inherit;
     }
-    .prod-modal-tab-btn.active, .factconfig-tab-btn.active { color: var(--clinic-accent); border-bottom-color: var(--clinic-accent); }
-    .prod-modal-tab-pane, .factconfig-tab-pane { display: none; }
-    .prod-modal-tab-pane.active, .factconfig-tab-pane.active { display: block; }
+    .prod-modal-tab-btn.active, .factconfig-tab-btn.active, .facturacion-tab-btn.active { color: var(--clinic-accent); border-bottom-color: var(--clinic-accent); }
+    .prod-modal-tab-pane, .factconfig-tab-pane, .facturacion-tab-pane { display: none; }
+    .prod-modal-tab-pane.active, .factconfig-tab-pane.active, .facturacion-tab-pane.active { display: block; }
 
     .kardex-accordion-item { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; background-color: var(--surface); }
     .kardex-day-header {
@@ -2754,6 +2777,66 @@
     .ventas-compare-bar-val { width: 130px; text-align: right; font-weight: 700; flex-shrink: 0; }
 
     .ventas-empty-note { font-size: 12.5px; color: var(--text-2); padding: 14px 2px; }
+
+    .ventas-alert-banner {
+      display: flex; align-items: center; gap: 10px; background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35); color: #92400E; border-radius: var(--radius);
+      padding: 10px 14px; font-size: 12.5px; font-weight: 600;
+    }
+    .ventas-alert-banner i { flex-shrink: 0; color: var(--warning); }
+
+    /* Split chart + table dentro de una misma tarjeta (Facturación por
+       categoría, Top 10 por producto/servicio) */
+    .ventas-split-chart-table { display: flex; gap: 22px; align-items: flex-start; }
+    .ventas-split-chart-table > .ventas-split-chart { flex: 0 0 34%; min-width: 220px; }
+    .ventas-split-chart-table > .ventas-split-table { flex: 1; min-width: 0; overflow-x: auto; }
+    @media (max-width: 980px) { .ventas-split-chart-table { flex-direction: column; } .ventas-split-chart-table > .ventas-split-chart { flex: 1 1 auto; width: 100%; } }
+
+    /* Donut chart (SVG stroke-dasharray) + leyenda */
+    .ventas-donut-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .ventas-donut-svg { width: 100%; max-width: 170px; height: auto; }
+    .ventas-donut-legend { display: flex; flex-direction: column; gap: 7px; width: 100%; }
+    .ventas-donut-legend-item {
+      display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-1);
+    }
+    .ventas-donut-legend-item b { margin-left: auto; color: var(--text-2); font-weight: 700; }
+    .ventas-donut-legend-swatch { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+    /* Lollipop / barras horizontales (Top 10) */
+    .ventas-lollipop-chart { display: flex; flex-direction: column; gap: 10px; }
+    .ventas-lollipop-row { display: flex; align-items: center; gap: 8px; }
+    .ventas-lollipop-label {
+      width: 40%; flex-shrink: 0; font-size: 11.5px; color: var(--text-2);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ventas-lollipop-track { flex: 1; height: 8px; background: #EEF2F6; border-radius: 999px; overflow: hidden; min-width: 30px; }
+    .ventas-lollipop-fill { height: 100%; background: var(--clinic-accent); border-radius: 999px; }
+    .ventas-lollipop-value { font-size: 11.5px; font-weight: 700; color: var(--text-1); flex-shrink: 0; min-width: 50px; text-align: right; }
+
+    /* Comparación Actual vs Anterior (crecimiento por categoría) */
+    .ventas-growth-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+    .ventas-growth-label { width: 150px; flex-shrink: 0; color: var(--text-2); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ventas-growth-bars { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+    .ventas-growth-track { height: 8px; background: #EEF2F6; border-radius: 999px; overflow: hidden; }
+    .ventas-growth-fill-anterior { height: 100%; background: #CBD5E1; border-radius: 999px; }
+    .ventas-growth-fill-actual { height: 100%; background: var(--clinic-accent); border-radius: 999px; }
+    .ventas-growth-pct { width: 70px; flex-shrink: 0; text-align: right; font-weight: 700; }
+
+    /* Tendencia temporal (línea + área SVG) */
+    .ventas-trend-toolbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+    .ventas-trend-chart-wrap { position: relative; height: 210px; width: 100%; }
+    .ventas-trend-svg { width: 100%; height: 100%; display: block; }
+    .ventas-trend-dot {
+      position: absolute; width: 7px; height: 7px; background: var(--clinic-accent);
+      border: 2px solid var(--surface); border-radius: 50%; transform: translate(-50%, -50%);
+      box-shadow: var(--shadow-sm); cursor: pointer; transition: var(--transition);
+    }
+    .ventas-trend-dot:hover { width: 10px; height: 10px; }
+    .ventas-trend-labels { position: relative; height: 18px; margin-top: 6px; }
+    .ventas-trend-label { position: absolute; transform: translateX(-50%); font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
+
+    .ventas-mini-list { padding-left: 18px; font-size: 13px; color: var(--text-1); display: flex; flex-direction: column; gap: 6px; margin: 0; }
+    .ventas-mini-list li span { color: var(--text-2); font-size: 12px; }
 
     .ventas-pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 10px; }
     .ventas-pagination-btn {
@@ -3689,10 +3772,8 @@
             <span class="stat-label">Consultas Hoy</span>
             <i data-lucide="stethoscope" class="stat-icon" style="width: 18px; height: 18px;"></i>
           </div>
-          <span class="stat-value">12</span>
-          <span class="stat-trend trend-up">
-            <i data-lucide="trending-up" style="width: 12px; height: 12px;"></i> +3 desde ayer
-          </span>
+          <span class="stat-value" id="dash-stat-consultas-valor">0</span>
+          <span class="stat-trend trend-neutral" id="dash-stat-consultas-trend"></span>
         </div>
 
         <div class="stat-card">
@@ -3700,10 +3781,8 @@
             <span class="stat-label">Ingresos Hoy</span>
             <i data-lucide="dollar-sign" class="stat-icon" style="width: 18px; height: 18px;"></i>
           </div>
-          <span class="stat-value">$485.000</span>
-          <span class="stat-trend trend-up">
-            <i data-lucide="trending-up" style="width: 12px; height: 12px;"></i> +$120.000 vs ayer
-          </span>
+          <span class="stat-value" id="dash-stat-ingresos-valor">$0</span>
+          <span class="stat-trend trend-neutral" id="dash-stat-ingresos-trend"></span>
         </div>
 
         <div class="stat-card">
@@ -3711,10 +3790,8 @@
             <span class="stat-label">Mascotas Registradas</span>
             <i data-lucide="cat" class="stat-icon" style="width: 18px; height: 18px;"></i>
           </div>
-          <span class="stat-value">128</span>
-          <span class="stat-trend trend-neutral">
-            <i data-lucide="plus" style="width: 12px; height: 12px;"></i> 15 nuevas este mes
-          </span>
+          <span class="stat-value" id="dash-stat-mascotas-valor">0</span>
+          <span class="stat-trend trend-neutral" id="dash-stat-mascotas-trend"></span>
         </div>
 
         <div class="stat-card">
@@ -3722,10 +3799,8 @@
             <span class="stat-label">Médicos Activos</span>
             <i data-lucide="users" class="stat-icon" style="width: 18px; height: 18px;"></i>
           </div>
-          <span class="stat-value">4</span>
-          <span class="stat-trend trend-neutral">
-            <i data-lucide="info" style="width: 12px; height: 12px;"></i> 1 inactivo
-          </span>
+          <span class="stat-value" id="dash-stat-medicos-valor">0</span>
+          <span class="stat-trend trend-neutral" id="dash-stat-medicos-trend"></span>
         </div>
       </section>
 
@@ -3738,40 +3813,8 @@
             </span>
           </div>
           <div class="chart-container">
-            <div class="chart-bars-row">
-              <div class="chart-bar-wrapper">
-                <span class="chart-tooltip">85 consultas</span>
-                <div class="chart-bar" style="height: 53%;"></div>
-              </div>
-              <div class="chart-bar-wrapper">
-                <span class="chart-tooltip">110 consultas</span>
-                <div class="chart-bar" style="height: 68%;"></div>
-              </div>
-              <div class="chart-bar-wrapper">
-                <span class="chart-tooltip">95 consultas</span>
-                <div class="chart-bar" style="height: 59%;"></div>
-              </div>
-              <div class="chart-bar-wrapper">
-                <span class="chart-tooltip">130 consultas</span>
-                <div class="chart-bar" style="height: 81%;"></div>
-              </div>
-              <div class="chart-bar-wrapper">
-                <span class="chart-tooltip">145 consultas</span>
-                <div class="chart-bar" style="height: 90%;"></div>
-              </div>
-              <div class="chart-bar-wrapper">
-                <span class="chart-tooltip">160 consultas</span>
-                <div class="chart-bar" style="height: 100%;"></div>
-              </div>
-            </div>
-            <div class="chart-labels-row">
-              <span class="chart-label">Feb</span>
-              <span class="chart-label">Mar</span>
-              <span class="chart-label">Abr</span>
-              <span class="chart-label">May</span>
-              <span class="chart-label">Jun</span>
-              <span class="chart-label">Jul</span>
-            </div>
+            <div class="chart-bars-row" id="dash-chart-bars"></div>
+            <div class="chart-labels-row" id="dash-chart-labels"></div>
           </div>
         </div>
 
@@ -3780,7 +3823,7 @@
             <span class="card-title">
               <i data-lucide="clipboard-list" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Últimas consultas
             </span>
-            <span style="font-size: 11px; font-weight: 500; color: var(--text-2);">Actualizado hace 1 min</span>
+            <span style="font-size: 11px; font-weight: 500; color: var(--text-2);" id="dash-consultas-updated">—</span>
           </div>
           <div class="table-container">
             <table class="dashboard-table">
@@ -3793,67 +3836,8 @@
                   <th>Estado</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr>
-                  <td>
-                    <div class="mascota-cell">
-                      <div class="mascota-avatar"><i data-lucide="dog" style="width: 14px; height: 14px;"></i></div>
-                      <div>
-                        <strong style="font-weight: 600;">Lucas</strong>
-                        <span class="mascota-specie">(Canino)</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td>Ana Martínez</td>
-                  <td>Dr. Ríos</td>
-                  <td>Hoy 14:30</td>
-                  <td><span class="status-badge status-badge-completado">Completada</span></td>
-                </tr>
-                <tr>
-                  <td>
-                    <div class="mascota-cell">
-                      <div class="mascota-avatar"><i data-lucide="cat" style="width: 14px; height: 14px;"></i></div>
-                      <div>
-                        <strong style="font-weight: 600;">Mina</strong>
-                        <span class="mascota-specie">(Felino)</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td>Jorge López</td>
-                  <td>Dra. Sarmiento</td>
-                  <td>Hoy 13:15</td>
-                  <td><span class="status-badge status-badge-completado">Completada</span></td>
-                </tr>
-                <tr>
-                  <td>
-                    <div class="mascota-cell">
-                      <div class="mascota-avatar"><i data-lucide="dog" style="width: 14px; height: 14px;"></i></div>
-                      <div>
-                        <strong style="font-weight: 600;">Rocky</strong>
-                        <span class="mascota-specie">(Canino)</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td>María García</td>
-                  <td>Dr. Ríos</td>
-                  <td>Hoy 12:00</td>
-                  <td><span class="status-badge status-badge-pendiente">En proceso</span></td>
-                </tr>
-                <tr>
-                  <td>
-                    <div class="mascota-cell">
-                      <div class="mascota-avatar"><i data-lucide="dog" style="width: 14px; height: 14px;"></i></div>
-                      <div>
-                        <strong style="font-weight: 600;">Toby</strong>
-                        <span class="mascota-specie">(Canino)</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td>Daniela Sánchez</td>
-                  <td>Dra. Sarmiento</td>
-                  <td>Hoy 11:30</td>
-                  <td><span class="status-badge status-badge-borrador">Borrador</span></td>
-                </tr>
+              <tbody id="dash-ultimas-consultas-body">
+                <tr><td colspan="5" style="text-align:center;color:var(--text-2);">Sin consultas registradas</td></tr>
               </tbody>
             </table>
           </div>
@@ -4220,7 +4204,14 @@
                     <div class="pet-meta-bullet"></div>
                     <div class="pet-meta-item">Peso: <span id="pet-profile-weight" style="margin-left: 2px;">4.2 kg</span></div>
                     <div class="pet-meta-bullet"></div>
-                    <div class="pet-meta-item">Propietario: <span id="pet-profile-owner" style="margin-left: 4px; font-weight: 500; text-decoration: underline;">Carlos Mendoza</span></div>
+                    <div class="pet-meta-item owner-popover-wrap" id="pet-owner-popover-wrap" onmouseenter="showOwnerPopover()" onmouseleave="hideOwnerPopoverIfNotPinned()">
+                      Propietario:
+                      <span id="pet-profile-owner" class="owner-popover-trigger" style="margin-left: 4px; font-weight: 500; text-decoration: underline; cursor: pointer;" onclick="event.stopPropagation(); toggleOwnerPopoverPin()">Carlos Mendoza</span>
+                      <button class="row-actions-btn" title="Estado de cuenta / Facturación" onclick="event.stopPropagation(); abrirFacturacionDesdeHistoria()">
+                        <i data-lucide="credit-card" style="width: 14px; height: 14px;"></i>
+                      </button>
+                      <div class="owner-popover" id="pet-owner-popover"></div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -5147,45 +5138,99 @@
               </div>
             </div>
 
+            <div class="ventas-alert-banner"><i data-lucide="alert-triangle" style="width:15px;height:15px;"></i> El total de ventas no incluye notas de crédito.</div>
             <div class="ventas-kpi-grid" id="ventas-kpi-grid"></div>
 
             <div class="card">
               <div class="card-header"><span class="card-title"><i data-lucide="pie-chart" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Facturación por categoría</span></div>
-              <table class="results-table">
-                <thead><tr><th>Categoría</th><th>Ventas</th><th>% Participación</th><th>Unidades</th><th>Margen bruto</th><th>Margen %</th></tr></thead>
-                <tbody id="ventas-tabla-categorias"></tbody>
-              </table>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-chart" id="ventas-donut-categorias"></div>
+                <div class="ventas-split-table">
+                  <table class="results-table">
+                    <thead><tr><th>Categoría</th><th>Ventas</th><th>% Participación</th><th>Unidades</th><th>Margen bruto</th><th>Margen %</th></tr></thead>
+                    <tbody id="ventas-tabla-categorias"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><span class="card-title"><i data-lucide="trending-up" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Categorías con mayor crecimiento</span></div>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-table" id="ventas-chart-crecimiento" style="flex:0 0 46%;"></div>
+                <div class="ventas-split-table">
+                  <table class="results-table">
+                    <thead><tr><th>Categoría</th><th>Actual</th><th>Anterior</th><th>Crecimiento</th></tr></thead>
+                    <tbody id="ventas-tabla-crecimiento"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title"><i data-lucide="activity" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Tendencias temporales</span>
+              </div>
+              <div class="ventas-trend-toolbar">
+                <div class="input-group" style="max-width:160px;">
+                  <label class="input-label" for="ventas-tendencia-agrupar">Agrupar por</label>
+                  <select id="ventas-tendencia-agrupar" class="soap-select-control" onchange="cambiarAgrupacionTendenciaVentas(this.value)">
+                    <option value="dia">Día</option>
+                    <option value="semana">Semana</option>
+                    <option value="mes">Mes</option>
+                  </select>
+                </div>
+              </div>
+              <div id="ventas-chart-tendencia"></div>
             </div>
 
             <div class="ventas-section-title">Por producto y servicio</div>
-            <div class="ventas-grid-2">
-              <div class="card">
-                <div class="card-header"><span class="card-title">Top 10 Productos Más Vendidos (por ingresos)</span></div>
-                <table class="results-table">
-                  <thead><tr><th>Producto</th><th>Ingresos</th><th>Unidades</th><th>Precio promedio</th><th>Margen %</th></tr></thead>
-                  <tbody id="ventas-tabla-top-productos-ingresos"></tbody>
-                </table>
+            <div class="card">
+              <div class="card-header"><span class="card-title">Top 10 Productos Más Vendidos (por ingresos)</span></div>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-chart" id="ventas-chart-top-productos-ingresos"></div>
+                <div class="ventas-split-table">
+                  <table class="results-table">
+                    <thead><tr><th>Producto</th><th>Ingresos</th><th>Unidades</th><th>Precio promedio</th><th>Margen %</th></tr></thead>
+                    <tbody id="ventas-tabla-top-productos-ingresos"></tbody>
+                  </table>
+                </div>
               </div>
-              <div class="card">
-                <div class="card-header"><span class="card-title">Top 10 Servicios Más Vendidos (por ingresos)</span></div>
-                <table class="results-table">
-                  <thead><tr><th>Servicio</th><th>Ingresos</th><th>Unidades</th><th>Precio promedio</th><th>Margen %</th></tr></thead>
-                  <tbody id="ventas-tabla-top-servicios-ingresos"></tbody>
-                </table>
+            </div>
+            <div class="card">
+              <div class="card-header"><span class="card-title">Top 10 Servicios Más Vendidos (por ingresos)</span></div>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-chart" id="ventas-chart-top-servicios-ingresos"></div>
+                <div class="ventas-split-table">
+                  <table class="results-table">
+                    <thead><tr><th>Servicio</th><th>Ingresos</th><th>Unidades</th><th>Precio promedio</th><th>Margen %</th></tr></thead>
+                    <tbody id="ventas-tabla-top-servicios-ingresos"></tbody>
+                  </table>
+                </div>
               </div>
-              <div class="card">
-                <div class="card-header"><span class="card-title">Top 10 Productos Más Vendidos (por unidades)</span></div>
-                <table class="results-table">
-                  <thead><tr><th>Producto</th><th>Unidades</th><th>Ingresos</th><th>Precio promedio</th></tr></thead>
-                  <tbody id="ventas-tabla-top-productos-unidades"></tbody>
-                </table>
+            </div>
+            <div class="card">
+              <div class="card-header"><span class="card-title">Top 10 Productos Más Vendidos (por unidades)</span></div>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-chart" id="ventas-chart-top-productos-unidades"></div>
+                <div class="ventas-split-table">
+                  <table class="results-table">
+                    <thead><tr><th>Producto</th><th>Unidades</th><th>Ingresos</th><th>Precio promedio</th></tr></thead>
+                    <tbody id="ventas-tabla-top-productos-unidades"></tbody>
+                  </table>
+                </div>
               </div>
-              <div class="card">
-                <div class="card-header"><span class="card-title">Top 10 Servicios Más Vendidos (por unidades)</span></div>
-                <table class="results-table">
-                  <thead><tr><th>Servicio</th><th>Unidades</th><th>Ingresos</th><th>Precio promedio</th></tr></thead>
-                  <tbody id="ventas-tabla-top-servicios-unidades"></tbody>
-                </table>
+            </div>
+            <div class="card">
+              <div class="card-header"><span class="card-title">Top 10 Servicios Más Vendidos (por unidades)</span></div>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-chart" id="ventas-chart-top-servicios-unidades"></div>
+                <div class="ventas-split-table">
+                  <table class="results-table">
+                    <thead><tr><th>Servicio</th><th>Unidades</th><th>Ingresos</th><th>Precio promedio</th></tr></thead>
+                    <tbody id="ventas-tabla-top-servicios-unidades"></tbody>
+                  </table>
+                </div>
               </div>
             </div>
             <div class="card">
@@ -5196,29 +5241,64 @@
             <div class="ventas-section-title">Indicadores de inventario</div>
             <div class="ventas-inline-stats" id="ventas-inventario-kpis"></div>
             <div class="card">
-              <div class="card-header"><span class="card-title">Alertas de stock</span></div>
+              <div class="card-header"><span class="card-title">Alertas de stock (cobertura &lt; 30 días)</span></div>
               <table class="results-table">
                 <thead><tr><th>Producto</th><th>Categoría</th><th>Stock</th><th>Uds/día</th><th>Cobertura</th></tr></thead>
                 <tbody id="ventas-tabla-alertas-stock"></tbody>
               </table>
             </div>
+            <div class="ventas-grid-2">
+              <div class="card">
+                <div class="card-header"><span class="card-title">Stock saludable (entre 30 y 40 días)</span></div>
+                <div id="ventas-stock-saludable"></div>
+              </div>
+              <div class="card">
+                <div class="card-header"><span class="card-title">Exceso de stock (desde 40 días)</span></div>
+                <div id="ventas-exceso-stock"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><span class="card-title">Lotes por vencer / vencidos (próximos 60 días)</span></div>
+              <table class="results-table">
+                <thead><tr><th>Producto</th><th>Categoría</th><th>Lote</th><th>Vencimiento</th><th>Estado</th></tr></thead>
+                <tbody id="ventas-tabla-lotes"></tbody>
+              </table>
+            </div>
             <div class="card">
               <div class="card-header"><span class="card-title">Categorías con riesgo de quiebre</span></div>
-              <table class="results-table">
-                <thead><tr><th>Categoría</th><th>Stock total</th><th>Productos</th><th>Uds/día</th><th>Cobertura</th></tr></thead>
-                <tbody id="ventas-tabla-categorias-riesgo"></tbody>
-              </table>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-chart" id="ventas-donut-riesgo-inventario"></div>
+                <div class="ventas-split-table">
+                  <table class="results-table">
+                    <thead><tr><th>Categoría</th><th>Stock total</th><th>Productos</th><th>Uds/día</th><th>Cobertura</th></tr></thead>
+                    <tbody id="ventas-tabla-categorias-riesgo"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
 
             <div class="ventas-section-title">Por cliente</div>
             <div class="card">
               <div class="card-header"><span class="card-title">Top clientes por monto comprado</span></div>
-              <table class="results-table">
-                <thead><tr><th>Cliente</th><th>Monto</th><th>Unidades</th><th>Margen %</th></tr></thead>
-                <tbody id="ventas-tabla-top-clientes"></tbody>
-              </table>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-chart" id="ventas-chart-top-clientes"></div>
+                <div class="ventas-split-table">
+                  <table class="results-table">
+                    <thead><tr><th>Cliente</th><th>Monto</th><th>Unidades</th><th>Margen %</th></tr></thead>
+                    <tbody id="ventas-tabla-top-clientes"></tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-            <div class="ventas-inline-stats" id="ventas-clientes-kpis"></div>
+            <div class="card">
+              <div class="card-header"><span class="card-title">Clientes nuevos vs. recurrentes en el período</span></div>
+              <div class="ventas-split-chart-table">
+                <div class="ventas-split-chart" id="ventas-donut-clientes"></div>
+                <div class="ventas-split-table">
+                  <div class="ventas-inline-stats" id="ventas-clientes-kpis"></div>
+                </div>
+              </div>
+            </div>
             <div class="card">
               <div class="card-header"><span class="card-title">Categorías preferidas por origen del cliente</span></div>
               <table class="results-table">
@@ -6335,6 +6415,21 @@
       return Object.entries(patientData).filter(([, d]) => d.propietarioId === propietarioId);
     }
 
+    // Resuelve el registro completo del propietario (doc/email/dirección) a
+    // partir de una mascota — usa el FK real (propietarioId) cuando existe
+    // y cae a coincidencia por nombre para las mascotas semilla que aún no
+    // lo tienen asignado. Solo para lectura (popover/facturación); no
+    // reemplaza a getMascotasDePropietario() como fuente de verdad del vínculo.
+    function getPropietarioDeMascota(petKey) {
+      const data = patientData[petKey];
+      if (!data) return null;
+      if (data.propietarioId) {
+        const porId = propietarios.find(x => x.id === data.propietarioId);
+        if (porId) return porId;
+      }
+      return propietarios.find(x => x.nombre === data.owner) || null;
+    }
+
     function getUltimaGestionPropietario(propietario) {
       return { time: propietario.ultimaGestionTime || 'Recién registrado', detail: propietario.ultimaGestionDetail || '' };
     }
@@ -6397,7 +6492,7 @@
                 <button class="row-actions-btn propietarios-consulta-btn" title="Iniciar consulta" onclick="event.stopPropagation(); iniciarConsultaDesdeBusqueda('${p.id}')">
                   <i data-lucide="clipboard-plus" style="width:16px;height:16px;"></i>
                 </button>
-                <button class="row-actions-btn" title="Facturación / estado de cuenta" onclick="event.stopPropagation(); abrirFacturacionDesdeBusqueda()">
+                <button class="row-actions-btn" title="Facturación / estado de cuenta" onclick="event.stopPropagation(); abrirFacturacionPropietario('${p.id}')">
                   <i data-lucide="credit-card" style="width:16px;height:16px;"></i>
                 </button>
               </div>
@@ -6429,8 +6524,261 @@
       abrirTableroTrabajo();
     }
 
-    function abrirFacturacionDesdeBusqueda() {
-      showToast('Facturación / estado de cuenta disponible próximamente');
+    // ── POPOVER DE DATOS DEL PROPIETARIO (header de Historia) ────────
+    // hover = vista rápida (se cierra al quitar el cursor); click sobre el
+    // nombre = fija el popover abierto con botón de copiar por dato, hasta
+    // volver a hacer click en el nombre o fuera del popover.
+    let ownerPopoverPinned = false;
+
+    function renderOwnerPopoverContent() {
+      if (!selectedPetKey) return;
+      const data = patientData[selectedPetKey];
+      if (!data) return;
+      const p = getPropietarioDeMascota(selectedPetKey);
+      const nombre = p ? p.nombre : (data.owner || '—');
+      const doc = p && p.docNumero ? `${p.docTipo || ''} ${p.docNumero}`.trim() : '';
+      const tel = (p && p.movil) || data.ownerPhone || '';
+      const email = (p && p.email) || '';
+      const direccion = p ? [p.direccion, p.ciudad].filter(Boolean).join(', ') : '';
+      const row = (label, value) => value ? `
+        <div class="owner-popover-row">
+          <div class="owner-popover-row-text">
+            <span class="owner-popover-label">${label}</span>
+            <span class="owner-popover-value">${value}</span>
+          </div>
+          ${copyIconHTML(value)}
+        </div>` : '';
+      document.getElementById('pet-owner-popover').innerHTML = `
+        <div class="owner-popover-header">${nombre}</div>
+        ${row('Documento', doc)}
+        ${row('Teléfono', tel)}
+        ${row('Email', email)}
+        ${row('Dirección', direccion)}
+        ${p ? `<button type="button" class="btn-outline owner-popover-profile-btn" onclick="event.stopPropagation(); closeOwnerPopoverPin(); abrirPerfilPropietario('${p.id}')"><i data-lucide="user" style="width:13px;height:13px;"></i> Ver perfil completo</button>` : ''}
+      `;
+      lucide.createIcons();
+    }
+
+    function showOwnerPopover() {
+      renderOwnerPopoverContent();
+      document.getElementById('pet-owner-popover').classList.add('show');
+    }
+
+    function hideOwnerPopoverIfNotPinned() {
+      if (ownerPopoverPinned) return;
+      document.getElementById('pet-owner-popover').classList.remove('show');
+    }
+
+    function toggleOwnerPopoverPin() {
+      ownerPopoverPinned = !ownerPopoverPinned;
+      if (ownerPopoverPinned) showOwnerPopover();
+      else document.getElementById('pet-owner-popover').classList.remove('show');
+    }
+
+    function closeOwnerPopoverPin() {
+      ownerPopoverPinned = false;
+      document.getElementById('pet-owner-popover').classList.remove('show');
+    }
+
+    function abrirFacturacionDesdeHistoria() {
+      if (!selectedPetKey) return;
+      const p = getPropietarioDeMascota(selectedPetKey);
+      if (!p) { showToast('Este paciente no tiene un propietario vinculado'); return; }
+      closeOwnerPopoverPin();
+      abrirFacturacionPropietario(p.id);
+    }
+
+    // ── MODAL: FACTURACIÓN / ESTADO DE CUENTA DEL PROPIETARIO ────────
+    // 3 pestañas (Estado de cuenta/Facturas/Cotizaciones), mismo patrón de
+    // tabs reutilizable que .prod-modal-tabs/.factconfig-tabs.
+    const FACTURACION_ESTADOS_CUENTA = {
+      borrador: { label: 'Borrador', badgeClass: 'status-badge-borrador' },
+      cerrado:  { label: 'Cerrado',  badgeClass: 'status-badge-completado' }
+    };
+    const FACTURACION_ESTADOS_FACTURA = {
+      pagada:    { label: 'Pagada',    badgeClass: 'status-badge-completado' },
+      pendiente: { label: 'Pendiente', badgeClass: 'status-badge-pendiente' },
+      vencida:   { label: 'Vencida',   badgeClass: 'status-badge-vencido' }
+    };
+    const FACTURACION_ESTADOS_COTIZACION = {
+      borrador: { label: 'Borrador', badgeClass: 'status-badge-borrador' },
+      enviada:  { label: 'Enviada',  badgeClass: 'status-badge-enviada' },
+      aceptada: { label: 'Aceptada', badgeClass: 'status-badge-completado' },
+      vencida:  { label: 'Vencida',  badgeClass: 'status-badge-vencido' }
+    };
+
+    let CUENTAS_PROPIETARIO = {
+      'prop-seed-1': [
+        { id: 'cta-1', ref: 'Consulta general', concepto: 'Mascota: Luna', valor: 97000, pagos: 0, estado: 'borrador', usuario: 'Sebastián Ríos', actualizado: '16/07/2026 12:19' },
+        { id: 'cta-2', ref: 'Vacunación anual', concepto: 'Mascota: Luna', valor: 145000, pagos: 145000, estado: 'cerrado', usuario: 'Sebastián Ríos', actualizado: '20/06/2026 09:40' }
+      ],
+      'prop-seed-2': [
+        { id: 'cta-3', ref: 'Control post-quirúrgico', concepto: 'Mascota: Rocky', valor: 65000, pagos: 65000, estado: 'cerrado', usuario: 'Sebastián Ríos', actualizado: '10/07/2026 15:10' }
+      ],
+      'prop-seed-3': []
+    };
+    let FACTURAS_PROPIETARIO = {
+      'prop-seed-1': [
+        { id: 'fv-1', numero: 'FV-1042', fecha: '20/06/2026', concepto: 'Vacunación anual — Luna', valor: 145000, estado: 'pagada' }
+      ],
+      'prop-seed-2': [
+        { id: 'fv-2', numero: 'FV-1039', fecha: '10/07/2026', concepto: 'Control post-quirúrgico — Rocky', valor: 65000, estado: 'pagada' }
+      ],
+      'prop-seed-3': []
+    };
+    let COTIZACIONES_PROPIETARIO = {
+      'prop-seed-1': [
+        { id: 'cot-1', numero: 'COT-0504', fecha: '09/07/2026', vencimiento: '09/08/2026', concepto: 'Cirugía — esterilización Luna', valor: 380000, estado: 'enviada' }
+      ],
+      'prop-seed-2': [],
+      'prop-seed-3': [
+        { id: 'cot-2', numero: 'COT-0498', fecha: '02/07/2026', vencimiento: '02/08/2026', concepto: 'Paquete Peluquería y spa — mensual', valor: 210000, estado: 'borrador' }
+      ]
+    };
+
+    let facturacionPropietarioId = null;
+
+    function abrirFacturacionPropietario(propietarioId) {
+      const p = propietarios.find(x => x.id === propietarioId);
+      if (!p) { showToast('Propietario no encontrado'); return; }
+      facturacionPropietarioId = propietarioId;
+      document.getElementById('facturacion-modal-nombre').textContent = p.nombre;
+      switchFacturacionTab('cuenta');
+      document.getElementById('propietario-facturacion-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeFacturacionModal() {
+      document.getElementById('propietario-facturacion-modal').classList.remove('show');
+      facturacionPropietarioId = null;
+    }
+
+    function handleFacturacionModalOverlayClick(e) {
+      if (e.target === document.getElementById('propietario-facturacion-modal')) closeFacturacionModal();
+    }
+
+    function switchFacturacionTab(tabName) {
+      document.querySelectorAll('.facturacion-tab-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-facturacion-tab') === tabName));
+      document.querySelectorAll('.facturacion-tab-pane').forEach(pane => pane.classList.toggle('active', pane.id === `facturacion-tab-${tabName}`));
+      if (!facturacionPropietarioId) return;
+      if (tabName === 'cuenta') renderCuentasPropietarioTable(facturacionPropietarioId);
+      else if (tabName === 'facturas') renderFacturasPropietarioTable(facturacionPropietarioId);
+      else if (tabName === 'cotizaciones') renderCotizacionesPropietarioTable(facturacionPropietarioId);
+    }
+
+    function renderCuentasPropietarioTable(propietarioId) {
+      const tbody = document.getElementById('facturacion-cuentas-tbody');
+      if (!tbody) return;
+      const cuentas = CUENTAS_PROPIETARIO[propietarioId] || [];
+      const saldoFavorEl = document.getElementById('facturacion-saldo-favor');
+      if (saldoFavorEl) saldoFavorEl.textContent = formatCOP(0);
+      tbody.innerHTML = cuentas.length ? cuentas.map(c => {
+        const info = FACTURACION_ESTADOS_CUENTA[c.estado];
+        const saldo = c.valor - c.pagos;
+        const menuId = `row-menu-cuenta-${c.id}`;
+        return `
+          <tr>
+            <td>${c.ref}${c.concepto ? `<div style="font-size:11px;color:var(--text-2);">${c.concepto}</div>` : ''}</td>
+            <td>${formatCOP(c.valor)}</td>
+            <td>${formatCOP(c.pagos)}</td>
+            <td>${formatCOP(saldo)}</td>
+            <td><span class="status-badge ${info.badgeClass}">${info.label}</span></td>
+            <td>${c.usuario}<div style="font-size:11px;color:var(--text-2);">${c.actualizado}</div></td>
+            <td style="text-align:right;">
+              <div class="row-actions-wrap">
+                <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones"><i data-lucide="more-vertical" style="width:16px;height:16px;"></i></button>
+                <div class="row-actions-menu" id="${menuId}">
+                  <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); showToast('Vista detallada disponible próximamente')"><i data-lucide="eye"></i> Ver detalle</div>
+                  ${c.estado === 'borrador' ? `<div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); cerrarCuentaPropietario('${propietarioId}', '${c.id}')"><i data-lucide="lock"></i> Cerrar cuenta</div>` : ''}
+                </div>
+              </div>
+            </td>
+          </tr>`;
+      }).join('') : `<tr><td colspan="7" style="color:var(--text-2);font-size:12.5px;">Sin cuentas registradas</td></tr>`;
+      lucide.createIcons();
+    }
+
+    function cerrarCuentaPropietario(propietarioId, cuentaId) {
+      const cuenta = (CUENTAS_PROPIETARIO[propietarioId] || []).find(c => c.id === cuentaId);
+      if (!cuenta) return;
+      cuenta.estado = 'cerrado';
+      cuenta.pagos = cuenta.valor;
+      cuenta.actualizado = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+      renderCuentasPropietarioTable(propietarioId);
+      showToast('Cuenta cerrada');
+    }
+
+    function nuevaCuentaPropietario() {
+      showToast('Función disponible próximamente');
+    }
+
+    function renderFacturasPropietarioTable(propietarioId) {
+      const tbody = document.getElementById('facturacion-facturas-tbody');
+      if (!tbody) return;
+      const facturas = FACTURAS_PROPIETARIO[propietarioId] || [];
+      tbody.innerHTML = facturas.length ? facturas.map(f => {
+        const info = FACTURACION_ESTADOS_FACTURA[f.estado];
+        const menuId = `row-menu-factura-${f.id}`;
+        return `
+          <tr>
+            <td>${f.numero}</td>
+            <td>${f.fecha}</td>
+            <td>${f.concepto}</td>
+            <td>${formatCOP(f.valor)}</td>
+            <td><span class="status-badge ${info.badgeClass}">${info.label}</span></td>
+            <td style="text-align:right;">
+              <div class="row-actions-wrap">
+                <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones"><i data-lucide="more-vertical" style="width:16px;height:16px;"></i></button>
+                <div class="row-actions-menu" id="${menuId}">
+                  <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); showToast('Descarga de PDF disponible próximamente')"><i data-lucide="file-down"></i> Descargar PDF</div>
+                  <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); showToast('Envío por email disponible próximamente')"><i data-lucide="mail"></i> Enviar por email</div>
+                </div>
+              </div>
+            </td>
+          </tr>`;
+      }).join('') : `<tr><td colspan="6" style="color:var(--text-2);font-size:12.5px;">Sin facturas registradas</td></tr>`;
+      lucide.createIcons();
+    }
+
+    function renderCotizacionesPropietarioTable(propietarioId) {
+      const tbody = document.getElementById('facturacion-cotizaciones-tbody');
+      if (!tbody) return;
+      const cotizaciones = COTIZACIONES_PROPIETARIO[propietarioId] || [];
+      tbody.innerHTML = cotizaciones.length ? cotizaciones.map(c => {
+        const info = FACTURACION_ESTADOS_COTIZACION[c.estado];
+        const menuId = `row-menu-cotizacion-${c.id}`;
+        return `
+          <tr>
+            <td>${c.numero}</td>
+            <td>${c.fecha}</td>
+            <td>${c.vencimiento}</td>
+            <td>${c.concepto}</td>
+            <td>${formatCOP(c.valor)}</td>
+            <td><span class="status-badge ${info.badgeClass}">${info.label}</span></td>
+            <td style="text-align:right;">
+              <div class="row-actions-wrap">
+                <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones"><i data-lucide="more-vertical" style="width:16px;height:16px;"></i></button>
+                <div class="row-actions-menu" id="${menuId}">
+                  <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); showToast('Vista detallada disponible próximamente')"><i data-lucide="eye"></i> Ver detalle</div>
+                  ${c.estado === 'borrador' ? `<div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); enviarCotizacionPropietario('${propietarioId}', '${c.id}')"><i data-lucide="send"></i> Enviar</div>` : ''}
+                </div>
+              </div>
+            </td>
+          </tr>`;
+      }).join('') : `<tr><td colspan="7" style="color:var(--text-2);font-size:12.5px;">Sin cotizaciones registradas</td></tr>`;
+      lucide.createIcons();
+    }
+
+    function enviarCotizacionPropietario(propietarioId, cotId) {
+      const c = (COTIZACIONES_PROPIETARIO[propietarioId] || []).find(x => x.id === cotId);
+      if (!c) return;
+      c.estado = 'enviada';
+      renderCotizacionesPropietarioTable(propietarioId);
+      showToast('Cotización enviada');
+    }
+
+    function crearCotizacionPropietario() {
+      showToast('Función disponible próximamente');
     }
 
     // ── MÓDULO: AGENDA (FullCalendar) ──────────────────────────────
@@ -6827,6 +7175,7 @@
           if (agendaCalendar) agendaCalendar.updateSize();
         }
         if (targetTab === 'perfil') renderPerfilTab();
+        if (targetTab === 'dashboard') renderDashboard();
 
         // Cada click en el tab Consultorio del navbar vuelve siempre al
         // buscador de propietarios/mascotas (cierra Kardex si estaba abierto
@@ -6877,6 +7226,8 @@
       const data = patientData[petKey];
 
       if (!data) return;
+
+      closeOwnerPopoverPin();
 
       // Actualizar cabecera del paciente
       const avatarPlaceholder = document.getElementById('pet-avatar-placeholder');
@@ -6959,6 +7310,7 @@
 
     function deselectPet() {
       selectedPetKey = null;
+      closeOwnerPopoverPin();
       document.getElementById('consultorio-patient-view').classList.remove('active');
       document.getElementById('consultorio-search-view').style.display = 'flex';
     }
@@ -8550,11 +8902,13 @@
           animalServicio: datos.animalServicio, fallecido: datos.fallecido,
           alimentacion: datos.alimentacion, frecuenciaBano: datos.frecuenciaBano,
           pesoHistorico: datos.pesoHistorico,
+          createdAt: inserted.created_at || new Date().toISOString(),
           ...crearScaffoldClinicoVacio()
         };
 
         renderPerfilMascotasTable(registrandoMascotaPropietarioId);
         renderPropietariosTable();
+        renderDashboard();
         closeRegistrarMascotaModal();
         showToast('Mascota registrada');
       } catch (err) {
@@ -8995,6 +9349,7 @@
 
         renderHistoriaTimeline(data);
         if (selectedPetKey) renderConsultasTable(selectedPetKey);
+        renderDashboard();
         if (idPrefix === 'soap-') closeNuevaConsultaModal();
         if (idPrefix === 'tablero-soap-') cerrarTableroAConsultorio();
         switchSubTab(isEditing ? 'consultas' : 'historia');
@@ -10283,6 +10638,7 @@
         if (tIdx !== -1) data.timeline.splice(tIdx, 1);
         renderConsultasTable(petKey);
         renderHistoriaTimeline(data);
+        renderDashboard();
       };
       if (row) {
         row.classList.add('row-fade-out');
@@ -14869,6 +15225,10 @@
 
     const VENTAS_CATEGORIAS = ['Alimentos', 'Medicamentos', 'Accesorios', 'Higiene y cuidado', 'Servicios médicos', 'Peluquería y spa', 'Vacunación', 'Suplementos'];
     const VENTAS_ORIGENES = ['Referido', 'Redes sociales', 'Google', 'Walk-in', 'Campaña'];
+    // Paleta categórica para los gráficos del Dashboard de ventas (donut,
+    // barras) — no hay paleta compartida en el resto del archivo, así que
+    // esta queda local al módulo Ventas.
+    const VENTAS_CHART_COLORS = ['#0F766E', '#14B8A6', '#F59E0B', '#2563EB', '#DC2626', '#7C3AED', '#DB2777', '#059669'];
 
     // Campos de Inventario (estado/sku/stockMinimo/unidadMedida/proveedorId/lote/
     // vencimiento/descripcion/duracionMinutos/impuesto) extienden este mismo
@@ -14883,7 +15243,7 @@
       { id: 'p3',  nombre: 'Antipulgas y garrapatas (pipeta)',       categoria: 'Medicamentos',       tipo: 'producto', precio: 45000,  costo: 27000, stock: 60, unidadesDia: 3.2,
         estado: 'activo', sku: 'MED-0001', stockMinimo: 20, unidadMedida: 'Caja', proveedorId: 'pr1', lote: 'L1187', vencimiento: '2027-06-30', descripcion: 'Pipeta antiparasitaria externa de amplio espectro.', impuesto: 'Excluido' },
       { id: 'p4',  nombre: 'Antibiótico Amoxicilina 250mg (caja)',   categoria: 'Medicamentos',       tipo: 'producto', precio: 32000,  costo: 19000, stock: 15, unidadesDia: 1.1,
-        estado: 'activo', sku: 'MED-0002', stockMinimo: 10, unidadMedida: 'Caja', proveedorId: 'pr1', lote: 'L1203', vencimiento: '2026-11-18', descripcion: 'Antibiótico de amplio espectro, caja x 20 tabletas.', impuesto: 'Excluido' },
+        estado: 'activo', sku: 'MED-0002', stockMinimo: 10, unidadMedida: 'Caja', proveedorId: 'pr1', lote: 'L1203', vencimiento: '2026-08-25', descripcion: 'Antibiótico de amplio espectro, caja x 20 tabletas.', impuesto: 'Excluido' },
       { id: 'p5',  nombre: 'Correa retráctil 5m',                    categoria: 'Accesorios',          tipo: 'producto', precio: 58000,  costo: 34000, stock: 22, unidadesDia: 0.6,
         estado: 'activo', sku: 'ACC-0001', stockMinimo: 8,  unidadMedida: 'Unidad', proveedorId: 'pr4', lote: null, vencimiento: null, descripcion: 'Correa retráctil resistente, longitud 5 metros.', impuesto: 'Gravado' },
       { id: 'p6',  nombre: 'Cama ortopédica talla M',                categoria: 'Accesorios',          tipo: 'producto', precio: 145000, costo: 98000, stock: 6,  unidadesDia: 0.2,
@@ -14897,7 +15257,7 @@
       { id: 'p10', nombre: 'Arena sanitaria aglomerante 10kg',       categoria: 'Higiene y cuidado',   tipo: 'producto', precio: 42000,  costo: 26000, stock: 3,  unidadesDia: 1.8,
         estado: 'activo', sku: 'HIG-0002', stockMinimo: 8,  unidadMedida: 'Unidad', proveedorId: 'pr2', lote: null, vencimiento: null, descripcion: 'Arena sanitaria aglomerante de control de olores, 10kg.', impuesto: 'Gravado' },
       { id: 'p11', nombre: 'Vitaminas multivitamínico jarabe 120ml', categoria: 'Suplementos',         tipo: 'producto', precio: 52000,  costo: 31000, stock: 25, unidadesDia: 0.8,
-        estado: 'activo', sku: 'SUP-0002', stockMinimo: 8,  unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L3098', vencimiento: '2026-10-22', descripcion: 'Complejo multivitamínico en jarabe, frasco 120ml.', impuesto: 'Gravado' },
+        estado: 'activo', sku: 'SUP-0002', stockMinimo: 8,  unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L3098', vencimiento: '2026-06-20', descripcion: 'Complejo multivitamínico en jarabe, frasco 120ml.', impuesto: 'Gravado' },
       { id: 'p12', nombre: 'Cepillo dental + gel enzimático',        categoria: 'Higiene y cuidado',   tipo: 'producto', precio: 28000,  costo: 16000, stock: 18, unidadesDia: 0.5,
         estado: 'activo', sku: 'HIG-0003', stockMinimo: 6,  unidadMedida: 'Unidad', proveedorId: 'pr4', lote: null, vencimiento: null, descripcion: 'Kit de cepillo dental doble cabezal + gel enzimático.', impuesto: 'Gravado' },
       { id: 'p13', nombre: 'Juguete mordedor de caucho',             categoria: 'Accesorios',          tipo: 'producto', precio: 35000,  costo: 20000, stock: 14, unidadesDia: 0.3,
@@ -15175,6 +15535,101 @@
       return `<div class="ventas-progress-cell"><div class="ventas-progress-track"><div class="ventas-progress-fill" style="width:${clamped.toFixed(0)}%;"></div></div><span class="ventas-progress-pct">${pct.toFixed(1)}%</span></div>`;
     }
 
+    // ── DASHBOARD DE VENTAS — GRÁFICOS (sin librería, SVG/CSS a mano) ──
+    // donut: participación por categoría. data = [{label, value}]
+    function renderVentasDonutChart(containerId, data, formatFn) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      formatFn = formatFn || formatCOP;
+      const total = data.reduce((s, d) => s + d.value, 0);
+      if (!total) { el.innerHTML = `<p class="ventas-empty-note">Sin datos para graficar</p>`; return; }
+      const size = 160, radius = 60, cx = size / 2, cy = size / 2, strokeWidth = 24;
+      const circumference = 2 * Math.PI * radius;
+      let offset = 0;
+      const segs = data.map((d, i) => {
+        const pct = d.value / total;
+        const dash = Math.max(0, pct * circumference - 1.5); // separador entre segmentos
+        const seg = `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="${VENTAS_CHART_COLORS[i % VENTAS_CHART_COLORS.length]}" stroke-width="${strokeWidth}" stroke-dasharray="${dash} ${circumference - dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"><title>${d.label}: ${formatFn(d.value)} (${(pct * 100).toFixed(1)}%)</title></circle>`;
+        offset += pct * circumference;
+        return seg;
+      }).join('');
+      const legend = data.map((d, i) => `
+        <div class="ventas-donut-legend-item">
+          <span class="ventas-donut-legend-swatch" style="background:${VENTAS_CHART_COLORS[i % VENTAS_CHART_COLORS.length]};"></span>
+          ${d.label} <b>${(d.value / total * 100).toFixed(1)}%</b>
+        </div>`).join('');
+      el.innerHTML = `
+        <div class="ventas-donut-wrap">
+          <svg viewBox="0 0 ${size} ${size}" class="ventas-donut-svg">${segs}</svg>
+          <div class="ventas-donut-legend">${legend}</div>
+        </div>`;
+    }
+
+    // barras horizontales estilo "lollipop" para los Top 10. data = [{label, value}]
+    function renderVentasLollipopChart(containerId, data, formatFn) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      if (!data.length) { el.innerHTML = `<p class="ventas-empty-note">Sin datos en el período</p>`; return; }
+      const max = Math.max(...data.map(d => d.value), 1);
+      el.innerHTML = `<div class="ventas-lollipop-chart">${data.map(d => `
+        <div class="ventas-lollipop-row">
+          <span class="ventas-lollipop-label" title="${d.label}">${d.label}</span>
+          <div class="ventas-lollipop-track"><div class="ventas-lollipop-fill" style="width:${(d.value / max * 100).toFixed(1)}%;"></div></div>
+          <span class="ventas-lollipop-value">${formatFn ? formatFn(d.value) : d.value}</span>
+        </div>
+      `).join('')}</div>`;
+    }
+
+    // comparación Actual vs Anterior por categoría (crecimiento). rows = [{label, actual, anterior}]
+    function renderVentasGrowthChart(containerId, rows) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      if (!rows.length) { el.innerHTML = `<p class="ventas-empty-note">Sin datos suficientes para comparar</p>`; return; }
+      const max = Math.max(...rows.map(r => Math.max(r.actual, r.anterior)), 1);
+      el.innerHTML = rows.map(r => {
+        const crecimiento = r.anterior > 0 ? ((r.actual - r.anterior) / r.anterior) * 100 : (r.actual > 0 ? 100 : 0);
+        const cls = crecimiento > 0 ? 'text-success' : (crecimiento < 0 ? 'text-danger' : '');
+        const signo = crecimiento > 0 ? '+' : '';
+        return `
+        <div class="ventas-growth-row">
+          <span class="ventas-growth-label" title="${r.label}">${r.label}</span>
+          <div class="ventas-growth-bars">
+            <div class="ventas-growth-track"><div class="ventas-growth-fill-anterior" style="width:${(r.anterior / max * 100).toFixed(1)}%;"></div></div>
+            <div class="ventas-growth-track"><div class="ventas-growth-fill-actual" style="width:${(r.actual / max * 100).toFixed(1)}%;"></div></div>
+          </div>
+          <span class="ventas-growth-pct ${cls}">${signo}${crecimiento.toFixed(1)}%</span>
+        </div>`;
+      }).join('');
+    }
+
+    // tendencia temporal (línea + área). points = [{label, value}]
+    function renderVentasTrendChart(containerId, points) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      if (!points.length) { el.innerHTML = `<p class="ventas-empty-note">Sin datos en el período</p>`; return; }
+      const max = Math.max(...points.map(p => p.value), 1);
+      const n = points.length;
+      const coords = points.map((p, i) => ({
+        x: n > 1 ? (i / (n - 1)) * 100 : 50,
+        y: 92 - (p.value / max) * 82,
+        ...p
+      }));
+      const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(2)},${c.y.toFixed(2)}`).join(' ');
+      const areaPath = `${linePath} L${coords[n - 1].x.toFixed(2)},100 L${coords[0].x.toFixed(2)},100 Z`;
+      const step = Math.max(1, Math.ceil(n / 12));
+      const dotsHTML = coords.map(c => `<div class="ventas-trend-dot" style="left:${c.x}%;top:${c.y}%;" title="${c.label}: ${formatCOP(c.value)}"></div>`).join('');
+      const labelsHTML = coords.map((c, i) => (i % step === 0 || i === n - 1) ? `<div class="ventas-trend-label" style="left:${c.x}%;">${c.label}</div>` : '').join('');
+      el.innerHTML = `
+        <div class="ventas-trend-chart-wrap">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="ventas-trend-svg">
+            <path d="${areaPath}" fill="var(--clinic-accent)" opacity="0.12" stroke="none"></path>
+            <path d="${linePath}" fill="none" stroke="var(--clinic-accent)" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+          </svg>
+          ${dotsHTML}
+        </div>
+        <div class="ventas-trend-labels">${labelsHTML}</div>`;
+    }
+
     // ── DASHBOARD DE VENTAS — FILTROS ─────────────────────────────
     function poblarFiltrosVentasDashboard() {
       document.getElementById('ventas-filtro-categoria').innerHTML =
@@ -15186,6 +15641,12 @@
       document.getElementById('ventas-filtro-origen').innerHTML =
         '<option value="">Todos</option>' + VENTAS_ORIGENES.map(o => `<option value="${o}">${o}</option>`).join('');
       aplicarPresetFechaVentas('mes', document.querySelector('.ventas-preset-btn[data-preset="mes"]'));
+      // El preset "Este mes" ya queda marcado activo y con los inputs
+      // Desde/Hasta poblados — sincroniza ventasDashboardFilters con esos
+      // mismos valores para que el primer render (antes de que el usuario
+      // toque "Aplicar filtros") no quede con desde/hasta en null.
+      ventasDashboardFilters.desde = document.getElementById('ventas-filtro-desde').value;
+      ventasDashboardFilters.hasta = document.getElementById('ventas-filtro-hasta').value;
     }
 
     function aplicarPresetFechaVentas(preset, btnEl) {
@@ -15301,9 +15762,89 @@
         ? `<ul style="padding-left:18px;font-size:13px;color:var(--text-1);display:flex;flex-direction:column;gap:6px;">${sinMovimiento.map(p => `<li>${p.nombre} <span style="color:var(--text-2);font-size:12px;">(${p.categoria})</span></li>`).join('')}</ul>`
         : `<p class="ventas-empty-note">No hay productos sin movimiento en el período seleccionado.</p>`;
 
+      renderVentasDonutChart('ventas-donut-categorias', catRows.map(r => ({ label: r.cat, value: r.ventas })));
+      renderVentasLollipopChart('ventas-chart-top-productos-ingresos', topPorTipo('producto', 'ingresos', 10).map(r => ({ label: r.nombre, value: r.ingresos })), formatCOP);
+      renderVentasLollipopChart('ventas-chart-top-servicios-ingresos', topPorTipo('servicio', 'ingresos', 10).map(r => ({ label: r.nombre, value: r.ingresos })), formatCOP);
+      renderVentasLollipopChart('ventas-chart-top-productos-unidades', topPorTipo('producto', 'unidades', 10).map(r => ({ label: r.nombre, value: r.unidades })), v => v);
+      renderVentasLollipopChart('ventas-chart-top-servicios-unidades', topPorTipo('servicio', 'unidades', 10).map(r => ({ label: r.nombre, value: r.unidades })), v => v);
+
+      renderVentasCrecimiento();
+      renderVentasTendenciaTemporal();
       renderVentasInventario();
       renderVentasPorCliente(items);
       renderVentasCuentas();
+    }
+
+    // ── DASHBOARD DE VENTAS — CATEGORÍAS CON MAYOR CRECIMIENTO ────
+    // Compara el período filtrado ("actual") contra el período inmediatamente
+    // anterior de igual duración ("anterior"), por categoría.
+    function renderVentasCrecimiento() {
+      const { desde, hasta } = ventasDashboardFilters;
+      const tbody = document.getElementById('ventas-tabla-crecimiento');
+      const chart = document.getElementById('ventas-chart-crecimiento');
+      if (!desde || !hasta) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-2);">Selecciona un rango de fechas para comparar</td></tr>`;
+        if (chart) chart.innerHTML = `<p class="ventas-empty-note">Selecciona un rango de fechas para comparar</p>`;
+        return;
+      }
+      const dias = Math.round((new Date(hasta) - new Date(desde)) / 86400000) + 1;
+      const anteriorHasta = new Date(desde); anteriorHasta.setDate(anteriorHasta.getDate() - 1);
+      const anteriorDesde = new Date(anteriorHasta); anteriorDesde.setDate(anteriorDesde.getDate() - (dias - 1));
+      const anteriorDesdeStr = anteriorDesde.toISOString().slice(0, 10);
+      const anteriorHastaStr = anteriorHasta.toISOString().slice(0, 10);
+
+      const itemsActual = getVentasItemsFiltrados();
+      const facturasAnterior = VENTAS_FACTURAS.filter(f => f.estado !== 'Anulada' && ventasDateInRange(f.fecha, anteriorDesdeStr, anteriorHastaStr));
+      const itemsAnterior = ventasFlatItemsFromFacturas(facturasAnterior);
+
+      const mapActual = ventasGroupSum(itemsActual, i => i.categoria, i => i.total);
+      const mapAnterior = ventasGroupSum(itemsAnterior, i => i.categoria, i => i.total);
+      const categoriasConDatos = new Set([...mapActual.keys(), ...mapAnterior.keys()]);
+      const rows = VENTAS_CATEGORIAS.filter(c => categoriasConDatos.has(c)).map(cat => {
+        const actual = mapActual.get(cat) || 0;
+        const anterior = mapAnterior.get(cat) || 0;
+        const crecimiento = anterior > 0 ? ((actual - anterior) / anterior) * 100 : (actual > 0 ? 100 : 0);
+        return { cat, actual, anterior, crecimiento };
+      }).sort((a, b) => b.crecimiento - a.crecimiento);
+
+      renderVentasGrowthChart('ventas-chart-crecimiento', rows.map(r => ({ label: r.cat, actual: r.actual, anterior: r.anterior })));
+      if (tbody) tbody.innerHTML = rows.length ? rows.map(r => `
+        <tr>
+          <td>${r.cat}</td><td>${formatCOP(r.actual)}</td><td>${formatCOP(r.anterior)}</td>
+          <td class="${r.crecimiento > 0 ? 'text-success' : (r.crecimiento < 0 ? 'text-danger' : '')}">${r.crecimiento > 0 ? '+' : ''}${r.crecimiento.toFixed(1)}%</td>
+        </tr>
+      `).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--text-2);">Sin datos suficientes para comparar</td></tr>`;
+    }
+
+    // ── DASHBOARD DE VENTAS — TENDENCIA TEMPORAL ───────────────────
+    let ventasTendenciaAgrupacion = 'dia';
+    function cambiarAgrupacionTendenciaVentas(valor) {
+      ventasTendenciaAgrupacion = valor;
+      renderVentasTendenciaTemporal();
+    }
+    function ventasPeriodoKey(fecha, modo) {
+      const d = new Date(fecha);
+      if (modo === 'mes') return fecha.slice(0, 7);
+      if (modo === 'semana') {
+        const inicio = new Date(d); inicio.setDate(d.getDate() - d.getDay());
+        return inicio.toISOString().slice(0, 10);
+      }
+      return fecha; // día
+    }
+    function ventasPeriodoLabel(key, modo) {
+      const [y, m, dd] = key.split('-');
+      if (modo === 'mes') return `${['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'][Number(m) - 1]} ${y}`;
+      return `${dd}/${m}`;
+    }
+    function renderVentasTendenciaTemporal() {
+      const items = getVentasItemsFiltrados();
+      const map = new Map();
+      items.forEach(i => {
+        const key = ventasPeriodoKey(i.fecha, ventasTendenciaAgrupacion);
+        map.set(key, (map.get(key) || 0) + i.total);
+      });
+      const points = Array.from(map.keys()).sort().map(key => ({ label: ventasPeriodoLabel(key, ventasTendenciaAgrupacion), value: map.get(key) }));
+      renderVentasTrendChart('ventas-chart-tendencia', points);
     }
 
     function renderVentasInventario() {
@@ -15333,13 +15874,37 @@
       `;
 
       const stockRows = productos.map(p => ({ ...p, cobertura: p.unidadesDia > 0 ? p.stock / p.unidadesDia : Infinity })).sort((a, b) => a.cobertura - b.cobertura);
-      document.getElementById('ventas-tabla-alertas-stock').innerHTML = stockRows.map(p => `
+      const alertasStock = stockRows.filter(p => p.cobertura < 30);
+      document.getElementById('ventas-tabla-alertas-stock').innerHTML = alertasStock.length ? alertasStock.map(p => `
         <tr><td>${p.nombre}</td><td>${p.categoria}</td><td>${p.stock}</td><td>${p.unidadesDia.toFixed(1)}</td><td>${coberturaBadgeHTML(p.cobertura)}</td></tr>
-      `).join('');
+      `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-2);">No hay productos con cobertura crítica en este momento</td></tr>`;
 
       document.getElementById('ventas-tabla-categorias-riesgo').innerHTML = catRows.map(c => `
         <tr><td>${c.categoria}</td><td>${c.stock}</td><td>${c.productos}</td><td>${c.udsDia.toFixed(1)}</td><td>${coberturaBadgeHTML(c.cobertura)}</td></tr>
       `).join('');
+      renderVentasDonutChart('ventas-donut-riesgo-inventario', catRows.map(c => ({ label: c.categoria, value: c.stock })), v => v + ' und.');
+
+      const stockSaludable = stockRows.filter(p => p.cobertura >= 30 && p.cobertura < 40);
+      document.getElementById('ventas-stock-saludable').innerHTML = stockSaludable.length
+        ? `<ul class="ventas-mini-list">${stockSaludable.map(p => `<li>${p.nombre} <span>(${p.categoria} · ${coberturaBadgeHTML(p.cobertura)})</span></li>`).join('')}</ul>`
+        : `<p class="ventas-empty-note">No hay productos con stock saludable en este rango.</p>`;
+
+      const excesoStock = stockRows.filter(p => p.cobertura >= 40);
+      document.getElementById('ventas-exceso-stock').innerHTML = excesoStock.length
+        ? `<ul class="ventas-mini-list">${excesoStock.map(p => `<li>${p.nombre} <span>(${p.categoria} · ${coberturaBadgeHTML(p.cobertura)})</span></li>`).join('')}</ul>`
+        : `<p class="ventas-empty-note">No hay exceso de stock en este rango.</p>`;
+
+      const lotesConVencimiento = VENTAS_CATALOGO.filter(p => p.tipo === 'producto' && p.lote && p.vencimiento);
+      const lotesRows = lotesConVencimiento.map(p => ({ ...p, diasVence: Math.floor((new Date(p.vencimiento) - new Date(VENTAS_HOY)) / 86400000) }))
+        .filter(p => p.diasVence <= 60).sort((a, b) => a.diasVence - b.diasVence);
+      document.getElementById('ventas-tabla-lotes').innerHTML = lotesRows.length ? lotesRows.map(p => `
+        <tr>
+          <td>${p.nombre}</td><td>${p.categoria}</td><td>${p.lote}</td><td>${p.vencimiento}</td>
+          <td>${p.diasVence < 0
+            ? `<span class="coverage-badge coverage-critico">Vencido · ${Math.abs(p.diasVence)}d</span>`
+            : `<span class="coverage-badge coverage-alto">Por vencer · ${p.diasVence}d</span>`}</td>
+        </tr>
+      `).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-2);">No hay lotes por vencer ni vencidos en los próximos 60 días.</td></tr>`;
     }
 
     function renderVentasPorCliente(items) {
@@ -15355,6 +15920,7 @@
       document.getElementById('ventas-tabla-top-clientes').innerHTML = topClientes.length ? topClientes.map(c => `
         <tr><td>${c.nombre}</td><td>${formatCOP(c.monto)}</td><td>${c.unidades}</td><td>${c.margenPct.toFixed(1)}%</td></tr>
       `).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--text-2);">Sin compras en el período</td></tr>`;
+      renderVentasLollipopChart('ventas-chart-top-clientes', topClientes.map(c => ({ label: c.nombre, value: c.monto })), formatCOP);
 
       const clientesActivosIds = new Set(items.map(i => i.clienteId));
       const primeraCompraPorCliente = new Map();
@@ -15380,6 +15946,7 @@
         <div class="ventas-inline-stat"><div class="ventas-inline-stat-label">Recurrentes</div><div class="ventas-inline-stat-value">${recurrentes}</div></div>
         <div class="ventas-inline-stat"><div class="ventas-inline-stat-label">Compras por cliente (prom.)</div><div class="ventas-inline-stat-value">${comprasPromedio.toFixed(1)}</div></div>
       `;
+      renderVentasDonutChart('ventas-donut-clientes', [{ label: 'Nuevos', value: nuevos }, { label: 'Recurrentes', value: recurrentes }, { label: 'Otros activos', value: Math.max(0, clientesActivosIds.size - nuevos - recurrentes) }], v => v + ' clientes');
 
       const origenMap = new Map();
       items.forEach(i => {
@@ -16731,6 +17298,7 @@
       closeAllRowMenus();
       closeAllSearchableSelects();
       closeAllRegistrarNuevoMenus();
+      closeOwnerPopoverPin();
       document.getElementById('ventas-tab-wrap').classList.remove('show');
       document.getElementById('admin-tab-wrap').classList.remove('show');
     });
@@ -17044,6 +17612,141 @@
       showToast('Contraseña actualizada');
     }
 
+    // ── MÓDULO: DASHBOARD ───────────────────────────────────────────
+    // Tarjetas/gráfica/tabla calculadas en caliente a partir de las mismas
+    // fuentes reales que ya alimentan el resto de módulos -- patientData
+    // (consultas reales vía Supabase, ver cargarDatosClinicaDesdeSupabase),
+    // VENTAS_FACTURAS y USUARIOS_SISTEMA -- en vez de los números fijos que
+    // traía el prototipo. Se llama desde renderAllModulesData() (carga
+    // inicial/cambio de establecimiento), al activar el tab Dashboard, y
+    // tras guardar/eliminar una consulta o registrar una mascota nueva.
+    const DASH_MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+    function dashFechaISODia(d) {
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function setDashStatTrend(elId, text, direction, iconOverride) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      const cls = direction === 'up' ? 'trend-up' : direction === 'down' ? 'trend-down' : 'trend-neutral';
+      const icon = iconOverride || (direction === 'up' ? 'trending-up' : direction === 'down' ? 'trending-down' : 'info');
+      el.className = `stat-trend ${cls}`;
+      el.innerHTML = `<i data-lucide="${icon}" style="width: 12px; height: 12px;"></i> ${text}`;
+    }
+
+    function renderDashUltimasConsultas(consultas) {
+      const tbody = document.getElementById('dash-ultimas-consultas-body');
+      if (!tbody) return;
+      if (!consultas.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-2);">Sin consultas registradas</td></tr>';
+        return;
+      }
+      tbody.innerHTML = consultas.map(c => `
+        <tr>
+          <td>
+            <div class="mascota-cell">
+              <div class="mascota-avatar"><i data-lucide="${c.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width: 14px; height: 14px;"></i></div>
+              <div>
+                <strong style="font-weight: 600;">${c.petName || '—'}</strong>
+                <span class="mascota-specie">(${c.especie || '—'})</span>
+              </div>
+            </div>
+          </td>
+          <td>${c.owner || '—'}</td>
+          <td>${c.usuario || '—'}</td>
+          <td>${c.fecha || '—'}</td>
+          <td><span class="status-badge status-badge-completado">Completada</span></td>
+        </tr>
+      `).join('');
+    }
+
+    function renderDashChart(todasConsultas) {
+      const barsEl = document.getElementById('dash-chart-bars');
+      const labelsEl = document.getElementById('dash-chart-labels');
+      if (!barsEl || !labelsEl) return;
+
+      const hoy = new Date();
+      const meses = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+        meses.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: DASH_MESES_CORTOS[d.getMonth()] });
+      }
+      const conteos = meses.map(m => todasConsultas.filter(c => (c.fechaISO || '').slice(0, 7) === m.key).length);
+      const max = Math.max(...conteos, 1);
+
+      barsEl.innerHTML = conteos.map(n => `
+        <div class="chart-bar-wrapper">
+          <span class="chart-tooltip">${n} consulta${n === 1 ? '' : 's'}</span>
+          <div class="chart-bar" style="height: ${n ? Math.max(Math.round((n / max) * 100), 6) : 2}%;"></div>
+        </div>
+      `).join('');
+      labelsEl.innerHTML = meses.map(m => `<span class="chart-label">${m.label}</span>`).join('');
+    }
+
+    function renderDashboard() {
+      if (!document.getElementById('dash-ultimas-consultas-body')) return;
+
+      const hoy = new Date();
+      const hoyStr = dashFechaISODia(hoy);
+      const ayer = new Date(hoy); ayer.setDate(ayer.getDate() - 1);
+      const ayerStr = dashFechaISODia(ayer);
+      const mesActual = hoyStr.slice(0, 7);
+
+      const todasConsultas = [];
+      Object.values(patientData).forEach(data => {
+        (data.consultas || []).forEach(c => {
+          todasConsultas.push({ ...c, petName: data.name, especie: data.species, owner: data.owner, avatarClass: data.avatarClass });
+        });
+      });
+      todasConsultas.sort((a, b) => new Date(b.fechaISO || 0) - new Date(a.fechaISO || 0));
+
+      // Consultas Hoy
+      const consultasHoy = todasConsultas.filter(c => (c.fechaISO || '').slice(0, 10) === hoyStr).length;
+      const consultasAyer = todasConsultas.filter(c => (c.fechaISO || '').slice(0, 10) === ayerStr).length;
+      document.getElementById('dash-stat-consultas-valor').textContent = consultasHoy;
+      const deltaConsultas = consultasHoy - consultasAyer;
+      setDashStatTrend('dash-stat-consultas-trend',
+        deltaConsultas === 0 ? 'Igual que ayer' : `${deltaConsultas > 0 ? '+' : ''}${deltaConsultas} desde ayer`,
+        deltaConsultas > 0 ? 'up' : deltaConsultas < 0 ? 'down' : 'neutral');
+
+      // Ingresos Hoy (facturas pagadas del módulo Ventas — VENTAS_FACTURAS)
+      const sumFacturasDelDia = fecha => VENTAS_FACTURAS
+        .filter(f => f.estado === 'Pagada' && f.fecha === fecha)
+        .reduce((s, f) => s + f.total, 0);
+      const ingresosHoy = sumFacturasDelDia(hoyStr);
+      const ingresosAyer = sumFacturasDelDia(ayerStr);
+      document.getElementById('dash-stat-ingresos-valor').textContent = formatCOP(ingresosHoy);
+      const deltaIngresos = ingresosHoy - ingresosAyer;
+      setDashStatTrend('dash-stat-ingresos-trend',
+        deltaIngresos === 0 ? 'Igual que ayer' : `${deltaIngresos > 0 ? '+' : '-'}${formatCOP(Math.abs(deltaIngresos))} vs ayer`,
+        deltaIngresos > 0 ? 'up' : deltaIngresos < 0 ? 'down' : 'neutral');
+
+      // Mascotas Registradas
+      const mascotas = Object.values(patientData);
+      document.getElementById('dash-stat-mascotas-valor').textContent = mascotas.length;
+      const nuevasEsteMes = mascotas.filter(d => d.createdAt && d.createdAt.slice(0, 7) === mesActual).length;
+      setDashStatTrend('dash-stat-mascotas-trend',
+        nuevasEsteMes ? `+${nuevasEsteMes} nuevas este mes` : 'Sin nuevas este mes', 'neutral', 'plus');
+
+      // Médicos Activos (roster real de la clínica activa — USUARIOS_SISTEMA)
+      const medicos = USUARIOS_SISTEMA.filter(u => u.rol === 'medico');
+      const medicosActivos = medicos.filter(u => u.estado === 'activo').length;
+      const medicosInactivos = medicos.length - medicosActivos;
+      document.getElementById('dash-stat-medicos-valor').textContent = medicosActivos;
+      setDashStatTrend('dash-stat-medicos-trend',
+        medicosInactivos ? `${medicosInactivos} inactivo${medicosInactivos === 1 ? '' : 's'}` : 'Todos activos', 'neutral', 'info');
+
+      renderDashUltimasConsultas(todasConsultas.slice(0, 4));
+      renderDashChart(todasConsultas);
+
+      const actualizado = document.getElementById('dash-consultas-updated');
+      if (actualizado) actualizado.textContent = `Actualizado ${hoy.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
+
+      lucide.createIcons();
+    }
+
     // Agrupa exactamente las mismas llamadas que antes vivían sueltas al
     // final del script. Se invoca una vez en la carga inicial (abajo) y de
     // nuevo desde bootstrapSession() tras resetMockDataForClinic(), para
@@ -17051,6 +17754,7 @@
     // establecimiento activo real (login inicial) en vez de los datos de
     // demo con los que el script arrancó por defecto.
     function renderAllModulesData() {
+      renderDashboard();
       renderUsuariosTable();
       renderPrivilegiosMatrix();
       renderPropietariosTable();
@@ -17242,6 +17946,7 @@
         animalServicio: !!r.animal_servicio, fallecido: !!r.fallecido,
         alimentacion: r.alimentacion || '', frecuenciaBano: r.frecuencia_bano || '',
         pesoHistorico: Array.isArray(r.peso_historico) ? r.peso_historico : [],
+        createdAt: r.created_at || null,
         ...crearScaffoldClinicoVacio()
       };
     }
@@ -19797,6 +20502,57 @@
               <tbody id="perfil-mascotas-tbody"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Facturación / Estado de cuenta del propietario — 3 pestañas
+       (Estado de cuenta/Facturas/Cotizaciones), abierto desde el botón
+       junto al nombre del tutor en Historia y desde ACCIONES del buscador
+       de propietarios. -->
+  <div class="modal-overlay" id="propietario-facturacion-modal" onclick="handleFacturacionModalOverlayClick(event)">
+    <div class="soap-modal-card" style="width:900px;max-width:95vw;max-height:88vh;overflow-y:auto;" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <span class="soap-modal-pet-name">Facturación</span>
+          <span class="soap-modal-pet-meta" id="facturacion-modal-nombre">—</span>
+        </div>
+        <button class="soap-modal-close" onclick="closeFacturacionModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div class="soap-modal-body">
+        <div class="facturacion-tabs">
+          <button type="button" class="facturacion-tab-btn active" data-facturacion-tab="cuenta" onclick="switchFacturacionTab('cuenta')">Estado de cuenta</button>
+          <button type="button" class="facturacion-tab-btn" data-facturacion-tab="facturas" onclick="switchFacturacionTab('facturas')">Facturas</button>
+          <button type="button" class="facturacion-tab-btn" data-facturacion-tab="cotizaciones" onclick="switchFacturacionTab('cotizaciones')">Cotizaciones</button>
+        </div>
+
+        <div class="facturacion-tab-pane active" id="facturacion-tab-cuenta">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div style="font-size:13px;color:var(--text-2);">Saldo a favor: <strong style="color:var(--text-1);" id="facturacion-saldo-favor">$0</strong></div>
+            <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="nuevaCuentaPropietario()"><i data-lucide="plus" style="width:13px;height:13px;"></i> Nueva cuenta</button>
+          </div>
+          <table class="results-table">
+            <thead><tr><th>Referencia</th><th>Valor</th><th>Pagos</th><th>Saldo</th><th>Estado</th><th>Actualizado</th><th style="text-align:right;">Acciones</th></tr></thead>
+            <tbody id="facturacion-cuentas-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="facturacion-tab-pane" id="facturacion-tab-facturas">
+          <table class="results-table">
+            <thead><tr><th>Número</th><th>Fecha</th><th>Concepto</th><th>Valor</th><th>Estado</th><th style="text-align:right;">Acciones</th></tr></thead>
+            <tbody id="facturacion-facturas-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="facturacion-tab-pane" id="facturacion-tab-cotizaciones">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+            <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="crearCotizacionPropietario()"><i data-lucide="plus" style="width:13px;height:13px;"></i> Crear cotización</button>
+          </div>
+          <table class="results-table">
+            <thead><tr><th>Número</th><th>Fecha</th><th>Vencimiento</th><th>Concepto</th><th>Valor</th><th>Estado</th><th style="text-align:right;">Acciones</th></tr></thead>
+            <tbody id="facturacion-cotizaciones-tbody"></tbody>
+          </table>
         </div>
       </div>
     </div>
