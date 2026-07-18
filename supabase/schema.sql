@@ -758,3 +758,40 @@ create policy "examenes_delete_member"
 -- policies ya cubren cualquier archivo bajo ese prefijo para miembros de la
 -- clínica) -- sin bucket nuevo. Los resultados de examenes van en
 -- "clinica/<establecimiento_id>/examenes/<examen_id>/<n>-<nombre>".
+
+-- ── STORAGE: bucket `avatars` (foto de perfil de usuario) ───────
+-- Público (igual que `fotos-mascotas`) — a diferencia de ese bucket, que
+-- es por establecimiento ("clinica/<estab>/..."), este es por usuario
+-- individual: path "<user_id>/avatar.<ext>", mismo patrón "own folder" ya
+-- probado en producción con `pdfs_insert_own_folder` (auth.uid() =
+-- foldername[1]).
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+-- Sin policy de select: bucket público, mismo criterio que fotos-mascotas
+-- (evita el advisor public_bucket_allows_listing).
+
+drop policy if exists "avatars_insert_own_folder" on storage.objects;
+create policy "avatars_insert_own_folder"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "avatars_update_own_folder" on storage.objects;
+create policy "avatars_update_own_folder"
+  on storage.objects for update
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "avatars_delete_own_folder" on storage.objects;
+create policy "avatars_delete_own_folder"
+  on storage.objects for delete
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );

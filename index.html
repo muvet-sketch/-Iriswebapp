@@ -1964,13 +1964,6 @@
       gap: 4px;
     }
 
-    /* MOCK: Consultas */
-    .consulta-grid {
-      display: grid;
-      grid-template-columns: 1fr 2fr;
-      gap: 16px;
-    }
-
     /* Tablero de trabajo (workspace de consulta) — pantalla completa, mismo
        patrón que .kardex-view: oculta .consultorio-wrapper mientras está
        activo (ver abrirTableroTrabajo()/cerrarTableroAConsultorio()). */
@@ -2065,51 +2058,6 @@
       .tablero-grid > .tablero-nav-col { grid-column: 1; order: 1; }
       .tablero-grid > .tablero-center-col { grid-column: 1; order: 2; }
       .tablero-grid > .tablero-side-col { grid-column: 1; order: 3; }
-    }
-
-    .consultas-list-nav {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .consulta-nav-card {
-      padding: 12px;
-      background-color: #FAFBFD;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      cursor: pointer;
-      transition: var(--transition);
-    }
-
-    .consulta-nav-card:hover {
-      border-color: var(--clinic-accent);
-      background-color: var(--surface);
-    }
-
-    .consulta-nav-card.active {
-      border-color: var(--clinic-accent);
-      background-color: var(--surface);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .consulta-nav-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-1);
-    }
-
-    .consulta-nav-date {
-      font-size: 11px;
-      color: var(--text-2);
-      margin-top: 4px;
-    }
-
-    .consulta-detail-pane {
-      background-color: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px;
     }
 
     .info-label {
@@ -2971,8 +2919,15 @@
             <input class="input" type="tel" id="perfil-telefono" placeholder="Ej. 310 123 4567">
           </div>
           <div class="form-group">
-            <label class="form-label" for="perfil-foto">Foto (URL, opcional)</label>
-            <input class="input" type="text" id="perfil-foto" placeholder="https://...">
+            <label class="form-label">Foto de perfil (opcional)</label>
+            <div class="pet-photo-circle-wrap" style="margin:0;">
+              <div class="pet-photo-circle" id="perfil-foto-preview"><i data-lucide="user" style="width:22px;height:22px;"></i></div>
+              <label class="pet-photo-edit-btn" title="Subir foto">
+                <i data-lucide="camera" style="width:14px;height:14px;"></i>
+                <input type="file" accept="image/*" class="pet-photo-edit-input" onchange="handlePerfilCompletarFotoChange(this)">
+              </label>
+            </div>
+            <input type="hidden" id="perfil-foto-url-hidden">
           </div>
 
           <div class="form-group" style="margin-bottom:24px;">
@@ -3300,6 +3255,40 @@
       pendingAuthUserId = userId;
       document.getElementById('perfil-email-display').textContent = email;
       perfilEmailVerifier = mountEmailVerifier('perfil-email-verify', () => email, () => pendingAuthUserId, () => {});
+
+      // Reinicia el preview/hidden de foto cada vez que se entra a esta
+      // pantalla -- evita arrastrar la foto de una sesión anterior si
+      // bootstrapSession() vuelve a caer aquí (ej. tras un error).
+      document.getElementById('perfil-foto-url-hidden').value = '';
+      const preview = document.getElementById('perfil-foto-preview');
+      preview.innerHTML = '<i data-lucide="user" style="width:22px;height:22px;"></i>';
+      preview.className = 'pet-photo-circle';
+      lucide.createIcons();
+    }
+
+    // Preview instantáneo local (FileReader) + subida real en paralelo al
+    // bucket `avatars` (mismo criterio que handleFotoInputChange de fotos
+    // de mascota) -- pendingAuthUserId ya está fijado por
+    // prepararScreenPerfil() al entrar a esta pantalla.
+    async function handlePerfilCompletarFotoChange(input) {
+      if (!input.files || !input.files[0] || !pendingAuthUserId) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = e => {
+        const preview = document.getElementById('perfil-foto-preview');
+        preview.innerHTML = `<img src="${e.target.result}" alt="Foto de perfil">`;
+        preview.className = 'pet-photo-circle';
+      };
+      reader.readAsDataURL(file);
+
+      try {
+        const url = await subirFotoPerfilReal(file, pendingAuthUserId);
+        document.getElementById('perfil-foto-url-hidden').value = url;
+      } catch (err) {
+        console.error('[IRIS] Error subiendo foto de perfil:', err);
+        const detalle = (err && err.message) ? err.message : 'error desconocido';
+        showToast(`La foto se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
+      }
     }
 
     async function handleCompletarPerfil(e) {
@@ -3327,7 +3316,7 @@
       const { error } = await window.supabase.from('profiles').update({
         nombre,
         telefono: document.getElementById('perfil-telefono').value.trim(),
-        foto_url: document.getElementById('perfil-foto').value.trim() || null
+        foto_url: document.getElementById('perfil-foto-url-hidden').value.trim() || null
       }).eq('id', user.id);
 
       btn.disabled = false;
@@ -3611,6 +3600,13 @@
         <div class="card" style="max-width:640px;">
           <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
             <span class="card-title">Datos personales</span>
+            <div class="pet-photo-circle-wrap" style="align-self:flex-start;margin:0;">
+              <div class="pet-photo-circle" id="perfil-tab-foto-preview"><i data-lucide="user" style="width:22px;height:22px;"></i></div>
+              <label class="pet-photo-edit-btn" title="Cambiar foto">
+                <i data-lucide="camera" style="width:14px;height:14px;"></i>
+                <input type="file" accept="image/*" class="pet-photo-edit-input" onchange="handlePerfilTabFotoChange(this)">
+              </label>
+            </div>
             <div class="form-group">
               <label class="form-label">Nombre completo</label>
               <input class="input" type="text" id="perfil-tab-nombre">
@@ -3620,15 +3616,27 @@
               <input class="input" type="tel" id="perfil-tab-telefono">
             </div>
             <div class="form-group">
-              <label class="form-label">Foto (URL)</label>
-              <input class="input" type="text" id="perfil-tab-foto">
-            </div>
-            <div class="form-group">
               <label class="form-label">Email</label>
               <input class="input" type="text" id="perfil-tab-email" disabled>
             </div>
             <span class="field-error" id="perfil-tab-error" style="display:none;"></span>
             <button class="btn-primary" style="width:auto;align-self:flex-end;" onclick="guardarPerfilTab()">Guardar cambios</button>
+          </div>
+        </div>
+
+        <div class="card" style="max-width:640px;margin-top:20px;">
+          <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+            <span class="card-title">Seguridad</span>
+            <div class="form-group">
+              <label class="form-label">Nueva contraseña</label>
+              <input class="input" type="password" id="perfil-tab-password-nueva" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Confirmar nueva contraseña</label>
+              <input class="input" type="password" id="perfil-tab-password-confirmar" placeholder="Repite la contraseña" autocomplete="new-password">
+            </div>
+            <span class="field-error" id="perfil-tab-password-error" style="display:none;"></span>
+            <button class="btn-primary" style="width:auto;align-self:flex-end;" onclick="actualizarPasswordPerfil(this)">Actualizar contraseña</button>
           </div>
         </div>
 
@@ -4282,28 +4290,21 @@
                     <span class="card-title"><i data-lucide="stethoscope" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Consultas Clínicas</span>
                     <button class="btn-outline module-create-btn" style="padding: 6px 12px; font-size: 12px;" onclick="abrirTableroTrabajo()"><i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar Consulta</button>
                   </div>
-                  <div class="consulta-grid">
-                    <div class="consultas-list-nav">
-                      <div class="consulta-nav-card active" onclick="showConsultaDetail(1)" style="position: relative;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
-                          <div>
-                            <div class="consulta-nav-title">Consulta de Control</div>
-                            <div class="consulta-nav-date">07/07/2026 · Dr. Ríos</div>
-                          </div>
-                          <span id="consulta-row-actions-slot"></span>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="consulta-detail-pane">
-                      <div class="info-label">Motivo de Consulta</div>
-                      <div class="info-value" id="consulta-motivo">Control de vacunas y valoración de rutina. Propietario indica que la mascota ha estado rascándose las orejas ocasionalmente.</div>
-
-                      <div class="info-label">Examen Físico</div>
-                      <div class="info-value" id="consulta-fisico">Frecuencia cardíaca: 140 lpm. Temperatura: 38.6°C. Peso: 4.2 kg. Capas cutáneas normales, leve cerumen en conducto auditivo externo izquierdo sin signos de otitis aguda.</div>
-
-                      <div class="info-label">Plan Diagnóstico y Terapéutico</div>
-                      <div class="info-value" id="consulta-plan">Limpieza ótica preventiva con OtoClean. Agendar triple felina dentro de 30 días. Continuar dieta balanceada.</div>
-                    </div>
+                  <table class="results-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Motivo</th>
+                        <th>Diagnóstico</th>
+                        <th>Usuario</th>
+                        <th style="text-align: right;">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="consultas-table-body"><!-- Dinámico por JS --></tbody>
+                  </table>
+                  <div class="placeholder-content" id="consultas-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
+                    <div class="placeholder-icon"><i data-lucide="stethoscope" style="width: 24px; height: 24px;"></i></div>
+                    <p class="placeholder-text" style="font-size: 12px;">No hay consultas registradas</p>
                   </div>
                 </div>
               </div>
@@ -6893,13 +6894,8 @@
       // Cargar su Timeline de Historia
       renderHistoriaTimeline(data);
 
-      // Cargar su Consulta
-      document.getElementById('consulta-motivo').textContent = data.consulta.motivo;
-      document.getElementById('consulta-fisico').textContent = data.consulta.fisico;
-      document.getElementById('consulta-plan').textContent = data.consulta.plan;
-
-      // Cargar menú "..." de la consulta y su tabla de Fórmulas médicas
-      document.getElementById('consulta-row-actions-slot').innerHTML = renderRowActionsMenu('consulta', '1');
+      // Cargar su tabla de Consultas y de Fórmulas médicas
+      renderConsultasTable(petKey);
       renderFormulasTable(petKey);
       renderVacunacionesTable(petKey);
       renderDesparasitacionesTable(petKey);
@@ -8224,6 +8220,28 @@
       showToast('Foto actualizada');
     }
 
+    // ── Foto de perfil de usuario (bucket `avatars`, path "<user_id>/avatar.<ext>",
+    // patrón "own folder" — ver supabase/schema.sql). Reutilizada por la
+    // pantalla "Completar perfil" del auth shell y por el tab "Mi perfil"
+    // del app shell; cada quien maneja su propio preview/estado, esta
+    // función solo sube el archivo y devuelve la URL pública final.
+    async function subirFotoPerfilReal(file, userId) {
+      if (!window.supabase) throw new Error('sin conexión a la base de datos');
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const path = `${userId}/avatar.${ext}`;
+
+      const { error: uploadError } = await window.supabase.storage
+        .from('avatars')
+        .upload(path, file, { contentType: file.type || 'image/jpeg', upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: pub } = window.supabase.storage.from('avatars').getPublicUrl(path);
+      // upsert:true reutiliza el mismo path en cada reemplazo -- sin un
+      // parámetro que cambie, el navegador seguiría sirviendo la imagen
+      // vieja desde caché (mismo criterio que subirFotoMascotaReal).
+      return `${pub.publicUrl}?v=${Date.now()}`;
+    }
+
     // ── Gráfico "Histórico de peso" — línea de tiempo simple con tooltip ──
     function renderWeightChartSVG(containerId, historial) {
       const container = document.getElementById(containerId);
@@ -8419,7 +8437,7 @@
     // (cargarDatosClinicaDesdeSupabase), para no duplicar la lista de campos.
     function crearScaffoldClinicoVacio() {
       return {
-        timeline: [], consulta: { motivo: '', fisico: '', plan: '' },
+        timeline: [], consultas: [],
         formulas: [], ordenes: [], documentos: [], resultados: [], vacunaciones: [], desparasitaciones: [],
         peluquerias: [], guarderias: [], remisiones: [], mensajes: [], seguimientos: [], hospitalizaciones: [], cirugias: [],
         problemas: [], examenes: []
@@ -8545,13 +8563,6 @@
       } finally {
         if (btn) btn.disabled = false;
       }
-    }
-
-    // Selecciona una consulta de la lista de navegación (por ahora solo existe 1 registro por mascota)
-    function showConsultaDetail(index) {
-      document.querySelectorAll('.consulta-nav-card').forEach(c => c.classList.remove('active'));
-      const card = document.querySelector('.consulta-nav-card');
-      if (card) card.classList.add('active');
     }
 
     // NAVEGACIÓN NIVEL 2 (Sidebar del Paciente)
@@ -8715,6 +8726,7 @@
       if (!role.canNewConsult || !selectedPetKey) return; // Sin privilegio — no debe abrirse aunque se manipule el DOM
 
       const data = patientData[selectedPetKey];
+      editingConsultaContext = null;
 
       // Cabecera del modal con datos de la mascota ya cargados
       const avatar = document.getElementById('soap-pet-avatar');
@@ -8738,17 +8750,97 @@
       document.getElementById('soap-exam-toggle').classList.remove('expanded');
       document.getElementById('soap-exam-body').classList.remove('expanded');
 
+      document.getElementById('soap-guardar-btn').textContent = 'Guardar consulta';
+      document.getElementById('nueva-consulta-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    // Reutiliza el mismo modal de "Nueva Consulta" (SOAP) para editar una
+    // consulta real ya guardada -- guardarConsulta() rama a UPDATE en vez
+    // de INSERT mientras editingConsultaContext esté fijado. isoToDatetimeLocalValue
+    // es el inverso de getNowDatetimeLocalValue() (misma técnica de
+    // corregir el offset de zona horaria antes de recortar a "YYYY-MM-DDTHH:mm").
+    function isoToDatetimeLocalValue(iso) {
+      const d = new Date(iso);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      return d.toISOString().slice(0, 16);
+    }
+
+    // Reconstruye los <select>/<input> de "Examen físico por sistema" a
+    // partir de las líneas ya guardadas (formato exacto que arma
+    // guardarConsulta: "${sistema} — ${estado}${: detalle si Alterado}") --
+    // sin esto, reabrir para editar perdería esos hallazgos en el próximo
+    // guardado (el body se re-renderiza en blanco en cada apertura).
+    function aplicarExamFindingsAlFormulario(bodyId, findings) {
+      const body = document.getElementById(bodyId);
+      if (!body || !Array.isArray(findings)) return;
+      findings.forEach(f => {
+        const sepIdx = f.indexOf(' — ');
+        if (sepIdx === -1) return;
+        const sys = f.slice(0, sepIdx);
+        const rest = f.slice(sepIdx + 3);
+        const i = EXAM_SYSTEMS.indexOf(sys);
+        const select = i === -1 ? null : body.querySelector(`[data-exam-select="${i}"]`);
+        if (!select) return;
+        const colonIdx = rest.indexOf(': ');
+        const isAlterado = rest.startsWith('Alterado');
+        select.value = isAlterado ? 'Alterado' : rest;
+        const detail = body.querySelector(`[data-exam-detail="${i}"]`);
+        if (detail) {
+          detail.value = isAlterado && colonIdx !== -1 ? rest.slice(colonIdx + 2) : '';
+          detail.classList.toggle('show', isAlterado);
+        }
+      });
+    }
+
+    function abrirEditarConsultaModal(petKey, dbId) {
+      const data = patientData[petKey];
+      const record = data && data.consultas.find(c => c.dbId === dbId);
+      if (!data || !record) { showToast('No se encontró la consulta'); return; }
+
+      editingConsultaContext = { petKey, dbId };
+
+      const avatar = document.getElementById('soap-pet-avatar');
+      avatar.textContent = data.avatarText;
+      avatar.className = `soap-modal-pet-avatar ${data.avatarClass}`;
+      document.getElementById('soap-pet-name').textContent = data.name;
+      document.getElementById('soap-pet-meta').textContent = `${data.species} · ${data.breed} · ${data.owner}`;
+
+      document.getElementById('soap-fecha').value = record.fechaISO ? isoToDatetimeLocalValue(record.fechaISO) : getNowDatetimeLocalValue();
+      document.getElementById('soap-motivo').value = record.motivo || 'Consulta general';
+      document.getElementById('soap-s').value = record.subjetivo || '';
+      document.getElementById('soap-o').value = record.objetivo || '';
+      document.getElementById('soap-a').value = record.assessment || '';
+      document.getElementById('soap-p').value = record.plan || '';
+      ['soap-s', 'soap-o', 'soap-a', 'soap-p'].forEach(id => {
+        const el = document.getElementById(id);
+        el.classList.remove('field-error');
+        el.oninput = () => { if (el.value.trim() !== '') el.classList.remove('field-error'); };
+      });
+
+      renderExamSystems();
+      aplicarExamFindingsAlFormulario('soap-exam-body', record.examenFisico);
+      const hasFindings = Array.isArray(record.examenFisico) && record.examenFisico.length > 0;
+      document.getElementById('soap-exam-toggle').classList.toggle('expanded', hasFindings);
+      document.getElementById('soap-exam-body').classList.toggle('expanded', hasFindings);
+
+      document.getElementById('soap-guardar-btn').textContent = 'Guardar cambios';
       document.getElementById('nueva-consulta-modal').classList.add('show');
       lucide.createIcons();
     }
 
     function closeNuevaConsultaModal() {
       document.getElementById('nueva-consulta-modal').classList.remove('show');
+      editingConsultaContext = null;
     }
 
     function handleSoapModalOverlayClick(e) {
       if (e.target === document.getElementById('nueva-consulta-modal')) closeNuevaConsultaModal();
     }
+
+    // { petKey, dbId } cuando guardarConsulta() está editando una consulta
+    // ya existente (ver abrirEditarConsultaModal) — null al crear una nueva.
+    let editingConsultaContext = null;
 
     async function guardarConsulta(idPrefix, examBodyId) {
       idPrefix = idPrefix || 'soap-';
@@ -8827,44 +8919,87 @@
         summary += `<br>Examen físico por sistema: ${examFindings.join(' · ')}`;
       }
 
+      const isEditing = !!editingConsultaContext;
       const btn = document.getElementById(idPrefix === 'soap-' ? 'soap-guardar-btn' : 'tablero-soap-guardar-btn');
       if (btn) btn.disabled = true;
 
       try {
+        let dbId = isEditing ? editingConsultaContext.dbId : null;
+
         if (window.supabase && data.mascotaId && currentSession && currentSession.activeMembership) {
           const { data: userData } = await window.supabase.auth.getUser();
           const userId = userData && userData.user ? userData.user.id : null;
 
-          const { error } = await window.supabase.from('consultas').insert({
-            establecimiento_id: currentSession.activeMembership.establecimientoId,
-            mascota_id: data.mascotaId,
+          const payload = {
             fecha_hora: fechaHoraISO,
             motivo: motivo || null,
             subjetivo: sEl.value.trim(),
             objetivo: oEl.value.trim(),
             assessment: aEl.value.trim(),
             plan: pEl.value.trim(),
-            vital_temp: vitals.temp, vital_fc: vitals.fc, vital_fr: vitals.fr, vital_crt: vitals.crt,
             examen_fisico: examFindings,
-            usuario,
-            created_by: userId
-          });
-          if (error) throw error;
+            usuario
+          };
+          // Los signos vitales solo viven en el Tablero de trabajo (ver nota
+          // arriba) — si se edita desde el modal clásico (sin esos campos en
+          // el DOM), no se incluyen en el payload para no pisarlos con null.
+          if (vitalTempEl) Object.assign(payload, { vital_temp: vitals.temp, vital_fc: vitals.fc, vital_fr: vitals.fr, vital_crt: vitals.crt });
+
+          if (isEditing) {
+            payload.updated_at = new Date().toISOString();
+            const { error } = await window.supabase.from('consultas').update(payload).eq('id', dbId);
+            if (error) throw error;
+          } else {
+            const { data: inserted, error } = await window.supabase.from('consultas').insert({
+              ...payload,
+              establecimiento_id: currentSession.activeMembership.establecimientoId,
+              mascota_id: data.mascotaId,
+              created_by: userId
+            }).select().single();
+            if (error) throw error;
+            dbId = inserted.id;
+          }
         }
 
-        data.timeline.unshift({
-          type: motivo,
-          date: formatFechaConsulta(fechaValue),
-          title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
-          summary: summary,
-          vet: usuario
-        });
+        if (isEditing) {
+          const registro = data.consultas.find(c => c.dbId === dbId);
+          if (registro) Object.assign(registro, {
+            fechaISO: fechaHoraISO, fecha: formatFechaHoraCorta(fechaHoraISO), motivo: motivo || 'Consulta general',
+            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), assessment: aEl.value.trim(), plan: pEl.value.trim(),
+            examenFisico: examFindings, usuario
+          });
+          const tItem = data.timeline.find(t => t.dbId === dbId);
+          if (tItem) Object.assign(tItem, {
+            type: motivo,
+            date: formatFechaHoraCorta(fechaHoraISO),
+            title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
+            summary,
+            vet: usuario
+          });
+        } else {
+          data.consultas.unshift({
+            dbId, fechaISO: fechaHoraISO, fecha: formatFechaHoraCorta(fechaHoraISO), motivo: motivo || 'Consulta general',
+            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), assessment: aEl.value.trim(), plan: pEl.value.trim(),
+            vitalTemp: vitals.temp, vitalFc: vitals.fc, vitalFr: vitals.fr, vitalCrt: vitals.crt,
+            examenFisico: examFindings, usuario
+          });
+          data.timeline.unshift({
+            dbId,
+            type: motivo,
+            date: formatFechaConsulta(fechaValue),
+            title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
+            summary: summary,
+            vet: usuario
+          });
+        }
 
         renderHistoriaTimeline(data);
+        if (selectedPetKey) renderConsultasTable(selectedPetKey);
         if (idPrefix === 'soap-') closeNuevaConsultaModal();
         if (idPrefix === 'tablero-soap-') cerrarTableroAConsultorio();
-        switchSubTab('historia');
-        showToast('Consulta guardada');
+        switchSubTab(isEditing ? 'consultas' : 'historia');
+        showToast(isEditing ? 'Consulta actualizada' : 'Consulta guardada');
+        editingConsultaContext = null;
       } catch (err) {
         console.error('[IRIS] Error guardando la consulta en Supabase:', err);
         showToast('No se pudo guardar la consulta — intenta de nuevo');
@@ -8909,6 +9044,12 @@
         deselectPet();
         return;
       }
+      // El Tablero es siempre alta de una consulta NUEVA (editar una ya
+      // existente pasa por el modal clásico, ver abrirEditarConsultaModal)
+      // -- sin este reset, un editingConsultaContext que hubiera quedado
+      // fijado por una edición fallida/sin cerrar haría que guardarConsulta()
+      // actualizara por error ese registro viejo en vez de crear uno nuevo.
+      editingConsultaContext = null;
 
       document.getElementById('tablero-soap-fecha').value = getNowDatetimeLocalValue();
       document.getElementById('tablero-soap-motivo').value = 'Consulta general';
@@ -9270,8 +9411,7 @@
 
     function refreshRowActionMenus() {
       closeAllRowMenus();
-      const consultaSlot = document.getElementById('consulta-row-actions-slot');
-      if (consultaSlot) consultaSlot.innerHTML = renderRowActionsMenu('consulta', '1');
+      if (selectedPetKey) renderConsultasTable(selectedPetKey);
       if (selectedPetKey) renderFormulasTable(selectedPetKey);
       if (selectedPetKey) renderVacunacionesTable(selectedPetKey);
       if (selectedPetKey) renderDesparasitacionesTable(selectedPetKey);
@@ -9304,7 +9444,10 @@
     // no tienen función *ViewContentHTML() propia).
     function getRegistroViewData(moduleKey, recordId) {
       if (moduleKey === 'consulta') {
-        return { title: 'Consulta clínica', html: consultaViewContentHTML() };
+        const [petKey, dbId] = recordId.split(':');
+        const record = patientData[petKey] && patientData[petKey].consultas.find(c => c.dbId === dbId);
+        if (!record) return null;
+        return { title: 'Consulta clínica', html: consultaViewContentHTML(record) };
       } else if (moduleKey === 'formula') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].formulas[Number(idx)];
@@ -9426,7 +9569,8 @@
     function rowActionEditar(moduleKey, recordId) {
       closeAllRowMenus();
       if (moduleKey === 'consulta') {
-        openConsultaEditModal();
+        const [petKey, dbId] = recordId.split(':');
+        abrirEditarConsultaModal(petKey, dbId);
       } else if (moduleKey === 'formula') {
         const [petKey, idx] = recordId.split(':');
         openFormulaModal('edit', petKey, Number(idx));
@@ -9664,17 +9808,9 @@
       pendingDelete = null;
 
       if (moduleKey === 'consulta') {
-        const card = document.querySelector('.consulta-nav-card');
-        if (card) {
-          card.classList.add('row-fade-out');
-          setTimeout(() => {
-            card.remove();
-            document.querySelector('.consulta-detail-pane').innerHTML =
-              '<p style="font-size:13px;color:var(--text-2);">No hay consultas registradas.</p>';
-            const counter = document.querySelector('.sidebar-item[data-subtab="consultas"] .sidebar-counter');
-            if (counter) counter.textContent = '0';
-          }, 250);
-        }
+        const [petKey, dbId] = recordId.split(':');
+        const row = document.querySelector(`tr[data-consulta-row="${dbId}"]`);
+        eliminarConsultaReal(petKey, dbId, row);
       } else if (moduleKey === 'formula') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
@@ -9916,14 +10052,33 @@
       if (e.target === document.getElementById('record-view-modal')) closeViewModal();
     }
 
-    function consultaViewContentHTML() {
+    function consultaViewContentHTML(record) {
+      const vitalsParts = [];
+      if (record.vitalTemp != null) vitalsParts.push(`Temp ${record.vitalTemp}°C`);
+      if (record.vitalFc != null) vitalsParts.push(`FC ${record.vitalFc} lpm`);
+      if (record.vitalFr != null) vitalsParts.push(`FR ${record.vitalFr} rpm`);
+      if (record.vitalCrt) vitalsParts.push(`TLLC ${record.vitalCrt}`);
+      const vitalsHTML = vitalsParts.length
+        ? `<div class="info-label">Signos vitales</div><div class="info-value">${vitalsParts.join(' · ')}</div>` : '';
+      const examHTML = (record.examenFisico && record.examenFisico.length)
+        ? `<div class="info-label">Examen físico por sistema</div><div class="info-value">${record.examenFisico.join('<br>')}</div>` : '';
       return `
-        <div class="info-label">Motivo de Consulta</div>
-        <div class="info-value">${document.getElementById('consulta-motivo').textContent}</div>
-        <div class="info-label">Examen Físico</div>
-        <div class="info-value">${document.getElementById('consulta-fisico').textContent}</div>
-        <div class="info-label">Plan Diagnóstico y Terapéutico</div>
-        <div class="info-value">${document.getElementById('consulta-plan').textContent}</div>
+        <div class="info-label">Fecha</div>
+        <div class="info-value">${record.fecha}</div>
+        <div class="info-label">Motivo de consulta</div>
+        <div class="info-value">${record.motivo || '—'}</div>
+        <div class="info-label">Subjetivo</div>
+        <div class="info-value">${record.subjetivo || '—'}</div>
+        <div class="info-label">Objetivo</div>
+        <div class="info-value">${record.objetivo || '—'}</div>
+        ${vitalsHTML}
+        ${examHTML}
+        <div class="info-label">Assessment (diagnóstico)</div>
+        <div class="info-value">${record.assessment || '—'}</div>
+        <div class="info-label">Plan</div>
+        <div class="info-value">${record.plan || '—'}</div>
+        <div class="info-label" style="margin-top:8px;">Usuario</div>
+        <div class="info-value">${record.usuario || '—'}</div>
       `;
     }
 
@@ -9988,29 +10143,6 @@
         <div class="info-value">${record.usuario}</div>
         ${firmaHTML}
       `;
-    }
-
-    // ── MODAL: EDITAR CONSULTA ───────────────────────────────────
-    function openConsultaEditModal() {
-      document.getElementById('edit-consulta-motivo').value = document.getElementById('consulta-motivo').textContent;
-      document.getElementById('edit-consulta-fisico').value = document.getElementById('consulta-fisico').textContent;
-      document.getElementById('edit-consulta-plan').value = document.getElementById('consulta-plan').textContent;
-      document.getElementById('consulta-edit-modal').classList.add('show');
-    }
-    function closeConsultaEditModal() { document.getElementById('consulta-edit-modal').classList.remove('show'); }
-    function handleConsultaEditOverlayClick(e) {
-      if (e.target === document.getElementById('consulta-edit-modal')) closeConsultaEditModal();
-    }
-    function saveConsultaEdit() {
-      const data = patientData[selectedPetKey];
-      data.consulta.motivo = document.getElementById('edit-consulta-motivo').value.trim();
-      data.consulta.fisico = document.getElementById('edit-consulta-fisico').value.trim();
-      data.consulta.plan = document.getElementById('edit-consulta-plan').value.trim();
-      document.getElementById('consulta-motivo').textContent = data.consulta.motivo;
-      document.getElementById('consulta-fisico').textContent = data.consulta.fisico;
-      document.getElementById('consulta-plan').textContent = data.consulta.plan;
-      closeConsultaEditModal();
-      showToast('Consulta actualizada');
     }
 
     // ── MÓDULO: FÓRMULAS MÉDICAS ──────────────────────────────────
@@ -10104,6 +10236,68 @@
       if (!iso) return '';
       const [y, m, d] = iso.split('-');
       return `${d}/${m}/${y}`;
+    }
+
+    // ── MÓDULO: CONSULTAS (tabla real, fuente = data.consultas, poblado
+    // desde la tabla `consultas` de Supabase por cargarDatosClinicaDesdeSupabase()
+    // y actualizado localmente por guardarConsulta()/eliminarConsultaReal()) ──
+    function renderConsultasTable(petKey) {
+      const data = patientData[petKey];
+      const tbody = document.getElementById('consultas-table-body');
+      const emptyState = document.getElementById('consultas-empty-state');
+      if (!data || !tbody) return;
+
+      if (!data.consultas.length) {
+        tbody.innerHTML = '';
+        if (emptyState) emptyState.style.display = 'flex';
+      } else {
+        if (emptyState) emptyState.style.display = 'none';
+        tbody.innerHTML = data.consultas.map(c => `
+          <tr data-consulta-row="${c.dbId}">
+            <td>${c.fecha}</td>
+            <td>${c.motivo || '—'}</td>
+            <td>${c.assessment ? (c.assessment.length > 60 ? c.assessment.slice(0, 60) + '…' : c.assessment) : '—'}</td>
+            <td>${c.usuario || '—'}</td>
+            <td style="text-align: right;">${renderRowActionsMenu('consulta', `${petKey}:${c.dbId}`)}</td>
+          </tr>
+        `).join('');
+      }
+
+      const counter = document.querySelector('.sidebar-item[data-subtab="consultas"] .sidebar-counter');
+      if (counter) counter.textContent = data.consultas.length;
+
+      lucide.createIcons();
+    }
+
+    // Mismo patrón que eliminarExamenReal(): quita la fila localmente de
+    // inmediato (con fade) y en paralelo elimina el registro real en
+    // Supabase -- si la llamada falla, la fila ya se quitó de la vista
+    // pero se avisa que no se sincronizó con el servidor (para no dejar la
+    // UI colgada esperando la red antes de reaccionar al clic).
+    async function eliminarConsultaReal(petKey, dbId, row) {
+      const data = patientData[petKey];
+      const quitarLocal = () => {
+        const idx = data.consultas.findIndex(c => c.dbId === dbId);
+        if (idx !== -1) data.consultas.splice(idx, 1);
+        const tIdx = data.timeline.findIndex(t => t.dbId === dbId);
+        if (tIdx !== -1) data.timeline.splice(tIdx, 1);
+        renderConsultasTable(petKey);
+        renderHistoriaTimeline(data);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('consultas').delete().eq('id', dbId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando consulta en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
     }
 
     function renderFormulasTable(petKey) {
@@ -14085,15 +14279,49 @@
       if (!currentSession || !currentSession.activeMembership) return;
       const rol = prompt('¿Para qué rol es el enlace? Escribe: medico, auxiliar, ventas o admin', 'medico');
       if (!rol || !ROLES[rol]) { if (rol !== null) showToast('Rol no válido'); return; }
+      const { url, error } = await crearInvitacionParaRol(rol);
+      if (error) { showToast('No se pudo generar el enlace: ' + error); return; }
+      if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+      window.prompt('Enlace de invitación (copiado al portapapeles si el navegador lo permitió) — válido 7 días:', url);
+    }
+
+    // Pieza compartida por generarEnlaceInvitacion() (Solicitudes de
+    // vinculación) y generarInvitacionDesdeModal() (botón "Crear usuario" de
+    // Admin > Usuarios) — ambos crean la misma fila real en `invites`, solo
+    // cambia de dónde sale el rol (prompt() vs. el <select> del modal).
+    async function crearInvitacionParaRol(rol) {
+      if (!currentSession || !currentSession.activeMembership) return { error: 'No hay sesión activa' };
       const { data, error } = await window.supabase.from('invites').insert({
         establecimiento_id: currentSession.activeMembership.establecimientoId,
         rol,
         created_by: currentSession.user.id
       }).select().single();
-      if (error) { showToast('No se pudo generar el enlace: ' + error.message); return; }
-      const url = `${location.origin}${location.pathname}?invite=${data.id}`;
+      if (error) return { error: error.message };
+      return { url: `${location.origin}${location.pathname}?invite=${data.id}` };
+    }
+
+    async function generarInvitacionDesdeModal() {
+      const rol = document.getElementById('usuario-rol-select').value;
+      const btn = document.getElementById('usuario-guardar-btn');
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Generando...';
+      const { url, error } = await crearInvitacionParaRol(rol);
+      btn.disabled = false;
+      btn.textContent = original;
+      if (error) { showToast('No se pudo generar el enlace: ' + error); return; }
+      document.getElementById('usuario-invite-link-input').value = url;
+      document.getElementById('usuario-invite-link-group').style.display = '';
       if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
-      window.prompt('Enlace de invitación (copiado al portapapeles si el navegador lo permitió) — válido 7 días:', url);
+      showToast('Enlace generado y copiado al portapapeles');
+    }
+
+    function copiarInviteLink() {
+      const input = document.getElementById('usuario-invite-link-input');
+      if (!input.value) return;
+      input.select();
+      if (navigator.clipboard) navigator.clipboard.writeText(input.value).catch(() => {});
+      showToast('Enlace copiado al portapapeles');
     }
 
     // ── TAB "ADMIN" (dropdown de navbar) ────────────────────────────
@@ -14433,20 +14661,36 @@
       const isEdit = mode === 'edit';
       editingUsuarioId = isEdit ? userId : null;
       const user = isEdit ? USUARIOS_SISTEMA.find(u => u.id === userId) : null;
+      // Abierto desde Admin > Usuarios (real, genera invitación) vs. desde
+      // el atajo "+ Agregar usuario" de Exámenes (ver
+      // agregarUsuarioDesdeExamen) -- ese último solo llena un select de
+      // "Profesional" con un nombre local, no crea ningún acceso real, así
+      // que sigue usando el alta mock de siempre sin tocarlo.
+      const isRealInvite = !isEdit && examenAgregandoUsuarioUid === null;
 
-      document.getElementById('usuario-modal-title').textContent = isEdit ? 'Editar usuario' : 'Crear usuario';
+      document.getElementById('usuario-modal-title').textContent = isEdit ? 'Editar usuario' : (isRealInvite ? 'Invitar usuario' : 'Crear usuario');
       document.getElementById('usuario-nombre-input').value = user ? user.nombre : '';
       document.getElementById('usuario-email-input').value = user ? user.email : '';
       document.getElementById('usuario-telefono-input').value = user ? user.telefono : '';
       document.getElementById('usuario-rol-select').value = user ? user.rol : 'auxiliar';
       document.getElementById('usuario-especialidad-select').value = (user && user.especialidad) || ESPECIALIDADES_MEDICAS[0];
 
-      // Contraseña temporal (mock) — solo aplica al crear
+      document.getElementById('usuario-form-fields-mock').style.display = isRealInvite ? 'none' : '';
+      document.getElementById('usuario-invite-explainer').style.display = isRealInvite ? '' : 'none';
+      document.getElementById('usuario-invite-link-group').style.display = 'none';
+      document.getElementById('usuario-invite-link-input').value = '';
+      const saveBtn = document.getElementById('usuario-guardar-btn');
+      saveBtn.textContent = isRealInvite ? 'Generar enlace de invitación' : 'Guardar';
+      saveBtn.disabled = false;
+
+      // Contraseña temporal (mock) — solo aplica al alta mock (edición o
+      // atajo de Exámenes), nunca a la invitación real
       const passwordGroup = document.getElementById('usuario-password-group');
       passwordGroup.style.display = isEdit ? 'none' : '';
       if (!isEdit) document.getElementById('usuario-password-input').value = generarPasswordTemporal();
 
       handleUsuarioRolSelectChange();
+      if (isRealInvite) document.getElementById('usuario-especialidad-wrap').style.display = 'none';
 
       document.getElementById('usuario-modal').classList.add('show');
       lucide.createIcons();
@@ -14462,6 +14706,9 @@
     }
 
     function guardarUsuario() {
+      const isRealInvite = !editingUsuarioId && examenAgregandoUsuarioUid === null;
+      if (isRealInvite) { generarInvitacionDesdeModal(); return; }
+
       const nombre = document.getElementById('usuario-nombre-input').value.trim();
       const email = document.getElementById('usuario-email-input').value.trim();
       if (!nombre || !email) {
@@ -16680,8 +16927,8 @@
       if (!currentSession) return;
       document.getElementById('perfil-tab-nombre').value = currentSession.user.nombre || '';
       document.getElementById('perfil-tab-telefono').value = currentSession.user.telefono || '';
-      document.getElementById('perfil-tab-foto').value = currentSession.user.fotoUrl || '';
       document.getElementById('perfil-tab-email').value = currentSession.user.email || '';
+      renderPerfilTabFotoPreview();
 
       const estabContainer = document.getElementById('perfil-tab-establecimientos');
       if (!currentSession.memberships.length) {
@@ -16725,16 +16972,76 @@
       const nombre = document.getElementById('perfil-tab-nombre').value.trim();
       if (!nombre) { errorEl.textContent = 'Ingresa tu nombre'; errorEl.style.display = 'block'; return; }
       const telefono = document.getElementById('perfil-tab-telefono').value.trim();
-      const fotoUrl = document.getElementById('perfil-tab-foto').value.trim();
       const { error } = await window.supabase.from('profiles').update({
-        nombre, telefono, foto_url: fotoUrl || null
+        nombre, telefono
       }).eq('id', currentSession.user.id);
       if (error) { errorEl.textContent = error.message; errorEl.style.display = 'block'; return; }
       currentSession.user.nombre = nombre;
       currentSession.user.telefono = telefono;
-      currentSession.user.fotoUrl = fotoUrl;
       renderHeaderFromSession();
       showToast('Perfil actualizado');
+    }
+
+    // ── Foto de perfil (tab "Mi perfil") — a diferencia de "Completar
+    // perfil" (que difiere el guardado al submit del form), aquí se sube y
+    // se persiste en profiles.foto_url de inmediato al elegir el archivo,
+    // igual que subirFotoMascotaReal -- no depende de "Guardar cambios".
+    function renderPerfilTabFotoPreview() {
+      const preview = document.getElementById('perfil-tab-foto-preview');
+      if (!preview) return;
+      if (currentSession.user.fotoUrl) {
+        preview.innerHTML = `<img src="${currentSession.user.fotoUrl}" alt="Foto de perfil">`;
+      } else {
+        preview.innerHTML = '<i data-lucide="user" style="width:22px;height:22px;"></i>';
+      }
+      lucide.createIcons();
+    }
+
+    async function handlePerfilTabFotoChange(input) {
+      if (!input.files || !input.files[0] || !currentSession) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = e => {
+        document.getElementById('perfil-tab-foto-preview').innerHTML = `<img src="${e.target.result}" alt="Foto de perfil">`;
+      };
+      reader.readAsDataURL(file);
+
+      try {
+        const url = await subirFotoPerfilReal(file, currentSession.user.id);
+        const { error } = await window.supabase.from('profiles').update({ foto_url: url }).eq('id', currentSession.user.id);
+        if (error) throw error;
+        currentSession.user.fotoUrl = url;
+        renderHeaderFromSession();
+        showToast('Foto de perfil actualizada');
+      } catch (err) {
+        console.error('[IRIS] Error subiendo foto de perfil:', err);
+        const detalle = (err && err.message) ? err.message : 'error desconocido';
+        showToast(`La foto se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
+      }
+    }
+
+    // ── Actualizar contraseña (tab "Mi perfil") — sesión activa es
+    // suficiente prueba de identidad para Supabase Auth (mismo criterio
+    // que usa el propio dashboard de Supabase); no pide la contraseña
+    // actual.
+    async function actualizarPasswordPerfil(btn) {
+      const errorEl = document.getElementById('perfil-tab-password-error');
+      errorEl.style.display = 'none';
+      const nueva = document.getElementById('perfil-tab-password-nueva').value;
+      const confirmar = document.getElementById('perfil-tab-password-confirmar').value;
+      if (!nueva || nueva.length < 6) { errorEl.textContent = 'La contraseña debe tener al menos 6 caracteres'; errorEl.style.display = 'block'; return; }
+      if (nueva !== confirmar) { errorEl.textContent = 'Las contraseñas no coinciden'; errorEl.style.display = 'block'; return; }
+
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Actualizando...';
+      const { error } = await window.supabase.auth.updateUser({ password: nueva });
+      btn.disabled = false;
+      btn.textContent = original;
+      if (error) { errorEl.textContent = error.message; errorEl.style.display = 'block'; return; }
+      document.getElementById('perfil-tab-password-nueva').value = '';
+      document.getElementById('perfil-tab-password-confirmar').value = '';
+      showToast('Contraseña actualizada');
     }
 
     // Agrupa exactamente las mismas llamadas que antes vivían sueltas al
@@ -16992,6 +17299,26 @@
       };
     }
 
+    // Igual que construirConsultaDesdeFila pero conserva los campos crudos
+    // (no solo el resumen ya formateado) -- es lo que alimenta la tabla
+    // real de la subtab Consultas y lo que abrirEditarConsultaModal()
+    // necesita para prellenar el formulario SOAP al editar.
+    function construirConsultaRegistroDesdeFila(r) {
+      return {
+        dbId: r.id,
+        fechaISO: r.fecha_hora,
+        fecha: formatFechaHoraCorta(r.fecha_hora),
+        motivo: r.motivo || 'Consulta general',
+        subjetivo: r.subjetivo || '',
+        objetivo: r.objetivo || '',
+        assessment: r.assessment || '',
+        plan: r.plan || '',
+        vitalTemp: r.vital_temp, vitalFc: r.vital_fc, vitalFr: r.vital_fr, vitalCrt: r.vital_crt,
+        examenFisico: Array.isArray(r.examen_fisico) ? r.examen_fisico : [],
+        usuario: r.usuario || ''
+      };
+    }
+
     function construirFormulaDesdeFila(r) {
       return {
         dbId: r.id,
@@ -17143,10 +17470,13 @@
       // el futuro se suma otra fuente real a este mismo array.
       consultaRows.forEach(r => {
         const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
-        if (pet) pet.timeline.push(construirConsultaDesdeFila(r));
+        if (!pet) return;
+        pet.timeline.push(construirConsultaDesdeFila(r));
+        pet.consultas.push(construirConsultaRegistroDesdeFila(r));
       });
       Object.values(patientData).forEach(pet => {
         pet.timeline.sort((a, b) => new Date(b.dateSortKey || 0) - new Date(a.dateSortKey || 0));
+        pet.consultas.sort((a, b) => new Date(b.fechaISO || 0) - new Date(a.fechaISO || 0));
       });
 
       formulaRows.forEach(r => {
@@ -18755,32 +19085,6 @@
     </div>
   </div>
 
-  <!-- Modal: Editar consulta -->
-  <div class="modal-overlay" id="consulta-edit-modal" onclick="handleConsultaEditOverlayClick(event)">
-    <div class="modal-card" onclick="event.stopPropagation()" style="width:560px;">
-      <div class="modal-header">
-        <span class="modal-title">Editar consulta</span>
-        <button class="modal-close" onclick="closeConsultaEditModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
-      </div>
-      <div class="input-group" style="margin-bottom:14px;">
-        <label class="input-label">Motivo de Consulta</label>
-        <textarea class="soap-textarea" id="edit-consulta-motivo"></textarea>
-      </div>
-      <div class="input-group" style="margin-bottom:14px;">
-        <label class="input-label">Examen Físico</label>
-        <textarea class="soap-textarea" id="edit-consulta-fisico"></textarea>
-      </div>
-      <div class="input-group" style="margin-bottom:20px;">
-        <label class="input-label">Plan Diagnóstico y Terapéutico</label>
-        <textarea class="soap-textarea" id="edit-consulta-plan"></textarea>
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:10px;">
-        <button class="btn-secondary" onclick="closeConsultaEditModal()">Cancelar</button>
-        <button class="btn-primary" onclick="saveConsultaEdit()">Guardar cambios</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Modal: Confirmar eliminación (reutilizable) -->
   <div class="modal-overlay" id="delete-confirm-modal" onclick="handleDeleteModalOverlayClick(event)">
     <div class="modal-card" onclick="event.stopPropagation()" style="width:400px;">
@@ -19285,21 +19589,27 @@
         <button class="modal-close" onclick="closeUsuarioModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
       </div>
 
-      <div class="input-group" style="margin-bottom:14px;">
-        <label class="input-label" for="usuario-nombre-input">Nombre</label>
-        <input type="text" id="usuario-nombre-input" class="input-control" style="padding-left:12px;">
-      </div>
-      <div class="input-group" style="margin-bottom:14px;">
-        <label class="input-label" for="usuario-email-input">Email</label>
-        <input type="email" id="usuario-email-input" class="input-control" style="padding-left:12px;" placeholder="nombre@ejemplo.com">
-      </div>
-      <div class="input-group" id="usuario-password-group" style="margin-bottom:14px;">
-        <label class="input-label" for="usuario-password-input">Contraseña temporal (mock)</label>
-        <input type="text" id="usuario-password-input" class="input-control" style="padding-left:12px;">
-      </div>
-      <div class="input-group" style="margin-bottom:14px;">
-        <label class="input-label" for="usuario-telefono-input">Teléfono</label>
-        <input type="text" id="usuario-telefono-input" class="input-control" style="padding-left:12px;">
+      <p class="page-subtitle" id="usuario-invite-explainer" style="display:none;margin:-6px 0 16px;font-size:12.5px;line-height:1.5;">
+        Se genera un enlace de invitación real. Compártelo con la persona: al abrirlo e iniciar sesión (o crear su cuenta), quedará vinculada a este establecimiento con el rol elegido.
+      </p>
+
+      <div id="usuario-form-fields-mock">
+        <div class="input-group" style="margin-bottom:14px;">
+          <label class="input-label" for="usuario-nombre-input">Nombre</label>
+          <input type="text" id="usuario-nombre-input" class="input-control" style="padding-left:12px;">
+        </div>
+        <div class="input-group" style="margin-bottom:14px;">
+          <label class="input-label" for="usuario-email-input">Email</label>
+          <input type="email" id="usuario-email-input" class="input-control" style="padding-left:12px;" placeholder="nombre@ejemplo.com">
+        </div>
+        <div class="input-group" id="usuario-password-group" style="margin-bottom:14px;">
+          <label class="input-label" for="usuario-password-input">Contraseña temporal (mock)</label>
+          <input type="text" id="usuario-password-input" class="input-control" style="padding-left:12px;">
+        </div>
+        <div class="input-group" style="margin-bottom:14px;">
+          <label class="input-label" for="usuario-telefono-input">Teléfono</label>
+          <input type="text" id="usuario-telefono-input" class="input-control" style="padding-left:12px;">
+        </div>
       </div>
       <div class="input-group" style="margin-bottom:14px;max-width:100%;">
         <label class="input-label" for="usuario-rol-select">Rol</label>
@@ -19322,10 +19632,17 @@
           <option value="Odontología">Odontología</option>
         </select>
       </div>
+      <div class="input-group" id="usuario-invite-link-group" style="display:none;margin-bottom:20px;">
+        <label class="input-label">Enlace de invitación</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="usuario-invite-link-input" class="input-control" style="padding-left:12px;" readonly>
+          <button type="button" class="btn-outline" style="width:auto;padding:0 14px;" onclick="copiarInviteLink()">Copiar</button>
+        </div>
+      </div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn-secondary" onclick="closeUsuarioModal()">Cancelar</button>
-        <button class="btn-primary" onclick="guardarUsuario()">Guardar</button>
+        <button class="btn-primary" id="usuario-guardar-btn" onclick="guardarUsuario()">Guardar</button>
       </div>
     </div>
   </div>
