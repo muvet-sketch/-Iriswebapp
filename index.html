@@ -121,6 +121,15 @@
       font-size: 16px;
       letter-spacing: -0.5px;
       box-shadow: 0 2px 4px rgba(var(--clinic-accent-rgb), 0.2);
+      overflow: hidden;
+    }
+
+    .logo-badge img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: inherit;
+      display: block;
     }
 
     .logo-text {
@@ -139,6 +148,14 @@
     .clinic-info {
       display: flex;
       flex-direction: column;
+    }
+
+    .clinic-logo-header {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      object-fit: cover;
+      margin-bottom: 3px;
     }
 
     .clinic-name {
@@ -1146,6 +1163,39 @@
       background-color: var(--surface);
       box-shadow: 0 0 0 3px rgba(var(--clinic-accent-rgb), 0.1);
     }
+
+    /* Selector de indicativo telefónico por país (registro de propietario) */
+    .phone-country-input { position: relative; display: flex; align-items: stretch; gap: 8px; }
+    .phone-country-btn {
+      display: flex; align-items: center; gap: 6px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background-color: #FAFBFD; padding: 0 10px; font-size: 13px;
+      cursor: pointer; white-space: nowrap; transition: var(--transition);
+    }
+    .phone-country-btn:hover { background-color: var(--surface); }
+    .phone-country-btn.field-error { border-color: var(--danger); background-color: #FEF2F2; }
+    .phone-country-flag { font-size: 16px; line-height: 1; }
+    .phone-country-dial { color: var(--text-2); font-weight: 600; }
+    .phone-number-input { flex: 1; padding-left: 12px !important; }
+    .phone-country-dropdown {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0;
+      width: 260px; max-height: 280px; background-color: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow-md); z-index: 50; overflow: hidden; flex-direction: column;
+    }
+    .phone-country-dropdown.show { display: flex; }
+    .phone-country-search {
+      border: none; border-bottom: 1px solid var(--border);
+      padding: 10px 12px; font-size: 13px; outline: none;
+    }
+    .phone-country-list { overflow-y: auto; }
+    .phone-country-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      font-size: 13px; cursor: pointer;
+    }
+    .phone-country-item:hover { background-color: #F8FAFC; }
+    .phone-country-item-dial { margin-left: auto; color: var(--text-2); }
+    .phone-country-item-empty { padding: 12px; font-size: 12.5px; color: var(--text-2); text-align: center; }
 
     /* Tabla de Resultados */
     .table-container {
@@ -2925,7 +2975,7 @@
     <div class="screen active" id="screen-a">
       <div class="card card-sm">
         <div class="logo-wrap">
-          <div class="logo-badge">I</div>
+          <div class="logo-badge"><img src="brand/Iris_Prototype1.png" alt="IRIS"></div>
           <span class="logo-name">IRIS</span>
           <span class="logo-sub">Sistema de Gestión Clínica Veterinaria</span>
         </div>
@@ -2985,7 +3035,7 @@
     <div class="screen" id="screen-perfil-completar">
       <div class="card card-md">
         <div class="logo-wrap" style="margin-bottom:16px;">
-          <div class="logo-badge">I</div>
+          <div class="logo-badge"><img src="brand/Iris_Prototype1.png" alt="IRIS"></div>
           <span class="logo-name">IRIS</span>
         </div>
 
@@ -3030,7 +3080,7 @@
     <div class="screen" id="screen-b">
       <div class="card card-md">
         <div class="logo-wrap" style="margin-bottom:16px;">
-          <div class="logo-badge">I</div>
+          <div class="logo-badge"><img src="brand/Iris_Prototype1.png" alt="IRIS"></div>
           <span class="logo-name">IRIS</span>
         </div>
 
@@ -3081,7 +3131,7 @@
     <div class="screen" id="screen-d">
       <div class="card card-md">
         <div class="logo-wrap" style="margin-bottom:16px;">
-          <div class="logo-badge">I</div>
+          <div class="logo-badge"><img src="brand/Iris_Prototype1.png" alt="IRIS"></div>
           <span class="logo-name">IRIS</span>
         </div>
 
@@ -3519,11 +3569,12 @@
   <header>
     <div class="header-left">
       <div class="logo-container" onclick="document.querySelector('.nav-tabs-bar .tab-btn[data-tab=&quot;consultorio&quot;]').click();" style="cursor:pointer;">
-        <div class="logo-badge">I</div>
+        <div class="logo-badge"><img src="brand/Iris_Prototype1.png" alt="IRIS"></div>
         <span class="logo-text">IRIS</span>
       </div>
       <div class="logo-divider"></div>
       <div class="clinic-info">
+        <img class="clinic-logo-header" id="header-clinic-logo" alt="" style="display:none;">
         <span class="clinic-name" id="header-clinic-name">—</span>
         <span class="clinic-nit"  id="header-clinic-nit"></span>
       </div>
@@ -5762,8 +5813,11 @@
               </div>
               <div style="padding:20px;display:flex;flex-direction:column;gap:16px;max-width:520px;">
                 <div style="display:flex;align-items:center;gap:16px;">
-                  <div class="logo-badge" id="vetconfig-logo-preview" style="width:56px;height:56px;font-size:22px;flex-shrink:0;">I</div>
-                  <button type="button" class="btn-outline" onclick="showToast('Próximamente: carga de logo')">Cambiar logo</button>
+                  <div class="logo-badge" id="vetconfig-logo-preview" style="width:56px;height:56px;font-size:22px;flex-shrink:0;"><i data-lucide="image" style="width:22px;height:22px;"></i></div>
+                  <label class="btn-outline" style="cursor:pointer;">
+                    <i data-lucide="upload" style="width:14px;height:14px;"></i> Cargar imagen
+                    <input type="file" accept="image/*" style="display:none;" onchange="handleClinicLogoInputChange(this)">
+                  </label>
                 </div>
                 <div class="input-group">
                   <label class="input-label">Nombre / Razón social</label>
@@ -6400,9 +6454,9 @@
     // que el Perfil de propietario y "Trasladar mascota" funcionen igual
     // para cualquier propietario, sin importar su origen.
     let propietarios = [
-      { id: 'prop-seed-1', docTipo: 'C.C.', docNumero: '1.018.456.789', movil: '310 456 7890', email: '', nombre: 'Carlos Mendoza', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Hace 2 horas', ultimaGestionDetail: 'Consulta General' },
-      { id: 'prop-seed-2', docTipo: 'C.C.', docNumero: '52.345.678', movil: '315 789 0123', email: '', nombre: 'Andrea Gómez', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Ayer', ultimaGestionDetail: 'Vacunación Anual' },
-      { id: 'prop-seed-3', docTipo: 'C.C.', docNumero: '1.032.765.432', movil: '320 987 6543', email: '', nombre: 'Liliana Pérez', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Hace 3 días', ultimaGestionDetail: 'Corte y Baño Spa' }
+      { id: 'prop-seed-1', docTipo: 'C.C.', docNumero: '1.018.456.789', movil: '+57 310 456 7890', email: '', nombre: 'Carlos Mendoza', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Hace 2 horas', ultimaGestionDetail: 'Consulta General' },
+      { id: 'prop-seed-2', docTipo: 'C.C.', docNumero: '52.345.678', movil: '+57 315 789 0123', email: '', nombre: 'Andrea Gómez', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Ayer', ultimaGestionDetail: 'Vacunación Anual' },
+      { id: 'prop-seed-3', docTipo: 'C.C.', docNumero: '1.032.765.432', movil: '+57 320 987 6543', email: '', nombre: 'Liliana Pérez', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Hace 3 días', ultimaGestionDetail: 'Corte y Baño Spa' }
     ];
     let editingPropietarioId = null; // propietario en edición dentro de "Registrar propietario" (Parte B.2)
 
@@ -7315,6 +7369,204 @@
       document.getElementById('consultorio-search-view').style.display = 'flex';
     }
 
+    // ── SELECTOR DE INDICATIVO TELEFÓNICO POR PAÍS (reutilizable) ──
+    // `digits: [min, max]` es el largo real del número nacional (sin
+    // indicativo) usado para validar que no sea un número corto/largo
+    // inventado. Países sin dato explícito caen al rango genérico [6,14]
+    // en validarTelefonoPais().
+    const PAISES_TELEFONO = [
+      { iso2: 'CO', nombre: 'Colombia', dial: '57', flag: '🇨🇴', digits: [10, 10] },
+      { iso2: 'MX', nombre: 'México', dial: '52', flag: '🇲🇽', digits: [10, 10] },
+      { iso2: 'AR', nombre: 'Argentina', dial: '54', flag: '🇦🇷', digits: [10, 11] },
+      { iso2: 'CL', nombre: 'Chile', dial: '56', flag: '🇨🇱', digits: [9, 9] },
+      { iso2: 'PE', nombre: 'Perú', dial: '51', flag: '🇵🇪', digits: [9, 9] },
+      { iso2: 'EC', nombre: 'Ecuador', dial: '593', flag: '🇪🇨', digits: [9, 9] },
+      { iso2: 'VE', nombre: 'Venezuela', dial: '58', flag: '🇻🇪', digits: [10, 10] },
+      { iso2: 'BO', nombre: 'Bolivia', dial: '591', flag: '🇧🇴', digits: [8, 8] },
+      { iso2: 'PY', nombre: 'Paraguay', dial: '595', flag: '🇵🇾', digits: [9, 9] },
+      { iso2: 'UY', nombre: 'Uruguay', dial: '598', flag: '🇺🇾', digits: [8, 8] },
+      { iso2: 'BR', nombre: 'Brasil', dial: '55', flag: '🇧🇷', digits: [10, 11] },
+      { iso2: 'PA', nombre: 'Panamá', dial: '507', flag: '🇵🇦', digits: [7, 8] },
+      { iso2: 'CR', nombre: 'Costa Rica', dial: '506', flag: '🇨🇷', digits: [8, 8] },
+      { iso2: 'GT', nombre: 'Guatemala', dial: '502', flag: '🇬🇹', digits: [8, 8] },
+      { iso2: 'HN', nombre: 'Honduras', dial: '504', flag: '🇭🇳', digits: [8, 8] },
+      { iso2: 'SV', nombre: 'El Salvador', dial: '503', flag: '🇸🇻', digits: [8, 8] },
+      { iso2: 'NI', nombre: 'Nicaragua', dial: '505', flag: '🇳🇮', digits: [8, 8] },
+      { iso2: 'DO', nombre: 'República Dominicana', dial: '1', flag: '🇩🇴', digits: [10, 10] },
+      { iso2: 'CU', nombre: 'Cuba', dial: '53', flag: '🇨🇺', digits: [8, 8] },
+      { iso2: 'PR', nombre: 'Puerto Rico', dial: '1', flag: '🇵🇷', digits: [10, 10] },
+      { iso2: 'HT', nombre: 'Haití', dial: '509', flag: '🇭🇹', digits: [8, 8] },
+      { iso2: 'JM', nombre: 'Jamaica', dial: '1', flag: '🇯🇲', digits: [10, 10] },
+      { iso2: 'TT', nombre: 'Trinidad y Tobago', dial: '1', flag: '🇹🇹', digits: [10, 10] },
+      { iso2: 'BZ', nombre: 'Belice', dial: '501', flag: '🇧🇿', digits: [7, 7] },
+      { iso2: 'GY', nombre: 'Guyana', dial: '592', flag: '🇬🇾', digits: [7, 7] },
+      { iso2: 'SR', nombre: 'Surinam', dial: '597', flag: '🇸🇷', digits: [6, 7] },
+      { iso2: 'US', nombre: 'Estados Unidos', dial: '1', flag: '🇺🇸', digits: [10, 10] },
+      { iso2: 'CA', nombre: 'Canadá', dial: '1', flag: '🇨🇦', digits: [10, 10] },
+      { iso2: 'ES', nombre: 'España', dial: '34', flag: '🇪🇸', digits: [9, 9] },
+      { iso2: 'PT', nombre: 'Portugal', dial: '351', flag: '🇵🇹', digits: [9, 9] },
+      { iso2: 'FR', nombre: 'Francia', dial: '33', flag: '🇫🇷', digits: [9, 9] },
+      { iso2: 'DE', nombre: 'Alemania', dial: '49', flag: '🇩🇪', digits: [10, 11] },
+      { iso2: 'IT', nombre: 'Italia', dial: '39', flag: '🇮🇹', digits: [9, 10] },
+      { iso2: 'GB', nombre: 'Reino Unido', dial: '44', flag: '🇬🇧', digits: [10, 10] },
+      { iso2: 'IE', nombre: 'Irlanda', dial: '353', flag: '🇮🇪', digits: [9, 9] },
+      { iso2: 'NL', nombre: 'Países Bajos', dial: '31', flag: '🇳🇱', digits: [9, 9] },
+      { iso2: 'BE', nombre: 'Bélgica', dial: '32', flag: '🇧🇪', digits: [9, 9] },
+      { iso2: 'CH', nombre: 'Suiza', dial: '41', flag: '🇨🇭', digits: [9, 9] },
+      { iso2: 'AT', nombre: 'Austria', dial: '43', flag: '🇦🇹', digits: [10, 11] },
+      { iso2: 'SE', nombre: 'Suecia', dial: '46', flag: '🇸🇪', digits: [9, 9] },
+      { iso2: 'NO', nombre: 'Noruega', dial: '47', flag: '🇳🇴', digits: [8, 8] },
+      { iso2: 'DK', nombre: 'Dinamarca', dial: '45', flag: '🇩🇰', digits: [8, 8] },
+      { iso2: 'FI', nombre: 'Finlandia', dial: '358', flag: '🇫🇮', digits: [9, 9] },
+      { iso2: 'PL', nombre: 'Polonia', dial: '48', flag: '🇵🇱', digits: [9, 9] },
+      { iso2: 'RO', nombre: 'Rumania', dial: '40', flag: '🇷🇴', digits: [9, 9] },
+      { iso2: 'GR', nombre: 'Grecia', dial: '30', flag: '🇬🇷', digits: [10, 10] },
+      { iso2: 'HU', nombre: 'Hungría', dial: '36', flag: '🇭🇺', digits: [9, 9] },
+      { iso2: 'CZ', nombre: 'República Checa', dial: '420', flag: '🇨🇿', digits: [9, 9] },
+      { iso2: 'SK', nombre: 'Eslovaquia', dial: '421', flag: '🇸🇰', digits: [9, 9] },
+      { iso2: 'BG', nombre: 'Bulgaria', dial: '359', flag: '🇧🇬', digits: [9, 9] },
+      { iso2: 'HR', nombre: 'Croacia', dial: '385', flag: '🇭🇷', digits: [8, 9] },
+      { iso2: 'RS', nombre: 'Serbia', dial: '381', flag: '🇷🇸', digits: [8, 9] },
+      { iso2: 'UA', nombre: 'Ucrania', dial: '380', flag: '🇺🇦', digits: [9, 9] },
+      { iso2: 'RU', nombre: 'Rusia', dial: '7', flag: '🇷🇺', digits: [10, 10] },
+      { iso2: 'CN', nombre: 'China', dial: '86', flag: '🇨🇳', digits: [11, 11] },
+      { iso2: 'JP', nombre: 'Japón', dial: '81', flag: '🇯🇵', digits: [10, 10] },
+      { iso2: 'KR', nombre: 'Corea del Sur', dial: '82', flag: '🇰🇷', digits: [9, 10] },
+      { iso2: 'IN', nombre: 'India', dial: '91', flag: '🇮🇳', digits: [10, 10] },
+      { iso2: 'ID', nombre: 'Indonesia', dial: '62', flag: '🇮🇩', digits: [9, 12] },
+      { iso2: 'PH', nombre: 'Filipinas', dial: '63', flag: '🇵🇭', digits: [10, 10] },
+      { iso2: 'TH', nombre: 'Tailandia', dial: '66', flag: '🇹🇭', digits: [9, 9] },
+      { iso2: 'VN', nombre: 'Vietnam', dial: '84', flag: '🇻🇳', digits: [9, 10] },
+      { iso2: 'MY', nombre: 'Malasia', dial: '60', flag: '🇲🇾', digits: [9, 10] },
+      { iso2: 'SG', nombre: 'Singapur', dial: '65', flag: '🇸🇬', digits: [8, 8] },
+      { iso2: 'IL', nombre: 'Israel', dial: '972', flag: '🇮🇱', digits: [9, 9] },
+      { iso2: 'TR', nombre: 'Turquía', dial: '90', flag: '🇹🇷', digits: [10, 10] },
+      { iso2: 'SA', nombre: 'Arabia Saudita', dial: '966', flag: '🇸🇦', digits: [9, 9] },
+      { iso2: 'AE', nombre: 'Emiratos Árabes Unidos', dial: '971', flag: '🇦🇪', digits: [9, 9] },
+      { iso2: 'AU', nombre: 'Australia', dial: '61', flag: '🇦🇺', digits: [9, 9] },
+      { iso2: 'NZ', nombre: 'Nueva Zelanda', dial: '64', flag: '🇳🇿', digits: [8, 9] },
+      { iso2: 'ZA', nombre: 'Sudáfrica', dial: '27', flag: '🇿🇦', digits: [9, 9] },
+      { iso2: 'NG', nombre: 'Nigeria', dial: '234', flag: '🇳🇬', digits: [10, 10] },
+      { iso2: 'EG', nombre: 'Egipto', dial: '20', flag: '🇪🇬', digits: [10, 10] },
+      { iso2: 'MA', nombre: 'Marruecos', dial: '212', flag: '🇲🇦', digits: [9, 9] },
+      { iso2: 'KE', nombre: 'Kenia', dial: '254', flag: '🇰🇪', digits: [9, 9] }
+    ];
+
+    function getPaisTelefono(iso2) {
+      return PAISES_TELEFONO.find(c => c.iso2 === iso2) || PAISES_TELEFONO[0];
+    }
+
+    function aplicarPaisTelefono(inputId, iso2) {
+      const pais = getPaisTelefono(iso2);
+      document.getElementById(`${inputId}-wrap`).dataset.iso2 = pais.iso2;
+      document.getElementById(`${inputId}-country-flag`).textContent = pais.flag;
+      document.getElementById(`${inputId}-country-dial`).textContent = `+${pais.dial}`;
+      document.getElementById(`${inputId}-country-btn`).classList.remove('field-error');
+    }
+
+    // Reconstruye selección de país + número a partir de un valor guardado
+    // tipo "+57 310 456 7890" (usado al abrir el modal en modo edición).
+    function poblarTelefonoPais(inputId, valorGuardado) {
+      const match = /^\+(\d{1,3})\s*(.*)$/.exec((valorGuardado || '').trim());
+      let iso2 = 'CO', numero = valorGuardado || '';
+      if (match) {
+        const pais = PAISES_TELEFONO.find(c => c.dial === match[1]);
+        if (pais) { iso2 = pais.iso2; numero = match[2]; }
+      }
+      aplicarPaisTelefono(inputId, iso2);
+      document.getElementById(inputId).value = numero;
+    }
+
+    // Restringe el campo a dígitos/espacios y limpia el estado de error
+    // (input + botón de país + mensaje) mientras el usuario escribe.
+    function configurarInputTelefonoPais(inputId) {
+      const input = document.getElementById(inputId);
+      input.oninput = () => {
+        input.value = input.value.replace(/[^\d ]/g, '');
+        if (input.value.trim() === '') return;
+        input.classList.remove('field-error');
+        document.getElementById(`${inputId}-country-btn`).classList.remove('field-error');
+        const errorEl = document.getElementById(`${inputId}-error`);
+        if (errorEl) errorEl.classList.remove('show');
+      };
+    }
+
+    function renderPhoneCountryList(inputId, filtro) {
+      const listEl = document.getElementById(`${inputId}-country-list`);
+      const term = (filtro || '').trim().toLowerCase();
+      const items = PAISES_TELEFONO
+        .filter(c => !term || c.nombre.toLowerCase().includes(term) || c.dial.includes(term))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+      listEl.innerHTML = items.length
+        ? items.map(c => `
+            <div class="phone-country-item" onclick="selectPhoneCountry('${inputId}', '${c.iso2}')">
+              <span class="phone-country-flag">${c.flag}</span>
+              <span>${c.nombre}</span>
+              <span class="phone-country-item-dial">+${c.dial}</span>
+            </div>
+          `).join('')
+        : '<div class="phone-country-item-empty">Sin resultados</div>';
+    }
+
+    function closeAllPhoneCountryDropdowns() {
+      document.querySelectorAll('.phone-country-dropdown.show').forEach(el => el.classList.remove('show'));
+    }
+
+    function togglePhoneCountryDropdown(inputId) {
+      const dropdown = document.getElementById(`${inputId}-country-dropdown`);
+      const isOpen = dropdown.classList.contains('show');
+      closeAllPhoneCountryDropdowns();
+      if (isOpen) return;
+      dropdown.classList.add('show');
+      const searchEl = document.getElementById(`${inputId}-country-search`);
+      searchEl.value = '';
+      renderPhoneCountryList(inputId, '');
+      searchEl.focus();
+    }
+
+    function filterPhoneCountryList(inputId) {
+      renderPhoneCountryList(inputId, document.getElementById(`${inputId}-country-search`).value);
+    }
+
+    function selectPhoneCountry(inputId, iso2) {
+      aplicarPaisTelefono(inputId, iso2);
+      closeAllPhoneCountryDropdowns();
+      const input = document.getElementById(inputId);
+      if (input.value.trim() !== '') input.classList.remove('field-error');
+      input.focus();
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.phone-country-input')) closeAllPhoneCountryDropdowns();
+    });
+
+    // Descarta patrones que evidentemente no son un número real (todos el
+    // mismo dígito repetido, o una secuencia estrictamente consecutiva
+    // ascendente/descendente) — no reemplaza una verificación real por
+    // SMS/llamada (no hay backend de telefonía en este prototipo), pero
+    // evita los casos más obvios de número inventado en el formulario.
+    function esPatronTelefonoSospechoso(digitos) {
+      if (!digitos) return true;
+      if (/^(\d)\1+$/.test(digitos)) return true;
+      let ascendente = true, descendente = true;
+      for (let i = 1; i < digitos.length; i++) {
+        const diff = Number(digitos[i]) - Number(digitos[i - 1]);
+        if (diff !== 1) ascendente = false;
+        if (diff !== -1) descendente = false;
+      }
+      return ascendente || descendente;
+    }
+
+    function validarTelefonoPais(inputId) {
+      const wrap = document.getElementById(`${inputId}-wrap`);
+      const input = document.getElementById(inputId);
+      const pais = getPaisTelefono(wrap.dataset.iso2);
+      const digitos = input.value.replace(/\D/g, '');
+      const [min, max] = pais.digits || [6, 14];
+      const valido = digitos.length >= min && digitos.length <= max && !esPatronTelefonoSospechoso(digitos);
+      return { valido, pais, digitos };
+    }
+
     // ── MODAL: REGISTRAR PROPIETARIO ──────────────────────────────
     const PROPIETARIO_FORM_FIELD_IDS = [
       'prop-doc-numero', 'prop-movil', 'prop-email', 'prop-nombre',
@@ -7334,6 +7586,7 @@
         const el = document.getElementById(id);
         el.value = '';
         el.classList.remove('field-error');
+        if (id === 'prop-movil') return; // Manejo propio abajo (filtro de dígitos + selector de país)
         el.oninput = () => { if (el.value.trim() !== '') el.classList.remove('field-error'); };
       });
       document.getElementById('prop-doc-tipo').value = 'C.C.';
@@ -7342,6 +7595,10 @@
       document.getElementById('prop-email').disabled = false;
       document.getElementById('prop-terminos').checked = false;
       document.getElementById('prop-terminos-error').classList.remove('show');
+
+      aplicarPaisTelefono('prop-movil', 'CO');
+      document.getElementById('prop-movil-error').classList.remove('show');
+      configurarInputTelefonoPais('prop-movil');
 
       document.getElementById('registrar-propietario-modal').classList.add('show');
       lucide.createIcons();
@@ -7361,7 +7618,10 @@
 
       document.getElementById('prop-doc-tipo').value = p.docTipo;
       document.getElementById('prop-doc-numero').value = p.docNumero;
-      document.getElementById('prop-movil').value = p.movil;
+      poblarTelefonoPais('prop-movil', p.movil);
+      configurarInputTelefonoPais('prop-movil');
+      document.getElementById('prop-movil-error').classList.remove('show');
+      document.getElementById('prop-movil-country-btn').classList.remove('field-error');
       document.getElementById('prop-email').value = p.email;
       document.getElementById('prop-email').disabled = false;
       document.getElementById('prop-sin-email').checked = !p.email;
@@ -7413,7 +7673,7 @@
       const terminosErrorEl = document.getElementById('prop-terminos-error');
 
       let valid = true;
-      [docNumeroEl, movilEl, nombreEl].forEach(el => {
+      [docNumeroEl, nombreEl].forEach(el => {
         const empty = el.value.trim() === '';
         el.classList.toggle('field-error', empty);
         if (empty) valid = false;
@@ -7421,6 +7681,18 @@
       const emailEmpty = !sinEmail && emailEl.value.trim() === '';
       emailEl.classList.toggle('field-error', emailEmpty);
       if (emailEmpty) valid = false;
+
+      // Valida el celular contra el rango de dígitos real del país
+      // seleccionado en el selector de indicativo y descarta patrones obvios
+      // de número inventado (todos el mismo dígito, secuencia consecutiva).
+      const movilCheck = validarTelefonoPais('prop-movil');
+      const movilBtnEl = document.getElementById('prop-movil-country-btn');
+      const movilErrorEl = document.getElementById('prop-movil-error');
+      const movilInvalido = movilEl.value.trim() === '' || !movilCheck.valido;
+      movilEl.classList.toggle('field-error', movilInvalido);
+      movilBtnEl.classList.toggle('field-error', movilInvalido);
+      movilErrorEl.classList.toggle('show', movilInvalido);
+      if (movilInvalido) valid = false;
 
       // Los términos y condiciones ya se aceptaron al registrar — no se
       // vuelven a exigir al editar un propietario existente.
@@ -7431,7 +7703,7 @@
       if (!valid) {
         const msg = terminosInvalid
           ? 'Completa los campos obligatorios y acepta los términos y condiciones'
-          : 'Completa los campos obligatorios';
+          : (movilInvalido ? 'Ingresa un número de celular válido para el país seleccionado' : 'Completa los campos obligatorios');
         showToast(msg);
         return;
       }
@@ -7447,7 +7719,7 @@
       const datosForm = {
         docTipo,
         docNumero: docNumeroEl.value.trim(),
-        movil: movilEl.value.trim(),
+        movil: `+${movilCheck.pais.dial} ${movilEl.value.trim()}`,
         email: sinEmail ? '' : emailEl.value.trim(),
         nombre,
         direccion: document.getElementById('prop-direccion').value.trim(),
@@ -9998,6 +10270,112 @@
       return slug || 'registro';
     }
 
+    // Asset local del logo de IRIS (brand/Iris_Prototype1.png, junto a
+    // index.html) — fijo, no editable por ningún usuario, a diferencia del
+    // logo de la clínica (CLINIC_INFO.logoUrl). Se usa tanto en el header
+    // del shell/auth (vía <img>, vía CSS) como aquí, embebido en cada PDF
+    // generado.
+    const IRIS_LOGO_URL = 'brand/Iris_Prototype1.png';
+    let irisLogoDataUrlPromise = null;
+
+    // jsPDF.addImage() necesita los bytes de la imagen (Data URL), no una
+    // URL — sirve tanto para el asset local de IRIS (mismo origen, sin
+    // problema de CORS) como para el logo de la clínica (bucket público
+    // `logos-clinica` de Supabase Storage). Si falla (red, CORS, etc.) el
+    // llamador debe seguir sin logo en vez de romper la generación del PDF.
+    function imageUrlToDataURL(url) {
+      return fetch(url)
+        .then(res => res.blob())
+        .then(blob => new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        }));
+    }
+
+    function getIrisLogoDataURL() {
+      if (!irisLogoDataUrlPromise) irisLogoDataUrlPromise = imageUrlToDataURL(IRIS_LOGO_URL).catch(() => null);
+      return irisLogoDataUrlPromise;
+    }
+
+    // jsPDF.addImage() exige el formato como 2º argumento — el logo de la
+    // clínica puede ser PNG o JPEG según lo que suba cada usuario (a
+    // diferencia del logo de IRIS, siempre PNG), así que se detecta desde
+    // el propio Data URL en vez de asumir un formato fijo.
+    function jspdfImageFormatFromDataURL(dataUrl) {
+      const m = /^data:image\/(\w+);/.exec(dataUrl || '');
+      if (!m) return 'PNG';
+      const ext = m[1].toUpperCase();
+      return ext === 'JPG' ? 'JPEG' : ext;
+    }
+
+    // Encabezado compartido por los 3 generadores de PDF de la app
+    // (generarPdfRegistroImpresion, generarYSubirPdfDocumento,
+    // generarPdfPropietario): logo + nombre + NIT del establecimiento
+    // (mismos datos de Configuración de la veterinaria > Información
+    // general, ver CLINIC_INFO) a la izquierda, marca IRIS (logo fijo +
+    // nombre, igual en todos los documentos, no editable) a la derecha
+    // junto con el tipo de documento — mismo patrón de encabezado que las
+    // fórmulas/facturas de referencia (logo de clínica + datos fiscales a
+    // la izquierda, marca de la plataforma + tipo/No. de documento a la
+    // derecha). Devuelve el eje Y donde debe empezar el contenido del
+    // cuerpo del documento.
+    async function dibujarEncabezadoDocumentoIris(doc, tituloDocumento) {
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const marginX = 40;
+      const top = 28;
+      const logoSize = 44;
+
+      let clinicLogoDataUrl = null;
+      if (CLINIC_INFO.logoUrl) {
+        try { clinicLogoDataUrl = await imageUrlToDataURL(CLINIC_INFO.logoUrl); } catch (err) { clinicLogoDataUrl = null; }
+      }
+      const irisLogoDataUrl = await getIrisLogoDataURL();
+
+      let textX = marginX;
+      if (clinicLogoDataUrl) {
+        doc.addImage(clinicLogoDataUrl, jspdfImageFormatFromDataURL(clinicLogoDataUrl), marginX, top, logoSize, logoSize);
+        textX = marginX + logoSize + 12;
+      }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(20, 20, 20);
+      doc.text(CLINIC_INFO.nombre || 'Clínica', textX, top + 16);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(110, 110, 110);
+      if (CLINIC_INFO.nit) doc.text(`NIT ${CLINIC_INFO.nit}`, textX, top + 30);
+      const contactLine = [CLINIC_INFO.telefono, CLINIC_INFO.correo].filter(Boolean).join('   ·   ');
+      if (contactLine) doc.text(contactLine, textX, top + 42);
+
+      const rightEdge = pageWidth - marginX;
+      let irisTextRight = rightEdge;
+      if (irisLogoDataUrl) {
+        const irisLogoSize = 26;
+        doc.addImage(irisLogoDataUrl, 'PNG', rightEdge - irisLogoSize, top, irisLogoSize, irisLogoSize);
+        irisTextRight = rightEdge - irisLogoSize - 8;
+      }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(15, 118, 110);
+      doc.text('IRIS', irisTextRight, top + 16, { align: 'right' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(110, 110, 110);
+      doc.text(String(tituloDocumento || ''), rightEdge, top + 30, { align: 'right', maxWidth: 220 });
+      const fechaGeneracion = new Date().toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+      doc.text(`Generado el ${fechaGeneracion}`, rightEdge, top + 42, { align: 'right' });
+
+      const dividerY = top + logoSize + 14;
+      doc.setDrawColor(225, 225, 225);
+      doc.line(marginX, dividerY, pageWidth - marginX, dividerY);
+
+      return dividerY + 22;
+    }
+
     // Genera el PDF de un registro (vía jsPDF + html2canvas, 100% en el
     // navegador, sin llamadas a Supabase/backend) a partir del título y
     // HTML ya resueltos por getRegistroViewData(), y dispara su descarga.
@@ -10016,26 +10394,8 @@
       const pageHeight = doc.internal.pageSize.getHeight();
       const marginX = 40;
       const marginBottom = 36;
-      const accent = [15, 118, 110]; // --clinic-accent (#0F766E)
 
-      doc.setFillColor(accent[0], accent[1], accent[2]);
-      doc.rect(0, 0, pageWidth, 90, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(20);
-      doc.text('IRIS', marginX, 40);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      doc.text('Sistema de Gestión Clínica Veterinaria', marginX, 58);
-      doc.setFontSize(13);
-      doc.setFont('helvetica', 'bold');
-      doc.text(String(titulo), marginX, 78);
-
-      const fechaGeneracion = new Date().toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' });
-      doc.setTextColor(90, 90, 90);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text(`Generado el ${fechaGeneracion}`, marginX, 106);
+      const contentStartY = await dibujarEncabezadoDocumentoIris(doc, titulo);
 
       // Contenedor temporal fuera de pantalla: mantiene las clases/estilos
       // globales (.info-label, .info-value, etc.) para que html2canvas
@@ -10056,7 +10416,7 @@
 
         const imgWidth = pageWidth - marginX * 2;
         const pxPerPt = canvas.width / imgWidth;
-        const firstPageContentHeightPx = (pageHeight - 122 - marginBottom) * pxPerPt;
+        const firstPageContentHeightPx = (pageHeight - contentStartY - marginBottom) * pxPerPt;
         const nextPageContentHeightPx = (pageHeight - marginX - marginBottom) * pxPerPt;
 
         let renderedPx = 0;
@@ -10073,7 +10433,7 @@
           );
 
           if (!firstSlice) doc.addPage();
-          const y = firstSlice ? 122 : marginX;
+          const y = firstSlice ? contentStartY : marginX;
           doc.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginX, y, imgWidth, slicePx / pxPerPt);
 
           renderedPx += slicePx;
@@ -14537,6 +14897,11 @@
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
 
+      // Mismo encabezado (logo + nombre + NIT de la clínica, marca IRIS
+      // fija) que generarPdfRegistroImpresion/generarPdfPropietario — ver
+      // dibujarEncabezadoDocumentoIris.
+      const contentStartY = await dibujarEncabezadoDocumentoIris(doc, record.nombre);
+
       const container = document.createElement('div');
       container.style.cssText = 'position:fixed;left:-9999px;top:0;width:480px;font-family:helvetica,arial,sans-serif;font-size:12px;color:#1e1e1e;';
       container.innerHTML = `<h2 style="margin:0 0 12px;">${record.nombre.replace(/</g, '&lt;')}</h2>${record.contenido}`;
@@ -14546,7 +14911,7 @@
         await new Promise((resolve, reject) => {
           doc.html(container, {
             callback: () => resolve(),
-            x: 40, y: 40, width: 480, windowWidth: 480
+            x: 40, y: contentStartY, width: 480, windowWidth: 480
           });
         });
       } finally {
@@ -14714,7 +15079,14 @@
       nit: '900.123.456-7',
       telefono: '+57 604 444 5566',
       correo: 'contacto@felinoscaninos.com',
-      correoRecordatorios: 'recordatorios@felinoscaninos.com'
+      correoRecordatorios: 'recordatorios@felinoscaninos.com',
+      // logoUrl/logoPath se mantienen sincronizados con
+      // establecimientos.logo_path por renderHeaderFromSession() (no por
+      // resetMockDataForClinic/seedUsuarioActualComoStaff) — así el logo
+      // sigue viniendo siempre del establecimiento real incluso para la
+      // clínica semilla de demo, cuyo resto de CLINIC_INFO sí es mock fijo.
+      logoUrl: null,
+      logoPath: null
     };
     const VETCONFIG_PLACEHOLDER_LABELS = {
       localizacion: 'Localización y servicios',
@@ -14741,7 +15113,19 @@
       }
     }
 
+    function renderVetConfigLogoPreview() {
+      const el = document.getElementById('vetconfig-logo-preview');
+      if (!el) return;
+      if (CLINIC_INFO.logoUrl) {
+        el.innerHTML = `<img src="${CLINIC_INFO.logoUrl}" alt="Logo de la clínica">`;
+      } else {
+        el.innerHTML = '<i data-lucide="image" style="width:22px;height:22px;"></i>';
+        lucide.createIcons();
+      }
+    }
+
     function renderVetConfigGeneral() {
+      renderVetConfigLogoPreview();
       document.getElementById('vetconfig-nombre').value = CLINIC_INFO.nombre;
       document.getElementById('vetconfig-nit').value = CLINIC_INFO.nit;
       document.getElementById('vetconfig-telefono').value = CLINIC_INFO.telefono;
@@ -14773,6 +15157,63 @@
       document.getElementById('header-clinic-nit').textContent = `NIT ${CLINIC_INFO.nit}`;
 
       showToast('Configuración guardada');
+    }
+
+    // Logo de la clínica (Configuración de la veterinaria > Información
+    // general) — mismo patrón que handleFotoInputChange/subirFotoMascotaReal:
+    // preview instantáneo local vía FileReader + subida real en paralelo al
+    // bucket `logos-clinica`, para que sobreviva a un logout/login o a otro
+    // dispositivo. Se sube de inmediato al elegir el archivo (no depende de
+    // "Guardar cambios"), igual que la foto de perfil de usuario.
+    function handleClinicLogoInputChange(input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = e => {
+        CLINIC_INFO.logoUrl = e.target.result;
+        renderVetConfigLogoPreview();
+        renderHeaderClinicLogo();
+      };
+      reader.readAsDataURL(file);
+
+      subirLogoClinicaReal(file).catch(err => {
+        console.error('[IRIS] Error subiendo el logo de la clínica:', err);
+        const detalle = (err && err.message) ? err.message : 'error desconocido';
+        showToast(`El logo se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
+      });
+    }
+
+    async function subirLogoClinicaReal(file) {
+      if (!window.supabase) { console.error('[IRIS] subirLogoClinicaReal: window.supabase no está inicializado'); showToast('No se pudo guardar el logo: sin conexión a la base de datos'); return; }
+      if (!currentSession || !currentSession.activeMembership) { console.error('[IRIS] subirLogoClinicaReal: no hay sesión/establecimiento activo'); showToast('No se pudo guardar el logo: no hay sesión activa'); return; }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+      const path = `${establecimientoId}/logo.${ext}`;
+
+      const { error: uploadError } = await window.supabase.storage
+        .from('logos-clinica')
+        .upload(path, file, { contentType: file.type || 'image/png', upsert: true });
+      if (uploadError) throw uploadError;
+
+      await window.supabase.from('establecimientos').update({ logo_path: path }).eq('id', establecimientoId);
+
+      // Refleja el cambio en el objeto de sesión en memoria (además de
+      // CLINIC_INFO) para que un siguiente renderHeaderFromSession() (ej.
+      // tras cambiar de establecimiento) lo siga viendo sin recargar la
+      // página — mismo criterio que currentSession.user.fotoUrl tras
+      // subirFotoPerfilReal.
+      if (currentSession.activeMembership.establecimiento) {
+        currentSession.activeMembership.establecimiento.logo_path = path;
+      }
+      const { data: pub } = window.supabase.storage.from('logos-clinica').getPublicUrl(path);
+      // upsert:true reutiliza el mismo path en cada reemplazo -- sin un
+      // parámetro que cambie, el navegador seguiría sirviendo la imagen
+      // vieja desde caché (mismo criterio que subirFotoMascotaReal).
+      CLINIC_INFO.logoUrl = `${pub.publicUrl}?v=${Date.now()}`;
+      CLINIC_INFO.logoPath = path;
+      renderHeaderClinicLogo();
+      renderVetConfigLogoPreview();
+      showToast('Logo actualizado');
     }
 
     // ── A.3 — TUTORES (vista administrativa) ───────────────────────
@@ -17416,6 +17857,23 @@
       return name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
     }
 
+    // Sincroniza el <img> del header (arriba del nombre de la clínica, ver
+    // .clinic-logo-header) con CLINIC_INFO.logoUrl — separado de
+    // renderHeaderFromSession() para poder llamarlo también en el preview
+    // instantáneo de handleClinicLogoInputChange, antes de que termine la
+    // subida real.
+    function renderHeaderClinicLogo() {
+      const el = document.getElementById('header-clinic-logo');
+      if (!el) return;
+      if (CLINIC_INFO.logoUrl) {
+        el.src = CLINIC_INFO.logoUrl;
+        el.style.display = '';
+      } else {
+        el.removeAttribute('src');
+        el.style.display = 'none';
+      }
+    }
+
     function renderHeaderFromSession() {
       if (!currentSession) return;
       const estab = currentSession.activeMembership && currentSession.activeMembership.establecimiento;
@@ -17423,6 +17881,18 @@
       const nitEl = document.getElementById('header-clinic-nit');
       if (nameEl) nameEl.textContent = estab ? estab.nombre : 'Sin establecimiento';
       if (nitEl) nitEl.textContent = estab && estab.nit ? `NIT ${estab.nit}` : '';
+
+      // El logo SIEMPRE se deriva de establecimientos.logo_path (real DB),
+      // a diferencia de nombre/nit/correo de CLINIC_INFO — que para la
+      // clínica semilla de demo vienen del snapshot mock DEMO_SEED (ver
+      // resetMockDataForClinic). Así el logo sobrevive a ese reset y queda
+      // disponible para el preview de Configuración y para las cabeceras
+      // de los PDF generados (ver CLINIC_INFO.logoUrl).
+      CLINIC_INFO.logoUrl = (estab && estab.logo_path && window.supabase)
+        ? window.supabase.storage.from('logos-clinica').getPublicUrl(estab.logo_path).data.publicUrl
+        : null;
+      CLINIC_INFO.logoPath = (estab && estab.logo_path) || null;
+      renderHeaderClinicLogo();
 
       const displayName = currentSession.user.nombre || currentSession.user.email || 'Usuario';
       document.querySelectorAll('.user-name').forEach(el => { el.textContent = displayName; });
@@ -19466,7 +19936,19 @@
 
         <div class="input-group">
           <label class="input-label" for="prop-movil">Móvil/WhatsApp</label>
-          <input type="text" class="input-control" style="padding-left:12px;" id="prop-movil">
+          <div class="phone-country-input" id="prop-movil-wrap" data-iso2="CO">
+            <button type="button" class="phone-country-btn" id="prop-movil-country-btn" onclick="togglePhoneCountryDropdown('prop-movil')">
+              <span class="phone-country-flag" id="prop-movil-country-flag">🇨🇴</span>
+              <span class="phone-country-dial" id="prop-movil-country-dial">+57</span>
+              <i data-lucide="chevron-down" style="width:14px;height:14px;"></i>
+            </button>
+            <input type="tel" class="input-control phone-number-input" id="prop-movil" placeholder="Número de celular" inputmode="numeric" autocomplete="off">
+            <div class="phone-country-dropdown" id="prop-movil-country-dropdown">
+              <input type="text" class="phone-country-search" id="prop-movil-country-search" placeholder="Buscar país..." oninput="filterPhoneCountryList('prop-movil')">
+              <div class="phone-country-list" id="prop-movil-country-list"></div>
+            </div>
+          </div>
+          <span class="form-error-msg" id="prop-movil-error">Ingresa un número de celular válido para el país seleccionado</span>
         </div>
 
         <div class="input-group">
@@ -20856,35 +21338,19 @@
        head), window.jspdf (UMD, cargado también en el head), y
        funciones/arrays del app shell (showToast, propietarios). -->
   <script>
-    const IRIS_PDF_ACCENT = [15, 118, 110]; // --clinic-accent
-
-    function generarPdfPropietario(datos) {
+    async function generarPdfPropietario(datos) {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
       const marginX = 48;
       let y;
 
-      doc.setFillColor(IRIS_PDF_ACCENT[0], IRIS_PDF_ACCENT[1], IRIS_PDF_ACCENT[2]);
-      doc.rect(0, 0, pageWidth, 90, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(20);
-      doc.text('IRIS', marginX, 40);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      doc.text('Sistema de Gestión Clínica Veterinaria', marginX, 58);
-      doc.setFontSize(13);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Ficha de registro de propietario', marginX, 78);
-
-      y = 120;
+      // Mismo encabezado (logo + nombre + NIT de la clínica, marca IRIS
+      // fija) que generarPdfRegistroImpresion/generarYSubirPdfDocumento —
+      // ver dibujarEncabezadoDocumentoIris.
+      y = await dibujarEncabezadoDocumentoIris(doc, 'Ficha de registro de propietario');
       doc.setTextColor(30, 30, 30);
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      const fecha = new Date().toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' });
-      doc.text(`Generado el ${fecha}`, marginX, y);
-      y += 24;
+      y += 4;
 
       const rows = [
         ['Tipo de identificación', datos.docTipo || '—'],
@@ -20942,7 +21408,7 @@
     // hay un botón dedicado de "reintentar PDF", ver TODO futuro).
     async function generarYSubirPdfPropietario(propietario, establecimientoId) {
       if (!window.supabase) return;
-      const pdfBlob = generarPdfPropietario(propietario);
+      const pdfBlob = await generarPdfPropietario(propietario);
       const pdfPath = `clinica/${establecimientoId}/propietario-${propietario.id}.pdf`;
 
       const { error: uploadError } = await window.supabase.storage

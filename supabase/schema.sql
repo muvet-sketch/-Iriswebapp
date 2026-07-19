@@ -795,3 +795,45 @@ create policy "avatars_delete_own_folder"
     bucket_id = 'avatars'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ── establecimientos.logo_path — logo de la clínica (Configuración de
+-- la veterinaria > Información general). Mismo criterio que
+-- mascotas.foto_path: se guarda el path, la URL pública se deriva en
+-- el cliente vía getPublicUrl() cuando hace falta.
+alter table public.establecimientos add column if not exists logo_path text;
+
+-- ── STORAGE: bucket `logos-clinica` (logo del establecimiento) ──
+-- Público (igual que `fotos-mascotas`) — por establecimiento, path
+-- "<establecimiento_id>/logo.<ext>", mismo patrón "own folder" que
+-- `fotos-mascotas`/`avatars` pero con el establecimiento_id como
+-- carpeta raíz (un solo logo por clínica, no uno por registro).
+insert into storage.buckets (id, name, public)
+values ('logos-clinica', 'logos-clinica', true)
+on conflict (id) do nothing;
+
+-- Sin policy de select: bucket público, mismo criterio que fotos-mascotas
+-- (evita el advisor public_bucket_allows_listing).
+
+drop policy if exists "logos_clinica_insert_member" on storage.objects;
+create policy "logos_clinica_insert_member"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'logos-clinica'
+    and public.user_is_member_of(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists "logos_clinica_update_member" on storage.objects;
+create policy "logos_clinica_update_member"
+  on storage.objects for update
+  using (
+    bucket_id = 'logos-clinica'
+    and public.user_is_member_of(((storage.foldername(name))[1])::uuid)
+  );
+
+drop policy if exists "logos_clinica_delete_member" on storage.objects;
+create policy "logos_clinica_delete_member"
+  on storage.objects for delete
+  using (
+    bucket_id = 'logos-clinica'
+    and public.user_is_member_of(((storage.foldername(name))[1])::uuid)
+  );
