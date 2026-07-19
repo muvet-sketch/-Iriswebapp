@@ -12,7 +12,11 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- FullCalendar (bundle global incluye su propio CSS-in-JS, sin link aparte) -->
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales/es.global.min.js"></script>
+  <!-- fullcalendar@6 ya no publica locales/es.global.min.js (404 en el
+       paquete "fullcalendar", devuelve text/plain y el navegador lo
+       bloquea por X-Content-Type-Options: nosniff) — los locales viven en
+       el paquete "@fullcalendar/core", como bundle global combinado. -->
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales-all.global.min.js"></script>
   <!-- Supabase JS v2 (CDN, build ESM) — crea el cliente global window.supabase
        que consumen tanto el auth shell como el resto del documento (scripts
        clásicos, sin import). Dispara "supabase-ready" quienes necesiten
@@ -2925,6 +2929,33 @@
     .doc-totals-table { font-size: 13px; }
     .doc-totals-table td { padding: 4px 0 4px 24px; text-align: right; }
     .doc-totals-table .doc-total-final { font-size: 16px; font-weight: 700; color: var(--text-1); }
+
+    .doc-item-concepto-cell { position: relative; }
+    .doc-item-concepto-dropdown {
+      position: absolute; top: calc(100% + 4px); left: 0; min-width: 260px; width: 100%;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      box-shadow: var(--shadow-lg); z-index: 200; display: none; max-height: 260px;
+      overflow-y: auto; padding: 6px;
+    }
+    .doc-item-concepto-dropdown.show { display: block; }
+    .doc-item-concepto-option {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 7px 8px; border-radius: 6px; cursor: pointer; transition: var(--transition);
+    }
+    .doc-item-concepto-option:hover { background-color: #F8FAFC; }
+    .doc-item-concepto-option-name { font-size: 12.5px; color: var(--text-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .doc-item-concepto-option-tag {
+      font-size: 10px; font-weight: 600; color: var(--text-2); text-transform: uppercase;
+      background: #F1F5F9; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+    }
+    .doc-item-concepto-empty { padding: 8px; font-size: 12px; color: var(--text-2); text-align: center; }
+    .doc-item-concepto-divider { border-top: 1px solid var(--border); margin: 4px 0; }
+    .doc-item-concepto-create {
+      display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 6px;
+      font-size: 12.5px; font-weight: 600; color: var(--clinic-accent); cursor: pointer; transition: var(--transition);
+    }
+    .doc-item-concepto-create:hover { background: rgba(var(--clinic-accent-rgb), 0.06); }
+    .doc-item-concepto-create i { width: 13px; height: 13px; flex-shrink: 0; }
 
     .status-badge-borrador  { background: rgba(100, 116, 139, 0.12); color: var(--text-2); }
     .status-badge-enviada   { background: rgba(37, 99, 235, 0.12); color: #2563EB; }
@@ -6644,53 +6675,43 @@
 
     // ── MODAL: FACTURACIÓN / ESTADO DE CUENTA DEL PROPIETARIO ────────
     // 3 pestañas (Estado de cuenta/Facturas/Cotizaciones), mismo patrón de
-    // tabs reutilizable que .prod-modal-tabs/.factconfig-tabs.
-    const FACTURACION_ESTADOS_CUENTA = {
-      borrador: { label: 'Borrador', badgeClass: 'status-badge-borrador' },
-      cerrado:  { label: 'Cerrado',  badgeClass: 'status-badge-completado' }
-    };
-    const FACTURACION_ESTADOS_FACTURA = {
-      pagada:    { label: 'Pagada',    badgeClass: 'status-badge-completado' },
-      pendiente: { label: 'Pendiente', badgeClass: 'status-badge-pendiente' },
-      vencida:   { label: 'Vencida',   badgeClass: 'status-badge-vencido' }
-    };
-    const FACTURACION_ESTADOS_COTIZACION = {
-      borrador: { label: 'Borrador', badgeClass: 'status-badge-borrador' },
-      enviada:  { label: 'Enviada',  badgeClass: 'status-badge-enviada' },
-      aceptada: { label: 'Aceptada', badgeClass: 'status-badge-completado' },
-      vencida:  { label: 'Vencida',  badgeClass: 'status-badge-vencido' }
-    };
-
-    let CUENTAS_PROPIETARIO = {
-      'prop-seed-1': [
-        { id: 'cta-1', ref: 'Consulta general', concepto: 'Mascota: Luna', valor: 97000, pagos: 0, estado: 'borrador', usuario: 'Sebastián Ríos', actualizado: '16/07/2026 12:19' },
-        { id: 'cta-2', ref: 'Vacunación anual', concepto: 'Mascota: Luna', valor: 145000, pagos: 145000, estado: 'cerrado', usuario: 'Sebastián Ríos', actualizado: '20/06/2026 09:40' }
-      ],
-      'prop-seed-2': [
-        { id: 'cta-3', ref: 'Control post-quirúrgico', concepto: 'Mascota: Rocky', valor: 65000, pagos: 65000, estado: 'cerrado', usuario: 'Sebastián Ríos', actualizado: '10/07/2026 15:10' }
-      ],
-      'prop-seed-3': []
-    };
-    let FACTURAS_PROPIETARIO = {
-      'prop-seed-1': [
-        { id: 'fv-1', numero: 'FV-1042', fecha: '20/06/2026', concepto: 'Vacunación anual — Luna', valor: 145000, estado: 'pagada' }
-      ],
-      'prop-seed-2': [
-        { id: 'fv-2', numero: 'FV-1039', fecha: '10/07/2026', concepto: 'Control post-quirúrgico — Rocky', valor: 65000, estado: 'pagada' }
-      ],
-      'prop-seed-3': []
-    };
-    let COTIZACIONES_PROPIETARIO = {
-      'prop-seed-1': [
-        { id: 'cot-1', numero: 'COT-0504', fecha: '09/07/2026', vencimiento: '09/08/2026', concepto: 'Cirugía — esterilización Luna', valor: 380000, estado: 'enviada' }
-      ],
-      'prop-seed-2': [],
-      'prop-seed-3': [
-        { id: 'cot-2', numero: 'COT-0498', fecha: '02/07/2026', vencimiento: '02/08/2026', concepto: 'Paquete Peluquería y spa — mensual', valor: 210000, estado: 'borrador' }
-      ]
-    };
-
+    // tabs reutilizable que .prod-modal-tabs/.factconfig-tabs. "Estado de
+    // cuenta" y "Facturas" comparten el mismo array real VENTAS_FACTURAS
+    // (no hay un mock de "cuentas" aparte): la primera muestra solo las
+    // facturas abiertas (estado 'Pendiente') de este cliente — click en la
+    // fila abre esa factura para actualizarla o cerrarla (marcarla
+    // 'Pagada') — y la segunda es el historial de las ya cerradas
+    // (estado !== 'Pendiente').
     let facturacionPropietarioId = null;
+
+    // Vínculo propietario (buscador de Consultorio) <-> cliente (Ventas >
+    // Documentos): son dos arrays mock independientes que hoy solo
+    // coinciden por nombre en los 3 propietarios semilla. Resuelve el
+    // cliente real por nombre y, si el propietario no tiene todavía uno
+    // (ej. recién registrado vía "Registrar propietario"), lo crea en
+    // VENTAS_CLIENTES al vuelo — así el cotizador/facturador (que exige
+    // un clienteId de ese array) siempre tiene a quién facturarle.
+    function getVentasClienteIdDePropietario(propietarioId) {
+      const p = propietarios.find(x => x.id === propietarioId);
+      if (!p) return null;
+      const existente = VENTAS_CLIENTES.find(c => c.nombre === p.nombre);
+      if (existente) return existente.id;
+      const nuevoId = 'c-prop-' + p.id;
+      VENTAS_CLIENTES.push({
+        id: nuevoId, nombre: p.nombre,
+        cedula: [p.docTipo, p.docNumero].filter(Boolean).join(' '),
+        telefono: p.movil || '', origen: '', propietarioKey: null
+      });
+      return nuevoId;
+    }
+
+    function refreshFacturacionPropietarioTablesIfOpen() {
+      if (!facturacionPropietarioId) return;
+      if (!document.getElementById('propietario-facturacion-modal').classList.contains('show')) return;
+      renderCuentasPropietarioTable(facturacionPropietarioId);
+      renderFacturasPropietarioTable(facturacionPropietarioId);
+      renderCotizacionesPropietarioTable(facturacionPropietarioId);
+    }
 
     function abrirFacturacionPropietario(propietarioId) {
       const p = propietarios.find(x => x.id === propietarioId);
@@ -6723,116 +6744,78 @@
     function renderCuentasPropietarioTable(propietarioId) {
       const tbody = document.getElementById('facturacion-cuentas-tbody');
       if (!tbody) return;
-      const cuentas = CUENTAS_PROPIETARIO[propietarioId] || [];
       const saldoFavorEl = document.getElementById('facturacion-saldo-favor');
       if (saldoFavorEl) saldoFavorEl.textContent = formatCOP(0);
-      tbody.innerHTML = cuentas.length ? cuentas.map(c => {
-        const info = FACTURACION_ESTADOS_CUENTA[c.estado];
-        const saldo = c.valor - c.pagos;
-        const menuId = `row-menu-cuenta-${c.id}`;
-        return `
-          <tr>
-            <td>${c.ref}${c.concepto ? `<div style="font-size:11px;color:var(--text-2);">${c.concepto}</div>` : ''}</td>
-            <td>${formatCOP(c.valor)}</td>
-            <td>${formatCOP(c.pagos)}</td>
-            <td>${formatCOP(saldo)}</td>
-            <td><span class="status-badge ${info.badgeClass}">${info.label}</span></td>
-            <td>${c.usuario}<div style="font-size:11px;color:var(--text-2);">${c.actualizado}</div></td>
-            <td style="text-align:right;">
-              <div class="row-actions-wrap">
-                <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones"><i data-lucide="more-vertical" style="width:16px;height:16px;"></i></button>
-                <div class="row-actions-menu" id="${menuId}">
-                  <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); showToast('Vista detallada disponible próximamente')"><i data-lucide="eye"></i> Ver detalle</div>
-                  ${c.estado === 'borrador' ? `<div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); cerrarCuentaPropietario('${propietarioId}', '${c.id}')"><i data-lucide="lock"></i> Cerrar cuenta</div>` : ''}
-                </div>
-              </div>
-            </td>
-          </tr>`;
-      }).join('') : `<tr><td colspan="7" style="color:var(--text-2);font-size:12.5px;">Sin cuentas registradas</td></tr>`;
+      const clienteId = getVentasClienteIdDePropietario(propietarioId);
+      const abiertas = VENTAS_FACTURAS.filter(f => f.clienteId === clienteId && f.estado === 'Pendiente');
+      tbody.innerHTML = abiertas.length ? abiertas.map(f => `
+          <tr onclick="abrirFacturaDesdeEstadoCuenta('${f.id}')">
+            <td>${f.numero}</td>
+            <td>${f.fecha}</td>
+            <td>${(f.items || []).map(it => it.producto).filter(Boolean).join(', ') || '—'}</td>
+            <td>${formatCOP(f.total)}</td>
+            <td><span class="status-badge status-badge-${f.estado.toLowerCase()}">${f.estado}</span></td>
+          </tr>`
+      ).join('') : `<tr><td colspan="5" style="color:var(--text-2);font-size:12.5px;">Sin cuentas abiertas</td></tr>`;
       lucide.createIcons();
     }
 
-    function cerrarCuentaPropietario(propietarioId, cuentaId) {
-      const cuenta = (CUENTAS_PROPIETARIO[propietarioId] || []).find(c => c.id === cuentaId);
-      if (!cuenta) return;
-      cuenta.estado = 'cerrado';
-      cuenta.pagos = cuenta.valor;
-      cuenta.actualizado = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
-      renderCuentasPropietarioTable(propietarioId);
-      showToast('Cuenta cerrada');
+    function abrirFacturaDesdeEstadoCuenta(facturaId) {
+      openDocVentaModal('factura', 'edit', facturaId);
     }
 
-    function nuevaCuentaPropietario() {
-      showToast('Función disponible próximamente');
-    }
-
+    // Facturas y Cotizaciones de esta pestaña son las MISMAS que Ventas >
+    // Documentos > Ventas/recibos/facturas y Cotizaciones (VENTAS_FACTURAS/
+    // VENTAS_COTIZACIONES), filtradas por el cliente vinculado a este
+    // propietario — no un mock aparte. Las acciones reutilizan
+    // renderRowActionsMenu('factura'/'cotizacion', ...), el mismo menú "..."
+    // que ya abre openDocVentaModal (editar), genera el PDF real
+    // (imprimir) y elimina sobre el array real (ver rowActionEditar/
+    // rowActionImprimir/rowActionEliminar).
     function renderFacturasPropietarioTable(propietarioId) {
       const tbody = document.getElementById('facturacion-facturas-tbody');
       if (!tbody) return;
-      const facturas = FACTURAS_PROPIETARIO[propietarioId] || [];
-      tbody.innerHTML = facturas.length ? facturas.map(f => {
-        const info = FACTURACION_ESTADOS_FACTURA[f.estado];
-        const menuId = `row-menu-factura-${f.id}`;
-        return `
+      const clienteId = getVentasClienteIdDePropietario(propietarioId);
+      const facturas = VENTAS_FACTURAS.filter(f => f.clienteId === clienteId && f.estado !== 'Pendiente');
+      tbody.innerHTML = facturas.length ? facturas.map(f => `
           <tr>
             <td>${f.numero}</td>
             <td>${f.fecha}</td>
-            <td>${f.concepto}</td>
-            <td>${formatCOP(f.valor)}</td>
-            <td><span class="status-badge ${info.badgeClass}">${info.label}</span></td>
-            <td style="text-align:right;">
-              <div class="row-actions-wrap">
-                <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones"><i data-lucide="more-vertical" style="width:16px;height:16px;"></i></button>
-                <div class="row-actions-menu" id="${menuId}">
-                  <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); showToast('Descarga de PDF disponible próximamente')"><i data-lucide="file-down"></i> Descargar PDF</div>
-                  <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); showToast('Envío por email disponible próximamente')"><i data-lucide="mail"></i> Enviar por email</div>
-                </div>
-              </div>
-            </td>
-          </tr>`;
-      }).join('') : `<tr><td colspan="6" style="color:var(--text-2);font-size:12.5px;">Sin facturas registradas</td></tr>`;
+            <td>${(f.items || []).map(it => it.producto).filter(Boolean).join(', ') || '—'}</td>
+            <td>${formatCOP(f.total)}</td>
+            <td><span class="status-badge status-badge-${f.estado.toLowerCase()}">${f.estado}</span></td>
+            <td style="text-align:right;">${renderRowActionsMenu('factura', f.id, null, ['editar', 'imprimir', 'email', 'eliminar'])}</td>
+          </tr>`
+      ).join('') : `<tr><td colspan="6" style="color:var(--text-2);font-size:12.5px;">Sin facturas registradas</td></tr>`;
       lucide.createIcons();
     }
 
     function renderCotizacionesPropietarioTable(propietarioId) {
       const tbody = document.getElementById('facturacion-cotizaciones-tbody');
       if (!tbody) return;
-      const cotizaciones = COTIZACIONES_PROPIETARIO[propietarioId] || [];
-      tbody.innerHTML = cotizaciones.length ? cotizaciones.map(c => {
-        const info = FACTURACION_ESTADOS_COTIZACION[c.estado];
-        const menuId = `row-menu-cotizacion-${c.id}`;
-        return `
+      const clienteId = getVentasClienteIdDePropietario(propietarioId);
+      const cotizaciones = VENTAS_COTIZACIONES.filter(c => c.clienteId === clienteId);
+      tbody.innerHTML = cotizaciones.length ? cotizaciones.map(c => `
           <tr>
             <td>${c.numero}</td>
             <td>${c.fecha}</td>
-            <td>${c.vencimiento}</td>
-            <td>${c.concepto}</td>
-            <td>${formatCOP(c.valor)}</td>
-            <td><span class="status-badge ${info.badgeClass}">${info.label}</span></td>
-            <td style="text-align:right;">
-              <div class="row-actions-wrap">
-                <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones"><i data-lucide="more-vertical" style="width:16px;height:16px;"></i></button>
-                <div class="row-actions-menu" id="${menuId}">
-                  <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); showToast('Vista detallada disponible próximamente')"><i data-lucide="eye"></i> Ver detalle</div>
-                  ${c.estado === 'borrador' ? `<div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); enviarCotizacionPropietario('${propietarioId}', '${c.id}')"><i data-lucide="send"></i> Enviar</div>` : ''}
-                </div>
-              </div>
-            </td>
-          </tr>`;
-      }).join('') : `<tr><td colspan="7" style="color:var(--text-2);font-size:12.5px;">Sin cotizaciones registradas</td></tr>`;
+            <td>${(c.items || []).map(it => it.producto).filter(Boolean).join(', ') || '—'}</td>
+            <td>${formatCOP(c.total)}</td>
+            <td><span class="status-badge status-badge-${c.estado.toLowerCase()}">${c.estado}</span></td>
+            <td style="text-align:right;">${renderRowActionsMenu('cotizacion', c.id, null, ['ver', 'editar', 'imprimir', 'email', 'eliminar'])}</td>
+          </tr>`
+      ).join('') : `<tr><td colspan="6" style="color:var(--text-2);font-size:12.5px;">Sin cotizaciones registradas</td></tr>`;
       lucide.createIcons();
     }
 
-    function enviarCotizacionPropietario(propietarioId, cotId) {
-      const c = (COTIZACIONES_PROPIETARIO[propietarioId] || []).find(x => x.id === cotId);
-      if (!c) return;
-      c.estado = 'enviada';
-      renderCotizacionesPropietarioTable(propietarioId);
-      showToast('Cotización enviada');
+    function crearFacturaPropietario() {
+      if (!facturacionPropietarioId) return;
+      openDocVentaModal('factura', 'create', null, getVentasClienteIdDePropietario(facturacionPropietarioId));
     }
 
     function crearCotizacionPropietario() {
-      showToast('Función disponible próximamente');
+      if (!facturacionPropietarioId) return;
+      openDocVentaModal('cotizacion', 'create', null, getVentasClienteIdDePropietario(facturacionPropietarioId));
     }
 
     // ── MÓDULO: AGENDA (FullCalendar) ──────────────────────────────
@@ -10712,9 +10695,11 @@
       } else if (moduleKey === 'cotizacion') {
         VENTAS_COTIZACIONES.splice(VENTAS_COTIZACIONES.findIndex(d => d.id === recordId), 1);
         renderCotizacionesTable();
+        refreshFacturacionPropietarioTablesIfOpen();
       } else if (moduleKey === 'factura') {
         VENTAS_FACTURAS.splice(VENTAS_FACTURAS.findIndex(d => d.id === recordId), 1);
         renderFacturasTable();
+        refreshFacturacionPropietarioTablesIfOpen();
       } else if (moduleKey === 'notacredito') {
         VENTAS_NOTAS_CREDITO.splice(VENTAS_NOTAS_CREDITO.findIndex(d => d.id === recordId), 1);
         renderNotasCreditoTable();
@@ -15664,7 +15649,7 @@
       return '$' + Math.round(n || 0).toLocaleString('es-CO');
     }
 
-    const VENTAS_CATEGORIAS = ['Alimentos', 'Medicamentos', 'Accesorios', 'Higiene y cuidado', 'Servicios médicos', 'Peluquería y spa', 'Vacunación', 'Suplementos'];
+    const VENTAS_CATEGORIAS = ['Alimentos', 'Medicamentos', 'Accesorios', 'Higiene y cuidado', 'Servicios médicos', 'Peluquería y spa', 'Vacunación', 'Suplementos', 'Laboratorio'];
     const VENTAS_ORIGENES = ['Referido', 'Redes sociales', 'Google', 'Walk-in', 'Campaña'];
     // Paleta categórica para los gráficos del Dashboard de ventas (donut,
     // barras) — no hay paleta compartida en el resto del archivo, así que
@@ -15729,7 +15714,91 @@
       { id: 'p16', nombre: 'Suero fisiológico 500ml',                 categoria: 'Medicamentos',        tipo: 'producto', precio: 18000, valorBase: 18000, costo: 9500, stock: 40, unidadesDia: 1.2,
         estado: 'activo', sku: 'MED-0004', barcode: '7701234567906', cuantificable: true, excluidoListaPrecio: false, stockMinimo: 15, unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L1288', vencimiento: '2027-04-12', descripcion: 'Solución salina estéril 0.9%, frasco 500ml.', impuesto: 'Excluido' },
       { id: 'o1',  nombre: 'Certificado de salud para viaje',         categoria: 'Servicios médicos',  tipo: 'otro', precio: 40000, valorBase: 33613, costo: 0,
-        estado: 'activo', sku: 'OTR-0001', barcode: '', cuantificable: false, excluidoListaPrecio: true, descripcion: 'Expedición de certificado sanitario para viaje del paciente.', impuesto: 'Gravado' }
+        estado: 'activo', sku: 'OTR-0001', barcode: '', cuantificable: false, excluidoListaPrecio: true, descripcion: 'Expedición de certificado sanitario para viaje del paciente.', impuesto: 'Gravado' },
+      // Ítems agregados a partir de los exports reales de Siigo ("Gestión de
+      // productos y servicios") y OkVet ("Inventario") para dar realismo al
+      // catálogo mock — nombres y precios tomados de esos archivos (con
+      // costo estimado donde el export solo traía costo/valor base).
+      { id: 'p17', nombre: 'Advance Esterilizado Adulto Felino 10kg', categoria: 'Alimentos',    tipo: 'producto', precio: 482000, costo: 313000, stock: 6,  unidadesDia: 0.15,
+        estado: 'activo', sku: 'ALM-0003', stockMinimo: 4,  unidadMedida: 'Unidad', proveedorId: 'pr2', lote: null, vencimiento: '2027-05-01', descripcion: 'Concentrado premium para gatos esterilizados adultos, bulto 10kg.', impuesto: 'Excluido' },
+      { id: 'p18', nombre: 'Royal Canin Lata Recovery x195g',         categoria: 'Alimentos',    tipo: 'producto', precio: 6800,   costo: 4400,   stock: 45, unidadesDia: 2.0,
+        estado: 'activo', sku: 'ALM-0004', stockMinimo: 20, unidadMedida: 'Unidad', proveedorId: 'pr2', lote: 'L5502', vencimiento: '2027-03-10', descripcion: 'Alimento húmedo de recuperación para paciente convaleciente, lata 195g.', impuesto: 'Excluido' },
+      { id: 'p19', nombre: 'Churu Caja Variedad Atún x60und',         categoria: 'Alimentos',    tipo: 'producto', precio: 157000, costo: 102000, stock: 10, unidadesDia: 0.3,
+        estado: 'activo', sku: 'ALM-0005', stockMinimo: 5,  unidadMedida: 'Caja', proveedorId: 'pr2', lote: null, vencimiento: '2027-08-15', descripcion: 'Snack cremoso de atún para gatos, caja variedad por 60 unidades.', impuesto: 'Gravado' },
+      { id: 'p20', nombre: 'Churu Fun Bites Gato Pollo y Atún 60gr',  categoria: 'Alimentos',    tipo: 'producto', precio: 21000,  costo: 13500,  stock: 26, unidadesDia: 0.8,
+        estado: 'activo', sku: 'ALM-0006', stockMinimo: 10, unidadMedida: 'Unidad', proveedorId: 'pr2', lote: null, vencimiento: '2027-04-20', descripcion: 'Snack crocante sabor pollo y atún para gatos, bolsa 60gr.', impuesto: 'Gravado' },
+      { id: 'p21', nombre: 'Nexgard Spectra 15-30kg (pipeta)',        categoria: 'Medicamentos', tipo: 'producto', precio: 91000,  costo: 58000,  stock: 18, unidadesDia: 0.6,
+        estado: 'activo', sku: 'MED-0005', stockMinimo: 8,  unidadMedida: 'Unidad', proveedorId: 'pr1', lote: 'L2210', vencimiento: '2027-09-05', descripcion: 'Antiparasitario externo/interno de amplio espectro, perros 15-30kg.', impuesto: 'Excluido' },
+      { id: 'p22', nombre: 'Revolution 6% (-2.5kg) x1 pipeta',        categoria: 'Medicamentos', tipo: 'producto', precio: 52700,  costo: 33000,  stock: 24, unidadesDia: 0.7,
+        estado: 'activo', sku: 'MED-0006', stockMinimo: 10, unidadMedida: 'Unidad', proveedorId: 'pr1', lote: 'L2211', vencimiento: '2027-06-18', descripcion: 'Pipeta antiparasitaria externa para felinos y caninos hasta 2.5kg.', impuesto: 'Excluido' },
+      { id: 'p23', nombre: 'Revolution 12% (10-20kg) x1 pipeta',      categoria: 'Medicamentos', tipo: 'producto', precio: 60600,  costo: 38000,  stock: 20, unidadesDia: 0.5,
+        estado: 'activo', sku: 'MED-0007', stockMinimo: 8,  unidadMedida: 'Unidad', proveedorId: 'pr1', lote: 'L2212', vencimiento: '2027-06-18', descripcion: 'Pipeta antiparasitaria externa para caninos de 10 a 20kg.', impuesto: 'Excluido' },
+      { id: 'p24', nombre: 'Drontal Perro 10kg caja x2 tab',          categoria: 'Medicamentos', tipo: 'producto', precio: 44200,  costo: 27000,  stock: 30, unidadesDia: 0.9,
+        estado: 'activo', sku: 'MED-0008', stockMinimo: 12, unidadMedida: 'Caja', proveedorId: 'pr1', lote: 'L2233', vencimiento: '2027-11-02', descripcion: 'Desparasitante interno de amplio espectro para perros hasta 10kg.', impuesto: 'Excluido' },
+      { id: 'p25', nombre: 'Uniclav 500mg blister x5 tab',            categoria: 'Medicamentos', tipo: 'producto', precio: 73000,  costo: 46000,  stock: 22, unidadesDia: 0.5,
+        estado: 'activo', sku: 'MED-0009', stockMinimo: 10, unidadMedida: 'Blister', proveedorId: 'pr1', lote: 'L2244', vencimiento: '2026-12-30', descripcion: 'Antibiótico amoxicilina + ácido clavulánico, blister x5 tabletas.', impuesto: 'Excluido' },
+      { id: 'p26', nombre: 'Thyro Tabs 1.0mg frasco x120 tab',        categoria: 'Medicamentos', tipo: 'producto', precio: 160900, costo: 101000, stock: 9,  unidadesDia: 0.15,
+        estado: 'activo', sku: 'MED-0010', stockMinimo: 4,  unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L2255', vencimiento: '2027-02-14', descripcion: 'Levotiroxina para tratamiento de hipotiroidismo canino, frasco x120 tab.', impuesto: 'Excluido' },
+      { id: 'p27', nombre: 'Sutura 2-0 Polidioxanona',                categoria: 'Medicamentos', tipo: 'producto', precio: 16100,  costo: 10000,  stock: 35, unidadesDia: 0.4,
+        estado: 'activo', sku: 'MED-0011', stockMinimo: 15, unidadMedida: 'Unidad', proveedorId: 'pr3', lote: 'L2260', vencimiento: '2028-01-20', descripcion: 'Sutura absorbible monofilamento 2-0 para procedimientos quirúrgicos.', impuesto: 'Gravado' },
+      { id: 'p28', nombre: 'Solución salina 0.9% x100ml',             categoria: 'Medicamentos', tipo: 'producto', precio: 9000,   costo: 5400,   stock: 60, unidadesDia: 1.5,
+        estado: 'activo', sku: 'MED-0012', stockMinimo: 20, unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L2261', vencimiento: '2027-07-11', descripcion: 'Solución salina estéril 0.9%, frasco 100ml para uso ambulatorio.', impuesto: 'Excluido' },
+      { id: 'p29', nombre: 'Oftaproc colirio gotero x10ml',           categoria: 'Medicamentos', tipo: 'producto', precio: 44600,  costo: 28000,  stock: 16, unidadesDia: 0.4,
+        estado: 'activo', sku: 'MED-0013', stockMinimo: 6,  unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L2270', vencimiento: '2027-01-30', descripcion: 'Colirio oftálmico antiinflamatorio, gotero 10ml.', impuesto: 'Excluido' },
+      { id: 'p30', nombre: 'Colirio Splend',                          categoria: 'Medicamentos', tipo: 'producto', precio: 27800,  costo: 17500,  stock: 20, unidadesDia: 0.4,
+        estado: 'activo', sku: 'MED-0014', stockMinimo: 8,  unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L2271', vencimiento: '2027-01-30', descripcion: 'Colirio lubricante y antiinflamatorio de uso oftálmico.', impuesto: 'Excluido' },
+      { id: 'p31', nombre: 'Zeel veterinario frasco x100 tab',        categoria: 'Medicamentos', tipo: 'producto', precio: 165400, costo: 104000, stock: 7,  unidadesDia: 0.1,
+        estado: 'activo', sku: 'MED-0015', stockMinimo: 3,  unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L2280', vencimiento: '2027-10-05', descripcion: 'Homeopático antiinflamatorio articular, frasco x100 tabletas.', impuesto: 'Excluido' },
+      { id: 'p32', nombre: 'Neurexan gotas x30ml',                    categoria: 'Medicamentos', tipo: 'producto', precio: 70500,  costo: 44000,  stock: 12, unidadesDia: 0.2,
+        estado: 'activo', sku: 'MED-0016', stockMinimo: 5,  unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L2281', vencimiento: '2027-10-05', descripcion: 'Homeopático sedante/ansiolítico en gotas, frasco 30ml.', impuesto: 'Excluido' },
+      { id: 'p33', nombre: 'Canatox H frasco x60ml',                  categoria: 'Medicamentos', tipo: 'producto', precio: 55800,  costo: 35000,  stock: 11, unidadesDia: 0.15,
+        estado: 'activo', sku: 'MED-0017', stockMinimo: 4,  unidadMedida: 'Frasco', proveedorId: 'pr1', lote: 'L2282', vencimiento: '2027-10-05', descripcion: 'Homeopático hepatoprotector en solución, frasco 60ml.', impuesto: 'Excluido' },
+      { id: 'p34', nombre: 'Faja postquirúrgica talla XL (8.5-11.0kg)', categoria: 'Accesorios', tipo: 'producto', precio: 30200,  costo: 19000,  stock: 14, unidadesDia: 0.25,
+        estado: 'activo', sku: 'ACC-0006', stockMinimo: 5,  unidadMedida: 'Unidad', proveedorId: 'pr4', lote: null, vencimiento: null, descripcion: 'Faja postquirúrgica de tela, talla XL (8.5 a 11.0 kg).', impuesto: 'Gravado' },
+      { id: 'p35', nombre: 'Collar isabelino XXL (30cm)',             categoria: 'Accesorios',   tipo: 'producto', precio: 22000,  costo: 14000,  stock: 16, unidadesDia: 0.2,
+        estado: 'activo', sku: 'ACC-0007', stockMinimo: 5,  unidadMedida: 'Unidad', proveedorId: 'pr4', lote: null, vencimiento: null, descripcion: 'Collar isabelino rígido, diámetro 30cm.', impuesto: 'Gravado' },
+      { id: 'p36', nombre: 'Vitamina B12 ampolla',                    categoria: 'Suplementos',  tipo: 'producto', precio: 138800, costo: 87000,  stock: 10, unidadesDia: 0.15,
+        estado: 'activo', sku: 'SUP-0003', stockMinimo: 4,  unidadMedida: 'Ampolla', proveedorId: 'pr1', lote: 'L3110', vencimiento: '2027-05-22', descripcion: 'Complejo vitamínico inyectable a base de cianocobalamina.', impuesto: 'Excluido' },
+      { id: 's9',  nombre: 'Consulta oncología',                      categoria: 'Servicios médicos', tipo: 'servicio', precio: 305000, costo: 95000,
+        estado: 'activo', descripcion: 'Consulta especializada con médico veterinario oncólogo.', duracionMinutos: 30, impuesto: 'Excluido' },
+      { id: 's10', nombre: 'Consulta oftalmológica',                  categoria: 'Servicios médicos', tipo: 'servicio', precio: 404600, costo: 125000,
+        estado: 'activo', descripcion: 'Consulta especializada con médico veterinario oftalmólogo.', duracionMinutos: 25, impuesto: 'Excluido' },
+      { id: 's11', nombre: 'Consulta neurológica',                    categoria: 'Servicios médicos', tipo: 'servicio', precio: 240000, costo: 75000,
+        estado: 'activo', descripcion: 'Consulta especializada con médico veterinario neurólogo.', duracionMinutos: 30, impuesto: 'Excluido' },
+      { id: 's12', nombre: 'Cirugía oftalmológica',                   categoria: 'Servicios médicos', tipo: 'servicio', precio: 1428000, costo: 480000,
+        estado: 'activo', descripcion: 'Procedimiento quirúrgico oftalmológico bajo anestesia general.', duracionMinutos: 120, impuesto: 'Excluido' },
+      { id: 's13', nombre: 'Revisión oftalmológica (control)',        categoria: 'Servicios médicos', tipo: 'servicio', precio: 241000, costo: 75000,
+        estado: 'activo', descripcion: 'Control post-tratamiento con especialista en oftalmología.', duracionMinutos: 20, impuesto: 'Excluido' },
+      { id: 's14', nombre: 'Exodoncia de caninos deciduos',           categoria: 'Servicios médicos', tipo: 'servicio', precio: 453000, costo: 150000,
+        estado: 'activo', descripcion: 'Extracción quirúrgica de dientes caninos deciduos retenidos.', duracionMinutos: 60, impuesto: 'Excluido' },
+      { id: 's15', nombre: 'Tratamiento periodontal 10.1-20kg',       categoria: 'Servicios médicos', tipo: 'servicio', precio: 615000, costo: 200000,
+        estado: 'activo', descripcion: 'Profilaxis y tratamiento periodontal bajo sedación, paciente 10.1 a 20kg.', duracionMinutos: 90, impuesto: 'Excluido' },
+      { id: 's16', nombre: 'Radiografía periapical (canina)',         categoria: 'Servicios médicos', tipo: 'servicio', precio: 307500, costo: 95000,
+        estado: 'activo', descripcion: 'Toma de radiografía dental periapical en paciente canino.', duracionMinutos: 20, impuesto: 'Excluido' },
+      { id: 's17', nombre: 'Orquiectomía felinos',                    categoria: 'Servicios médicos', tipo: 'servicio', precio: 168600, costo: 55000,
+        estado: 'activo', descripcion: 'Esterilización quirúrgica (castración) en pacientes felinos macho.', duracionMinutos: 45, impuesto: 'Excluido' },
+      { id: 's18', nombre: 'Ecografía abdominal (turno festivo)',     categoria: 'Servicios médicos', tipo: 'servicio', precio: 234900, costo: 75000,
+        estado: 'activo', descripcion: 'Estudio ecográfico abdominal completo, atención en horario festivo.', duracionMinutos: 30, impuesto: 'Excluido' },
+      { id: 's19', nombre: 'Vacuna Recombitek C8',                    categoria: 'Vacunación', tipo: 'servicio', precio: 50500, costo: 28000,
+        estado: 'activo', descripcion: 'Aplicación de vacuna óctuple canina Recombitek C8, incluye insumo.', duracionMinutos: 15, impuesto: 'Excluido' },
+      { id: 's20', nombre: 'Vacuna Puppy Nobivac DP',                 categoria: 'Vacunación', tipo: 'servicio', precio: 62600, costo: 35000,
+        estado: 'activo', descripcion: 'Aplicación de vacuna Nobivac DP para cachorro, incluye insumo.', duracionMinutos: 15, impuesto: 'Excluido' },
+      { id: 's21', nombre: 'Vacuna Purevax RCP (triple felina)',      categoria: 'Vacunación', tipo: 'servicio', precio: 47600, costo: 26000,
+        estado: 'activo', descripcion: 'Aplicación de vacuna triple felina Purevax RCP, incluye insumo.', duracionMinutos: 15, impuesto: 'Excluido' },
+      { id: 's22', nombre: 'Vacuna rábica (Rabisin)',                 categoria: 'Vacunación', tipo: 'servicio', precio: 18400, costo: 9000,
+        estado: 'activo', descripcion: 'Aplicación de vacuna antirrábica Rabisin, incluye insumo.', duracionMinutos: 10, impuesto: 'Excluido' },
+      { id: 's23', nombre: 'Vacuna Feligen CRP (triple felina)',      categoria: 'Vacunación', tipo: 'servicio', precio: 44000, costo: 24000,
+        estado: 'activo', descripcion: 'Aplicación de vacuna triple felina Feligen CRP, incluye insumo.', duracionMinutos: 15, impuesto: 'Excluido' },
+      { id: 's24', nombre: 'Perfil renal Nani #1',                    categoria: 'Laboratorio', tipo: 'servicio', precio: 184700, costo: 55000,
+        estado: 'activo', descripcion: 'Citoquímico + hemograma + ALT + creatinina + urea/BUN + calcio.', duracionMinutos: 25, impuesto: 'Excluido' },
+      { id: 's25', nombre: 'Cultivo bacteriano + antibiograma + hongos (1 secreción)', categoria: 'Laboratorio', tipo: 'servicio', precio: 211400, costo: 65000,
+        estado: 'activo', descripcion: 'Cultivo bacteriano, identificación microbiana, antibiograma y cultivo de hongos de una secreción.', duracionMinutos: 30, impuesto: 'Excluido' },
+      { id: 's26', nombre: 'Perfil convulsivo',                       categoria: 'Laboratorio', tipo: 'servicio', precio: 179600, costo: 55000,
+        estado: 'activo', descripcion: 'Panel de laboratorio orientado al estudio de paciente con cuadro convulsivo.', duracionMinutos: 20, impuesto: 'Excluido' },
+      { id: 's27', nombre: 'Coprológico',                             categoria: 'Laboratorio', tipo: 'servicio', precio: 21900, costo: 6500,
+        estado: 'activo', descripcion: 'Examen coprológico para detección de parásitos gastrointestinales.', duracionMinutos: 10, impuesto: 'Excluido' },
+      { id: 's28', nombre: 'Perfil hepático #3',                      categoria: 'Laboratorio', tipo: 'servicio', precio: 112600, costo: 34000,
+        estado: 'activo', descripcion: 'ALT + bilirrubina total + bilirrubina directa + GGT + proteínas totales + albúmina.', duracionMinutos: 20, impuesto: 'Excluido' }
     ];
 
     const VENTAS_CLIENTES = [
@@ -16578,10 +16647,13 @@
     function renderDocVentaItemRowHTML(idx, item) {
       const conceptoCell = docVentaState.tipo === 'docsoporte'
         ? `<input type="text" value="${item.producto || ''}" oninput="handleDocItemConceptoManualInput(${idx}, this.value)" placeholder="Concepto">`
-        : `<select onchange="handleDocItemConceptoChange(${idx}, this.value)">
-            <option value="">Seleccionar...</option>
-            ${VENTAS_CATALOGO.map(p => `<option value="${p.id}" ${p.id === item.productoId ? 'selected' : ''}>${p.nombre}</option>`).join('')}
-          </select>`;
+        : `<div class="doc-item-concepto-cell">
+            <input type="text" class="doc-item-concepto-input" value="${item.producto || ''}" placeholder="Busca un producto/servicio..."
+              oninput="handleDocItemConceptoSearch(${idx}, this.value)"
+              onfocus="handleDocItemConceptoSearch(${idx}, this.value)"
+              onblur="handleDocItemConceptoBlur(${idx})">
+            <div class="doc-item-concepto-dropdown" id="doc-item-concepto-dropdown-${idx}"></div>
+          </div>`;
       return `
         <tr data-doc-item-row="${idx}">
           <td>${conceptoCell}</td>
@@ -16629,6 +16701,60 @@
     function handleDocItemConceptoManualInput(idx, value) {
       docVentaState.items[idx].producto = value;
     }
+    function filtrarCatalogoParaDocItem(query) {
+      const q = (query || '').trim().toLowerCase();
+      const activos = VENTAS_CATALOGO.filter(p => p.estado !== 'inactivo');
+      const lista = q ? activos.filter(p => p.nombre.toLowerCase().includes(q)) : activos;
+      return lista.slice(0, 8);
+    }
+    function renderDocItemConceptoDropdown(idx, query) {
+      const dropdown = document.getElementById(`doc-item-concepto-dropdown-${idx}`);
+      if (!dropdown) return;
+      const q = (query || '').trim();
+      const matches = filtrarCatalogoParaDocItem(q);
+      const optionsHTML = matches.length ? matches.map(p => `
+        <div class="doc-item-concepto-option" onmousedown="event.preventDefault(); handleDocItemConceptoChange(${idx}, '${p.id}')">
+          <span class="doc-item-concepto-option-name">${p.nombre}</span>
+          <span class="doc-item-concepto-option-tag">${p.tipo === 'servicio' ? 'Servicio' : 'Producto'}</span>
+        </div>
+      `).join('') : (q ? `<div class="doc-item-concepto-empty">Sin resultados</div>` : '');
+      const createHTML = q ? `
+        <div class="doc-item-concepto-divider"></div>
+        <div class="doc-item-concepto-create" onmousedown="event.preventDefault(); crearProductoDesdeDocItem(${idx}, 'producto')">
+          <i data-lucide="plus"></i> Registrar "${q}" como producto
+        </div>
+        <div class="doc-item-concepto-create" onmousedown="event.preventDefault(); crearProductoDesdeDocItem(${idx}, 'servicio')">
+          <i data-lucide="plus"></i> Registrar "${q}" como servicio
+        </div>
+      ` : '';
+      dropdown.innerHTML = optionsHTML + createHTML;
+      dropdown.classList.toggle('show', !!(optionsHTML || createHTML));
+      lucide.createIcons();
+    }
+    function handleDocItemConceptoSearch(idx, query) {
+      renderDocItemConceptoDropdown(idx, query);
+    }
+    function handleDocItemConceptoBlur(idx) {
+      setTimeout(() => {
+        const dropdown = document.getElementById(`doc-item-concepto-dropdown-${idx}`);
+        if (dropdown) dropdown.classList.remove('show');
+        const row = document.querySelector(`#doc-venta-items-body tr[data-doc-item-row="${idx}"]`);
+        const input = row ? row.querySelector('.doc-item-concepto-input') : null;
+        const it = docVentaState.items[idx];
+        if (input && it) input.value = it.producto || '';
+      }, 150);
+    }
+    let productoModalPendingDocItem = null;
+    function crearProductoDesdeDocItem(idx, tipo) {
+      const row = document.querySelector(`#doc-venta-items-body tr[data-doc-item-row="${idx}"]`);
+      const input = row ? row.querySelector('.doc-item-concepto-input') : null;
+      const nombre = input ? input.value.trim() : '';
+      if (!nombre) return;
+      openProductoModal('create');
+      productoModalPendingDocItem = idx;
+      document.getElementById('prod-nombre-input').value = nombre;
+      setProductoTipo(tipo);
+    }
     function handleDocItemFieldInput(idx, field, value) {
       docVentaState.items[idx][field] = Number(value) || 0;
       recalcDocVentaItemRow(idx);
@@ -16637,7 +16763,12 @@
       recalcDocVentaTotal();
     }
 
-    function openDocVentaModal(tipo, mode, id) {
+    function openDocVentaModal(tipo, mode, id, presetClienteId) {
+      // Este modal se sobrepone al de Facturación/Estado de cuenta del
+      // propietario (mismo overlay, z-index), así que si viene abierto se
+      // cierra primero para no dejarlo tapando el formulario nuevo.
+      const facturacionModalEl = document.getElementById('propietario-facturacion-modal');
+      if (facturacionModalEl && facturacionModalEl.classList.contains('show')) closeFacturacionModal();
       docVentaState = { tipo, mode, editId: mode === 'edit' ? id : null, items: [] };
       const isEdit = mode === 'edit';
       const record = isEdit ? getDocVentaArray(tipo).find(d => d.id === id) : null;
@@ -16680,6 +16811,7 @@
         document.getElementById('doc-venta-observaciones').value = '';
         if (tipo === 'cotizacion') estadoSel.value = 'Borrador';
         if (tipo === 'factura') estadoSel.value = 'Pendiente';
+        if ((tipo === 'cotizacion' || tipo === 'factura') && presetClienteId) clienteSel.value = presetClienteId;
         if (tipo === 'notacredito') {
           document.getElementById('doc-venta-motivo-input').value = '';
           document.getElementById('doc-venta-monto-input').value = '';
@@ -16744,6 +16876,7 @@
           arr.unshift({ id: (tipo === 'cotizacion' ? 'cot' : 'fv') + (ventasDocIdCounter++), numero: siguienteNumeroDocVenta(tipo), clienteId, fecha, estado, items, total, observaciones });
         }
         tipo === 'cotizacion' ? renderCotizacionesTable() : renderFacturasTable();
+        refreshFacturacionPropietarioTablesIfOpen();
       }
       closeDocVentaModal();
       showToast(mode === 'edit' ? 'Documento actualizado' : 'Documento registrado');
@@ -17219,6 +17352,7 @@
     function openProductoModal(mode, id) {
       const isEdit = mode === 'edit';
       editingProductoId = isEdit ? id : null;
+      productoModalPendingDocItem = null;
       const p = isEdit ? VENTAS_CATALOGO.find(x => x.id === id) : null;
       poblarSelectsProductoModal();
       document.getElementById('producto-modal-title').textContent = isEdit ? 'Editar producto/servicio' : 'Nuevo producto/servicio';
@@ -17302,6 +17436,10 @@
         const nums = VENTAS_CATALOGO.filter(x => x.id.startsWith(prefix)).map(x => Number(x.id.slice(1)) || 0);
         const nextId = prefix + ((nums.length ? Math.max(...nums) : 0) + 1);
         VENTAS_CATALOGO.push({ id: nextId, ...data });
+        if (productoModalPendingDocItem !== null) {
+          handleDocItemConceptoChange(productoModalPendingDocItem, nextId);
+          productoModalPendingDocItem = null;
+        }
       }
       renderProductosServiciosTable();
       renderCategoriasTable();
@@ -21012,10 +21150,10 @@
         <div class="facturacion-tab-pane active" id="facturacion-tab-cuenta">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
             <div style="font-size:13px;color:var(--text-2);">Saldo a favor: <strong style="color:var(--text-1);" id="facturacion-saldo-favor">$0</strong></div>
-            <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="nuevaCuentaPropietario()"><i data-lucide="plus" style="width:13px;height:13px;"></i> Nueva cuenta</button>
+            <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="crearFacturaPropietario()"><i data-lucide="plus" style="width:13px;height:13px;"></i> Nueva cuenta</button>
           </div>
           <table class="results-table">
-            <thead><tr><th>Referencia</th><th>Valor</th><th>Pagos</th><th>Saldo</th><th>Estado</th><th>Actualizado</th><th style="text-align:right;">Acciones</th></tr></thead>
+            <thead><tr><th>Número</th><th>Fecha</th><th>Concepto</th><th>Valor</th><th>Estado</th></tr></thead>
             <tbody id="facturacion-cuentas-tbody"></tbody>
           </table>
         </div>
@@ -21032,7 +21170,7 @@
             <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="crearCotizacionPropietario()"><i data-lucide="plus" style="width:13px;height:13px;"></i> Crear cotización</button>
           </div>
           <table class="results-table">
-            <thead><tr><th>Número</th><th>Fecha</th><th>Vencimiento</th><th>Concepto</th><th>Valor</th><th>Estado</th><th style="text-align:right;">Acciones</th></tr></thead>
+            <thead><tr><th>Número</th><th>Fecha</th><th>Concepto</th><th>Valor</th><th>Estado</th><th style="text-align:right;">Acciones</th></tr></thead>
             <tbody id="facturacion-cotizaciones-tbody"></tbody>
           </table>
         </div>
