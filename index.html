@@ -8692,7 +8692,12 @@
           </div>
 
           <div class="pet-weight-chart-col">
-            <span class="pet-weight-chart-title">Histórico de peso</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <span class="pet-weight-chart-title">Histórico de peso</span>
+              <button class="row-actions-btn" title="Actualizar peso" onclick="openActualizarPesoModal(selectedPetKey)">
+                <i data-lucide="scale" style="width:14px;height:14px;"></i>
+              </button>
+            </div>
             <div id="${uid}-weight-chart"></div>
           </div>
 
@@ -9016,6 +9021,67 @@
 
       closeEditMascotaModal();
       showToast('Mascota actualizada');
+    }
+
+    // ── MODAL: ACTUALIZAR PESO — agrega un punto nuevo al histórico
+    // (data.pesoHistorico) sin pasar por "Editar mascota". Reordena por
+    // fechaISO tras insertar porque renderWeightChartSVG asume orden
+    // cronológico ascendente (mismo criterio que los datos semilla) y el
+    // usuario puede registrar una fecha fuera de orden.
+    let actualizandoPesoPetKey = null;
+
+    function openActualizarPesoModal(petKey) {
+      if (!petKey || !patientData[petKey]) return;
+      actualizandoPesoPetKey = petKey;
+      document.getElementById('peso-nuevo-fecha').value = dashFechaISODia(new Date());
+      document.getElementById('peso-nuevo-valor').value = '';
+      document.getElementById('actualizar-peso-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeActualizarPesoModal() {
+      document.getElementById('actualizar-peso-modal').classList.remove('show');
+      actualizandoPesoPetKey = null;
+    }
+
+    function handleActualizarPesoOverlayClick(e) {
+      if (e.target === document.getElementById('actualizar-peso-modal')) closeActualizarPesoModal();
+    }
+
+    function guardarPesoActualizado() {
+      const petKey = actualizandoPesoPetKey;
+      const data = patientData[petKey];
+      if (!data) return;
+
+      const fechaISO = document.getElementById('peso-nuevo-fecha').value;
+      const pesoNum = parseFloat(document.getElementById('peso-nuevo-valor').value);
+      if (!fechaISO || isNaN(pesoNum) || pesoNum <= 0) {
+        showToast('Completa una fecha y un peso válido');
+        return;
+      }
+
+      const [y, m, d] = fechaISO.split('-');
+      const fecha = `${d}/${m}/${y}`;
+
+      if (!Array.isArray(data.pesoHistorico)) data.pesoHistorico = [];
+      data.pesoHistorico.push({ fechaISO, fecha, peso: pesoNum });
+      data.pesoHistorico.sort((a, b) => a.fechaISO.localeCompare(b.fechaISO));
+
+      // El registro más reciente por fecha (no necesariamente el último
+      // insertado) manda sobre el peso "actual" mostrado en la ficha.
+      const masReciente = data.pesoHistorico[data.pesoHistorico.length - 1];
+      data.weight = `${masReciente.peso} kg`;
+
+      if (selectedPetKey === petKey) {
+        document.getElementById('pet-profile-weight').textContent = data.weight;
+        mountPetGeneralCard('historia-pet-general', petKey);
+      }
+      if (kardexContext && kardexContext.petKey === petKey) {
+        renderWeightChartSVG('kardex-weight-chart', data.pesoHistorico);
+      }
+
+      closeActualizarPesoModal();
+      showToast('Peso actualizado');
     }
 
     // ── MODAL: REGISTRAR MASCOTA (Parte B.4) — reutiliza el mismo set de
@@ -15917,7 +15983,7 @@
       { numero: 'FV-1042', clienteId: 'c3',  fecha: '2026-07-05', estado: 'Pagada',    items: [['p1', 1, 0], ['s2', 1, 0]] }
     ].map(f => {
       const items = f.items.map(([pid, cant, desc]) => buildDocItem(pid, cant, desc));
-      return { id: 'fv' + (ventasDocIdCounter++), numero: f.numero, clienteId: f.clienteId, fecha: f.fecha, estado: f.estado, items, total: sumItems(items), observaciones: '' };
+      return { id: 'fv' + (ventasDocIdCounter++), numero: f.numero, clienteId: f.clienteId, fecha: f.fecha, estado: f.estado, items, total: sumItems(items), observaciones: '', pago: null };
     });
 
     const VENTAS_COTIZACIONES = [
@@ -16820,6 +16886,9 @@
 
       if (tipo !== 'notacredito') renderDocVentaItemsTable();
 
+      const cerrarCuentaBtn = document.getElementById('doc-venta-cerrar-cuenta-btn');
+      cerrarCuentaBtn.style.display = (tipo === 'factura' && isEdit && record.estado === 'Pendiente') ? '' : 'none';
+
       document.getElementById('doc-venta-modal').classList.add('show');
       lucide.createIcons();
     }
@@ -16882,6 +16951,59 @@
       showToast(mode === 'edit' ? 'Documento actualizado' : 'Documento registrado');
     }
 
+    // Cierre de cuenta de una factura Pendiente (botón "Cerrar cuenta" del
+    // modal de factura, solo visible mientras record.estado === 'Pendiente',
+    // ver openDocVentaModal). A diferencia del cambio manual de estado vía
+    // el select "Estado" (que solo mueve el estado), este flujo captura el
+    // método y valor del pago en factura.pago y, al confirmar, cierra ambos
+    // modales, refresca las tablas y genera el PDF de la factura ya cerrada
+    // (reutiliza getRegistroViewData/generarPdfRegistroImpresion, mismo
+    // camino que rowActionImprimir).
+    let cerrarCuentaFacturaId = null;
+
+    function abrirCerrarCuentaModal() {
+      if (!docVentaState || docVentaState.tipo !== 'factura' || !docVentaState.editId) return;
+      const factura = VENTAS_FACTURAS.find(f => f.id === docVentaState.editId);
+      if (!factura) return;
+      cerrarCuentaFacturaId = factura.id;
+      document.getElementById('cerrar-cuenta-numero').textContent = factura.numero;
+      document.getElementById('cerrar-cuenta-total').textContent = formatCOP(factura.total);
+      document.getElementById('cerrar-cuenta-metodo-select').value = '';
+      document.getElementById('cerrar-cuenta-valor-input').value = factura.total;
+      document.getElementById('cerrar-cuenta-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeCerrarCuentaModal() {
+      document.getElementById('cerrar-cuenta-modal').classList.remove('show');
+      cerrarCuentaFacturaId = null;
+    }
+
+    function handleCerrarCuentaOverlayClick(e) {
+      if (e.target === document.getElementById('cerrar-cuenta-modal')) closeCerrarCuentaModal();
+    }
+
+    function confirmarCerrarCuenta() {
+      const factura = VENTAS_FACTURAS.find(f => f.id === cerrarCuentaFacturaId);
+      if (!factura) return;
+      const metodo = document.getElementById('cerrar-cuenta-metodo-select').value;
+      const valor = Number(document.getElementById('cerrar-cuenta-valor-input').value) || 0;
+      if (!metodo) { showToast('Selecciona el método de pago'); return; }
+      if (valor <= 0) { showToast('El valor del pago debe ser mayor a $0'); return; }
+
+      factura.estado = 'Pagada';
+      factura.pago = { metodo, valor, fecha: VENTAS_HOY };
+
+      closeCerrarCuentaModal();
+      closeDocVentaModal();
+      renderFacturasTable();
+      refreshFacturacionPropietarioTablesIfOpen();
+      showToast('Cuenta cerrada. Generando PDF...');
+
+      const data = getRegistroViewData('factura', factura.id);
+      if (data) generarPdfRegistroImpresion(data.title, data.html, factura.id);
+    }
+
     function docVentaViewContentHTML(tipo, record) {
       if (tipo === 'notacredito') {
         return `
@@ -16904,6 +17026,10 @@
         <div class="info-label">Fecha</div><div class="info-value">${record.fecha}</div>
         <div class="info-label">Ítems</div><div class="info-value">${itemsHTML}</div>
         <div class="info-label">Total</div><div class="info-value" style="font-weight:700;">${formatCOP(record.total)}</div>
+        ${record.pago ? `
+        <div class="info-label">Método de pago</div><div class="info-value">${record.pago.metodo}</div>
+        <div class="info-label">Valor pagado</div><div class="info-value">${formatCOP(record.pago.valor)}</div>
+        <div class="info-label">Fecha de pago</div><div class="info-value">${record.pago.fecha}</div>` : ''}
         ${record.observaciones ? `<div class="info-label">Observaciones</div><div class="info-value">${record.observaciones}</div>` : ''}
       `;
     }
@@ -18251,23 +18377,33 @@
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-2);">Sin consultas registradas</td></tr>';
         return;
       }
-      tbody.innerHTML = consultas.map(c => `
+      tbody.innerHTML = consultas.map(c => {
+        const propietario = getPropietarioDeMascota(c.petKey);
+        return `
         <tr>
           <td>
-            <div class="mascota-cell">
+            <div class="mascota-cell" style="cursor: pointer;" onclick="irAHistoriaDesdePerfil('${c.petKey}')">
               <div class="mascota-avatar"><i data-lucide="${c.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width: 14px; height: 14px;"></i></div>
               <div>
-                <strong style="font-weight: 600;">${c.petName || '—'}</strong>
+                <strong style="font-weight: 600; text-decoration: underline;">${c.petName || '—'}</strong>
                 <span class="mascota-specie">(${c.especie || '—'})</span>
               </div>
             </div>
           </td>
-          <td>${c.owner || '—'}</td>
+          <td>${propietario
+            ? `<span style="text-decoration: underline; cursor: pointer;" onclick="abrirPerfilPropietario('${propietario.id}')">${c.owner || '—'}</span>`
+            : (c.owner || '—')}</td>
           <td>${c.usuario || '—'}</td>
           <td>${c.fecha || '—'}</td>
-          <td><span class="status-badge status-badge-completado">Completada</span></td>
+          <td>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+              <span class="status-badge status-badge-completado">Completada</span>
+              ${propietario ? `<button class="row-actions-btn" title="Estado de cuenta / Facturación" onclick="event.stopPropagation(); abrirFacturacionPropietario('${propietario.id}')"><i data-lucide="credit-card" style="width: 14px; height: 14px;"></i></button>` : ''}
+            </div>
+          </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
     }
 
     function renderDashChart(todasConsultas) {
@@ -18303,9 +18439,9 @@
       const mesActual = hoyStr.slice(0, 7);
 
       const todasConsultas = [];
-      Object.values(patientData).forEach(data => {
+      Object.entries(patientData).forEach(([petKey, data]) => {
         (data.consultas || []).forEach(c => {
-          todasConsultas.push({ ...c, petName: data.name, especie: data.species, owner: data.owner, avatarClass: data.avatarClass });
+          todasConsultas.push({ ...c, petKey, petName: data.name, especie: data.species, owner: data.owner, avatarClass: data.avatarClass });
         });
       });
       todasConsultas.sort((a, b) => new Date(b.fechaISO || 0) - new Date(a.fechaISO || 0));
@@ -20040,6 +20176,32 @@
     </div>
   </div>
 
+  <!-- Modal: Actualizar peso -->
+  <div class="modal-overlay" id="actualizar-peso-modal" onclick="handleActualizarPesoOverlayClick(event)">
+    <div class="soap-modal-card" style="width:360px;" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <span class="soap-modal-pet-name">Actualizar peso</span>
+        </div>
+        <button class="soap-modal-close" onclick="closeActualizarPesoModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div class="soap-modal-body">
+        <div class="input-group">
+          <label class="input-label">Fecha</label>
+          <input type="date" class="input-control" style="padding-left:12px;" id="peso-nuevo-fecha">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Peso (kg)</label>
+          <input type="number" step="0.1" min="0" class="input-control" style="padding-left:12px;" id="peso-nuevo-valor" placeholder="Ej: 4.3">
+        </div>
+      </div>
+      <div class="soap-modal-footer">
+        <button class="btn-secondary" onclick="closeActualizarPesoModal()">Cancelar</button>
+        <button class="btn-primary" onclick="guardarPesoActualizado()">Guardar peso</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Registrar propietario -->
   <div class="modal-overlay" id="registrar-propietario-modal" onclick="handleRegistrarPropietarioOverlayClick(event)">
     <div class="soap-modal-card" style="width:640px;" onclick="event.stopPropagation()">
@@ -20488,8 +20650,41 @@
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn-primary" id="doc-venta-cerrar-cuenta-btn" style="display:none;margin-right:auto;" onclick="abrirCerrarCuentaModal()"><i data-lucide="lock" style="width:14px;height:14px;"></i> Cerrar cuenta</button>
         <button class="btn-secondary" onclick="closeDocVentaModal()">Cancelar</button>
         <button class="btn-primary" onclick="guardarDocVenta()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cerrar cuenta y reportar pago (factura Pendiente) — llenar
+       método de pago + valor pagado y cerrar la cuenta (estado -> Pagada),
+       generando el PDF de la factura/recibo al finalizar. -->
+  <div class="modal-overlay" id="cerrar-cuenta-modal" onclick="handleCerrarCuentaOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:420px;">
+      <div class="modal-header">
+        <span class="modal-title">Cerrar cuenta y reportar pago</span>
+        <button class="modal-close" onclick="closeCerrarCuentaModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div style="font-size:12.5px;color:var(--text-2);margin-bottom:14px;">Factura <strong id="cerrar-cuenta-numero" style="color:var(--text-1);">—</strong> · Total <strong id="cerrar-cuenta-total" style="color:var(--text-1);">$0</strong></div>
+      <div class="input-group" style="margin-bottom:14px;">
+        <label class="input-label" for="cerrar-cuenta-metodo-select">Método de pago</label>
+        <select id="cerrar-cuenta-metodo-select" class="soap-select-control">
+          <option value="">Seleccione una opción</option>
+          <option value="Efectivo">Efectivo</option>
+          <option value="Tarjeta débito/crédito">Tarjeta débito/crédito</option>
+          <option value="Transferencia/Consignación">Transferencia/Consignación</option>
+          <option value="Otro">Otro</option>
+          <option value="Saldo a favor">Saldo a favor</option>
+        </select>
+      </div>
+      <div class="input-group" style="margin-bottom:20px;">
+        <label class="input-label" for="cerrar-cuenta-valor-input">Valor del pago</label>
+        <input type="number" id="cerrar-cuenta-valor-input" class="input-control" style="padding-left:12px;" min="0">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn-secondary" onclick="closeCerrarCuentaModal()">Cancelar</button>
+        <button class="btn-primary" onclick="confirmarCerrarCuenta()">Cerrar cuenta</button>
       </div>
     </div>
   </div>
