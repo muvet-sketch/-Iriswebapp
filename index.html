@@ -3781,8 +3781,25 @@
               <input class="input" type="tel" id="perfil-tab-telefono">
             </div>
             <div class="form-group">
+              <label class="form-label">Número de matrícula profesional</label>
+              <input class="input" type="text" id="perfil-tab-matricula" placeholder="Ej: MP 4567-CO">
+            </div>
+            <div class="form-group">
               <label class="form-label">Email</label>
               <input class="input" type="text" id="perfil-tab-email" disabled>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Firma electrónica</label>
+              <div style="display:flex;align-items:center;gap:16px;">
+                <div id="perfil-tab-firma-preview" style="width:140px;height:60px;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;color:var(--text-2);">
+                  <i data-lucide="pen-line" style="width:18px;height:18px;"></i>
+                </div>
+                <label class="btn-outline" style="cursor:pointer;">
+                  <i data-lucide="upload" style="width:14px;height:14px;"></i> Cargar firma
+                  <input type="file" accept="image/*" style="display:none;" onchange="handlePerfilTabFirmaChange(this)">
+                </label>
+              </div>
+              <span style="font-size:11px;color:var(--text-2);">Se mostrará sobre tu nombre en las fórmulas médicas que generes.</span>
             </div>
             <span class="field-error" id="perfil-tab-error" style="display:none;"></span>
             <button class="btn-primary" style="width:auto;align-self:flex-end;" onclick="guardarPerfilTab()">Guardar cambios</button>
@@ -8211,11 +8228,28 @@
         recordatorio24hISO: new Date(new Date(startISO).getTime() - 24 * 60 * 60000).toISOString().slice(0, 19)
       };
 
+      let estadoPrevio = null;
       if (agendaEditingId) {
         const idx = AGENDA_EVENTOS.findIndex(e => e.id === agendaEditingId);
-        if (idx !== -1) AGENDA_EVENTOS[idx] = evento;
+        if (idx !== -1) { estadoPrevio = AGENDA_EVENTOS[idx].estado; AGENDA_EVENTOS[idx] = evento; }
       } else {
         AGENDA_EVENTOS.push(evento);
+      }
+
+      // Al marcar la cita como "Completada" (y solo la primera vez que pasa a
+      // ese estado, para no duplicar), deja rastro en la Línea de Tiempo de
+      // Historia del paciente — mismo criterio create-only que el resto de
+      // módulos, aplicado aquí al cambio de estado en vez de a la creación.
+      const dataDeCita = evento.petKey ? patientData[evento.petKey] : null;
+      if (dataDeCita && evento.estado === 'completada' && estadoPrevio !== 'completada') {
+        dataDeCita.timeline.unshift({
+          type: 'Cita',
+          date: formatearFechaHoraAgenda(evento),
+          title: `Cita completada — ${AGENDA_TIPO_LABELS[evento.tipo] || evento.tipo}`,
+          summary: evento.descripcion || '—',
+          vet: (USUARIOS_SISTEMA.find(u => u.id === evento.encargadoId) || {}).nombre || '—'
+        });
+        if (selectedPetKey === evento.petKey) renderHistoriaTimeline(dataDeCita);
       }
 
       // Si el modal se abrió desde "Agendar" en Agenda > Eventos, vincula
@@ -9819,7 +9853,8 @@
         line: r => r.vacuna,
         sub: r => `${r.fecha}${r.proximaVacunacion ? ' · Próx: ' + r.proximaVacunacion : ''}`,
         openCreate: petKey => openVacunacionModal('create', petKey),
-        openEdit: (petKey, idx) => openVacunacionModal('edit', petKey, idx)
+        openEdit: (petKey, idx) => openVacunacionModal('edit', petKey, idx),
+        viewModuleKey: 'vacunacion'
       },
       desparasitaciones: {
         label: 'Desparasitaciones', icon: 'shield-check',
@@ -9827,7 +9862,8 @@
         line: r => r.tipo,
         sub: r => `${r.fecha}${r.proximoControl ? ' · Próx: ' + r.proximoControl : ''}`,
         openCreate: petKey => openDesparasitacionModal('create', petKey),
-        openEdit: (petKey, idx) => openDesparasitacionModal('edit', petKey, idx)
+        openEdit: (petKey, idx) => openDesparasitacionModal('edit', petKey, idx),
+        viewModuleKey: 'desparasitacion'
       },
       formulas: {
         label: 'Fórmulas médicas', icon: 'file-text',
@@ -9835,7 +9871,8 @@
         line: r => r.diagnostico || 'Fórmula médica',
         sub: r => r.fecha,
         openCreate: petKey => openFormulaModal('create', petKey),
-        openEdit: (petKey, idx) => openFormulaModal('edit', petKey, idx)
+        openEdit: (petKey, idx) => openFormulaModal('edit', petKey, idx),
+        viewModuleKey: 'formula'
       },
       laboratorio: {
         label: 'Exámenes de laboratorio', icon: 'test-tube-2',
@@ -9843,7 +9880,8 @@
         line: r => r.diagnosticoPresuntivo || 'Examen de laboratorio',
         sub: r => `${r.fecha} · ${(r.pruebas || []).length} prueba${(r.pruebas || []).length === 1 ? '' : 's'}`,
         openCreate: petKey => openExamenModal('laboratorio', 'create', petKey),
-        openEdit: (petKey, idx) => openExamenModal('laboratorio', 'edit', petKey, idx)
+        openEdit: (petKey, idx) => openExamenModal('laboratorio', 'edit', petKey, idx),
+        viewModuleKey: 'examen'
       },
       imagenes: {
         label: 'Imágenes diagnósticas', icon: 'image',
@@ -9851,7 +9889,8 @@
         line: r => r.diagnosticoPresuntivo || 'Imagen diagnóstica',
         sub: r => `${r.fecha} · ${(r.pruebas || []).length} imagen${(r.pruebas || []).length === 1 ? '' : 'es'}`,
         openCreate: petKey => openExamenModal('imagen', 'create', petKey),
-        openEdit: (petKey, idx) => openExamenModal('imagen', 'edit', petKey, idx)
+        openEdit: (petKey, idx) => openExamenModal('imagen', 'edit', petKey, idx),
+        viewModuleKey: 'examen'
       },
       cirugias: {
         label: 'Cirugías/procedimientos', icon: 'scissors',
@@ -9859,7 +9898,8 @@
         line: r => r.tipo,
         sub: r => `${r.fecha} · ${r.hora}`,
         openCreate: petKey => openCirugiaModal('create', petKey),
-        openEdit: (petKey, idx) => openCirugiaModal('edit', petKey, idx)
+        openEdit: (petKey, idx) => openCirugiaModal('edit', petKey, idx),
+        viewModuleKey: 'cirugia'
       },
       ordenes: {
         label: 'Órdenes', icon: 'clipboard-list',
@@ -9867,7 +9907,8 @@
         line: r => r.tipoLabel,
         sub: r => `${r.fecha} · ${r.detalle}`,
         openCreate: petKey => openOrdenModal('create', petKey),
-        openEdit: (petKey, idx) => openOrdenModal('edit', petKey, idx)
+        openEdit: (petKey, idx) => openOrdenModal('edit', petKey, idx),
+        viewModuleKey: 'orden'
       },
       seguimientos: {
         label: 'Seguimientos', icon: 'phone-call',
@@ -9875,7 +9916,8 @@
         line: r => r.tipo,
         sub: r => `${r.fecha}${r.motivo ? ' · ' + r.motivo : ''}`,
         openCreate: petKey => openSeguimientoFormModal('create', petKey),
-        openEdit: (petKey, idx) => openSeguimientoFormModal('edit', petKey, idx)
+        openEdit: (petKey, idx) => openSeguimientoFormModal('edit', petKey, idx),
+        viewModuleKey: 'seguimiento'
       },
       remisiones: {
         label: 'Remisiones', icon: 'external-link',
@@ -9883,7 +9925,8 @@
         line: r => r.centroDestino,
         sub: r => `${r.fecha} · ${r.profesional}`,
         openCreate: petKey => openRemisionModal('create', petKey),
-        openEdit: (petKey, idx) => openRemisionModal('edit', petKey, idx)
+        openEdit: (petKey, idx) => openRemisionModal('edit', petKey, idx),
+        viewModuleKey: 'remision'
       },
       citas: {
         label: 'Citas', icon: 'clock',
@@ -9893,7 +9936,8 @@
         line: r => AGENDA_TIPO_LABELS[r.tipo] || r.tipo,
         sub: r => formatearFechaHoraAgenda(r),
         openCreate: () => openCitaModalDesdePaciente(),
-        openEdit: (petKey, id) => abrirEventoAgendaPorId(id)
+        openEdit: (petKey, id) => abrirEventoAgendaPorId(id),
+        viewModuleKey: 'agenda-evento'
       }
     };
 
@@ -9960,9 +10004,19 @@
       TABLERO_QUICKNAV_MODULOS[key].openCreate(selectedPetKey);
     }
 
+    // Click en un registro de la mini-lista: abre el registro guardado en
+    // modo solo-lectura (mismo flujo que la acción "Ver" del menú "..." de
+    // cada módulo, vía rowActionVer/getRegistroViewData) — no el modal de
+    // edición. Para editar, el usuario abre el módulo completo (botón "Ver
+    // X completo") y usa la acción "Editar" de esa tabla.
     function abrirTableroRegistro(key, idOrIdx) {
-      const idx = key === 'citas' ? idOrIdx : parseInt(idOrIdx, 10);
-      TABLERO_QUICKNAV_MODULOS[key].openEdit(selectedPetKey, idx);
+      const cfg = TABLERO_QUICKNAV_MODULOS[key];
+      if (key === 'citas') {
+        rowActionVer(cfg.viewModuleKey, idOrIdx);
+        return;
+      }
+      const idx = parseInt(idOrIdx, 10);
+      rowActionVer(cfg.viewModuleKey, `${selectedPetKey}:${idx}`);
     }
 
     // Refresca la mini-lista de "Navegación rápida" (si está mostrando justo
@@ -10759,16 +10813,14 @@
         if (selectedPetKey) renderCitasPacienteTable(selectedPetKey);
         closeAgendaEventoModal();
       } else if (moduleKey === 'cotizacion') {
-        VENTAS_COTIZACIONES.splice(VENTAS_COTIZACIONES.findIndex(d => d.id === recordId), 1);
-        renderCotizacionesTable();
-        refreshFacturacionPropietarioTablesIfOpen();
+        eliminarCotizacionReal(recordId);
       } else if (moduleKey === 'factura') {
-        VENTAS_FACTURAS.splice(VENTAS_FACTURAS.findIndex(d => d.id === recordId), 1);
-        renderFacturasTable();
-        refreshFacturacionPropietarioTablesIfOpen();
+        eliminarFacturaReal(recordId);
       } else if (moduleKey === 'notacredito') {
         VENTAS_NOTAS_CREDITO.splice(VENTAS_NOTAS_CREDITO.findIndex(d => d.id === recordId), 1);
         renderNotasCreditoTable();
+        renderVentasDashboard();
+        renderDashboard();
       } else if (moduleKey === 'docsoporte') {
         VENTAS_DOC_SOPORTE.splice(VENTAS_DOC_SOPORTE.findIndex(d => d.id === recordId), 1);
         renderDocSoporteTable();
@@ -10804,6 +10856,43 @@
       }
 
       showToast('Registro eliminado');
+    }
+
+    // Facturas/Cuentas y Cotizaciones sí persisten en Supabase (tablas
+    // ventas_facturas/ventas_cotizaciones) — mismo patrón optimista que
+    // eliminarConsultaReal(): se quitan de la vista de inmediato (sin fade,
+    // esta tabla nunca lo tuvo) y la eliminación real en el servidor corre
+    // en paralelo; si falla, la fila ya no está en la tabla pero se avisa
+    // que no se sincronizó, para no dejar el clic colgado esperando la red.
+    async function eliminarFacturaReal(recordId) {
+      const idx = VENTAS_FACTURAS.findIndex(d => d.id === recordId);
+      if (idx !== -1) VENTAS_FACTURAS.splice(idx, 1);
+      renderFacturasTable();
+      refreshFacturacionPropietarioTablesIfOpen();
+      renderVentasDashboard();
+      renderDashboard();
+      if (!window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('ventas_facturas').delete().eq('id', recordId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando factura en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+    async function eliminarCotizacionReal(recordId) {
+      const idx = VENTAS_COTIZACIONES.findIndex(d => d.id === recordId);
+      if (idx !== -1) VENTAS_COTIZACIONES.splice(idx, 1);
+      renderCotizacionesTable();
+      refreshFacturacionPropietarioTablesIfOpen();
+      if (!window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('ventas_cotizaciones').delete().eq('id', recordId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando cotización en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
     }
 
     // ── MODAL GENÉRICO: VER REGISTRO (SOLO LECTURA) ─────────────
@@ -10855,6 +10944,17 @@
           <div style="font-size:12px;color:var(--text-2);margin-top:4px;">${m.posologia || ''}</div>
         </div>
       `).join('');
+      // Firma electrónica y matrícula profesional vienen del perfil del
+      // usuario logueado (Mi perfil > Datos personales), no del registro
+      // de la fórmula -- se pintan en vivo con el valor actual de
+      // currentSession.user, igual que el resto de datos "de quién soy yo
+      // ahora" del shell (ver renderHeaderFromSession).
+      const tieneFirma = currentSession && currentSession.user && currentSession.user.firmaUrl;
+      const tieneMatricula = currentSession && currentSession.user && currentSession.user.matricula;
+      const firmaHTML = tieneFirma
+        ? `<img src="${currentSession.user.firmaUrl}" alt="Firma electrónica" style="display:block;max-height:48px;max-width:180px;margin-bottom:4px;">` : '';
+      const matriculaHTML = tieneMatricula
+        ? `<div style="font-size:12px;color:var(--text-2);">Matrícula profesional ${currentSession.user.matricula}</div>` : '';
       return `
         <div class="info-label">Fecha fórmula</div>
         <div class="info-value">${record.fecha}</div>
@@ -10863,7 +10963,10 @@
         <div class="info-label">Medicamentos</div>
         ${medsHTML}
         <div class="info-label" style="margin-top:8px;">Usuario</div>
-        <div class="info-value">${record.usuario}</div>
+        <div class="info-value">
+          ${firmaHTML}${record.usuario}
+          ${matriculaHTML}
+        </div>
       `;
     }
 
@@ -11083,7 +11186,7 @@
             <td>${f.diagnostico}</td>
             <td>${medSummary(f.medicamentos)}</td>
             <td>${f.usuario}</td>
-            <td style="text-align: right;">${renderRowActionsMenu('formula', `${petKey}:${i}`)}</td>
+            <td style="text-align: right;">${renderRowActionsMenu('formula', `${petKey}:${i}`, null, ['editar', 'imprimir', 'email', 'eliminar'])}</td>
           </tr>
         `).join('');
       }
@@ -11183,6 +11286,15 @@
           data.formulas[editingFormulaContext.index] = record;
         } else {
           data.formulas.unshift(record);
+          data.timeline.unshift({
+            dbId: record.dbId,
+            type: 'Fórmula médica',
+            date: record.fecha,
+            title: `Fórmula médica — ${record.diagnostico || 'Sin diagnóstico'}`,
+            summary: medSummary(record.medicamentos),
+            vet: record.usuario
+          });
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
         }
 
         renderFormulasTable(petKey);
@@ -13922,6 +14034,14 @@
           razon, observaciones, estado: fechaSalidaISO ? 'finalizada' : 'activa',
           usuario: 'Dr. Sebastián Ríos', hospId: `hosp-${hospitalizacionSeq++}`, dias: []
         });
+        data.timeline.unshift({
+          type: tipo,
+          date: formatFechaCorta(fechaIngresoISO),
+          title: `Ingreso — ${razon}`,
+          summary: observaciones || `Tipo: ${tipo}`,
+          vet: 'Dr. Sebastián Ríos'
+        });
+        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
       }
 
       renderHospitalizacionesTable(petKey);
@@ -14658,6 +14778,14 @@
         data.seguimientos[editingSeguimientoContext.idx] = record;
       } else {
         data.seguimientos.unshift(record);
+        data.timeline.unshift({
+          type: 'Seguimiento',
+          date: record.fecha,
+          title: `Seguimiento — ${record.motivo || record.tipo || 'Sin motivo'}`,
+          summary: record.detalles || '—',
+          vet: seguimientoUsuarioNombre(record)
+        });
+        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
       }
 
       closeSeguimientoFormModal();
@@ -14921,6 +15049,15 @@
           data.documentos[editingDocumentoContext.index] = record;
         } else {
           data.documentos.unshift(record);
+          data.timeline.unshift({
+            dbId: record.dbId,
+            type: 'Documento',
+            date: record.fecha,
+            title: `Documento — ${record.nombre}`,
+            summary: record.estado === 'pendiente' ? 'Enviado para firma' : 'Guardado como borrador',
+            vet: record.usuario
+          });
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
         }
 
         renderDocumentosTable(petKey);
@@ -16900,7 +17037,7 @@
       if (e.target === document.getElementById('doc-venta-modal')) closeDocVentaModal();
     }
 
-    function guardarDocVenta() {
+    async function guardarDocVenta() {
       const { tipo, mode, editId } = docVentaState;
       const fecha = document.getElementById('doc-venta-fecha-input').value;
       if (!fecha) { showToast('La fecha es obligatoria'); return; }
@@ -16918,6 +17055,8 @@
           VENTAS_NOTAS_CREDITO.unshift({ id: 'nc' + (ventasDocIdCounter++), numero: siguienteNumeroDocVenta('notacredito'), facturaId, facturaNumero: factura.numero, clienteId: factura.clienteId, fecha, motivo, monto });
         }
         renderNotasCreditoTable();
+        renderVentasDashboard();
+        renderDashboard();
         closeDocVentaModal();
         showToast(mode === 'edit' ? 'Nota crédito actualizada' : 'Nota crédito registrada');
         return;
@@ -16935,20 +17074,60 @@
           VENTAS_DOC_SOPORTE.unshift({ id: 'ds' + (ventasDocIdCounter++), numero: siguienteNumeroDocVenta('docsoporte'), proveedorId, fecha, items, total, observaciones });
         }
         renderDocSoporteTable();
-      } else {
-        const clienteId = document.getElementById('doc-venta-cliente-select').value;
-        const estado = document.getElementById('doc-venta-estado-select').value;
-        const arr = getDocVentaArray(tipo);
+        closeDocVentaModal();
+        showToast(mode === 'edit' ? 'Documento actualizado' : 'Documento registrado');
+        return;
+      }
+
+      // Facturas/Cuentas (VENTAS_FACTURAS) y Cotizaciones (VENTAS_COTIZACIONES)
+      // sí persisten de verdad en Supabase (tablas ventas_facturas/
+      // ventas_cotizaciones, mismo patrón que guardarPropietario()) — a
+      // diferencia de Notas crédito/Doc. soporte arriba, que siguen siendo
+      // mock puro en memoria (fuera del alcance de este pedido).
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      const clienteId = document.getElementById('doc-venta-cliente-select').value;
+      const estado = document.getElementById('doc-venta-estado-select').value;
+      const tabla = tipo === 'cotizacion' ? 'ventas_cotizaciones' : 'ventas_facturas';
+      const arr = getDocVentaArray(tipo);
+      const numero = mode === 'edit' ? arr.find(x => x.id === editId).numero : siguienteNumeroDocVenta(tipo);
+      const fila = { numero, cliente_id: clienteId, fecha, estado, items, total, observaciones: observaciones || null };
+
+      const btn = document.getElementById('doc-venta-guardar-btn');
+      if (btn) btn.disabled = true;
+      try {
         if (mode === 'edit') {
+          const { error } = await window.supabase.from(tabla)
+            .update({ ...fila, updated_at: new Date().toISOString() })
+            .eq('id', editId);
+          if (error) throw error;
           Object.assign(arr.find(x => x.id === editId), { clienteId, fecha, estado, items, total, observaciones });
         } else {
-          arr.unshift({ id: (tipo === 'cotizacion' ? 'cot' : 'fv') + (ventasDocIdCounter++), numero: siguienteNumeroDocVenta(tipo), clienteId, fecha, estado, items, total, observaciones });
+          const establecimientoId = currentSession.activeMembership.establecimientoId;
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+          const { data: inserted, error } = await window.supabase.from(tabla)
+            .insert({ ...fila, establecimiento_id: establecimientoId, created_by: userId })
+            .select().single();
+          if (error) throw error;
+          const nuevo = { id: inserted.id, numero, clienteId, fecha, estado, items, total, observaciones };
+          if (tipo === 'factura') nuevo.pago = null;
+          arr.unshift(nuevo);
         }
         tipo === 'cotizacion' ? renderCotizacionesTable() : renderFacturasTable();
         refreshFacturacionPropietarioTablesIfOpen();
+        renderVentasDashboard();
+        renderDashboard();
+        closeDocVentaModal();
+        showToast(mode === 'edit' ? 'Documento actualizado' : 'Documento registrado');
+      } catch (err) {
+        console.error('[IRIS] Error guardando el documento de ventas en Supabase:', err);
+        showToast('No se pudo guardar el documento — intenta de nuevo');
+      } finally {
+        if (btn) btn.disabled = false;
       }
-      closeDocVentaModal();
-      showToast(mode === 'edit' ? 'Documento actualizado' : 'Documento registrado');
     }
 
     // Cierre de cuenta de una factura Pendiente (botón "Cerrar cuenta" del
@@ -16983,7 +17162,7 @@
       if (e.target === document.getElementById('cerrar-cuenta-modal')) closeCerrarCuentaModal();
     }
 
-    function confirmarCerrarCuenta() {
+    async function confirmarCerrarCuenta() {
       const factura = VENTAS_FACTURAS.find(f => f.id === cerrarCuentaFacturaId);
       if (!factura) return;
       const metodo = document.getElementById('cerrar-cuenta-metodo-select').value;
@@ -16991,13 +17170,30 @@
       if (!metodo) { showToast('Selecciona el método de pago'); return; }
       if (valor <= 0) { showToast('El valor del pago debe ser mayor a $0'); return; }
 
+      const pago = { metodo, valor, fecha: VENTAS_HOY };
+
+      if (window.supabase) {
+        try {
+          const { error } = await window.supabase.from('ventas_facturas')
+            .update({ estado: 'Pagada', pago, updated_at: new Date().toISOString() })
+            .eq('id', factura.id);
+          if (error) throw error;
+        } catch (err) {
+          console.error('[IRIS] Error cerrando cuenta en Supabase:', err);
+          showToast('No se pudo cerrar la cuenta — intenta de nuevo');
+          return;
+        }
+      }
+
       factura.estado = 'Pagada';
-      factura.pago = { metodo, valor, fecha: VENTAS_HOY };
+      factura.pago = pago;
 
       closeCerrarCuentaModal();
       closeDocVentaModal();
       renderFacturasTable();
       refreshFacturacionPropietarioTablesIfOpen();
+      renderVentasDashboard();
+      renderDashboard();
       showToast('Cuenta cerrada. Generando PDF...');
 
       const data = getRegistroViewData('factura', factura.id);
@@ -18229,8 +18425,10 @@
       if (!currentSession) return;
       document.getElementById('perfil-tab-nombre').value = currentSession.user.nombre || '';
       document.getElementById('perfil-tab-telefono').value = currentSession.user.telefono || '';
+      document.getElementById('perfil-tab-matricula').value = currentSession.user.matricula || '';
       document.getElementById('perfil-tab-email').value = currentSession.user.email || '';
       renderPerfilTabFotoPreview();
+      renderPerfilTabFirmaPreview();
 
       const estabContainer = document.getElementById('perfil-tab-establecimientos');
       if (!currentSession.memberships.length) {
@@ -18274,12 +18472,14 @@
       const nombre = document.getElementById('perfil-tab-nombre').value.trim();
       if (!nombre) { errorEl.textContent = 'Ingresa tu nombre'; errorEl.style.display = 'block'; return; }
       const telefono = document.getElementById('perfil-tab-telefono').value.trim();
+      const matricula = document.getElementById('perfil-tab-matricula').value.trim();
       const { error } = await window.supabase.from('profiles').update({
-        nombre, telefono
+        nombre, telefono, matricula: matricula || null
       }).eq('id', currentSession.user.id);
       if (error) { errorEl.textContent = error.message; errorEl.style.display = 'block'; return; }
       currentSession.user.nombre = nombre;
       currentSession.user.telefono = telefono;
+      currentSession.user.matricula = matricula;
       renderHeaderFromSession();
       showToast('Perfil actualizado');
     }
@@ -18320,6 +18520,57 @@
         const detalle = (err && err.message) ? err.message : 'error desconocido';
         showToast(`La foto se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
       }
+    }
+
+    // ── Firma electrónica (tab "Mi perfil") — mismo patrón que la foto de
+    // perfil (subida inmediata al elegir el archivo, bucket propio con
+    // carpeta "<user_id>/"), usada por formulaViewContentHTML() para
+    // pintarla sobre el nombre del médico en la fórmula (Ver/Imprimir).
+    function renderPerfilTabFirmaPreview() {
+      const preview = document.getElementById('perfil-tab-firma-preview');
+      if (!preview) return;
+      if (currentSession.user.firmaUrl) {
+        preview.innerHTML = `<img src="${currentSession.user.firmaUrl}" alt="Firma electrónica" style="width:100%;height:100%;object-fit:contain;">`;
+      } else {
+        preview.innerHTML = '<i data-lucide="pen-line" style="width:18px;height:18px;"></i>';
+      }
+      lucide.createIcons();
+    }
+
+    async function handlePerfilTabFirmaChange(input) {
+      if (!input.files || !input.files[0] || !currentSession) return;
+      const file = input.files[0];
+      const reader = new FileReader();
+      reader.onload = e => {
+        document.getElementById('perfil-tab-firma-preview').innerHTML = `<img src="${e.target.result}" alt="Firma electrónica" style="width:100%;height:100%;object-fit:contain;">`;
+      };
+      reader.readAsDataURL(file);
+
+      try {
+        const url = await subirFirmaPerfilReal(file, currentSession.user.id);
+        const { error } = await window.supabase.from('profiles').update({ firma_url: url }).eq('id', currentSession.user.id);
+        if (error) throw error;
+        currentSession.user.firmaUrl = url;
+        showToast('Firma electrónica actualizada');
+      } catch (err) {
+        console.error('[IRIS] Error subiendo firma electrónica:', err);
+        const detalle = (err && err.message) ? err.message : 'error desconocido';
+        showToast(`La firma se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
+      }
+    }
+
+    async function subirFirmaPerfilReal(file, userId) {
+      if (!window.supabase) throw new Error('sin conexión a la base de datos');
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+      const path = `${userId}/firma.${ext}`;
+
+      const { error: uploadError } = await window.supabase.storage
+        .from('firmas')
+        .upload(path, file, { contentType: file.type || 'image/png', upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: pub } = window.supabase.storage.from('firmas').getPublicUrl(path);
+      return `${pub.publicUrl}?v=${Date.now()}`;
     }
 
     // ── Actualizar contraseña (tab "Mi perfil") — sesión activa es
@@ -18561,8 +18812,9 @@
     });
 
     // NOTA — esta función YA NO toca `patientData`/`propietarios`/
-    // `nextPropietarioSeq`: esos tres ahora se cargan de verdad desde
-    // Supabase (tablas propietarios/mascotas/documentos) vía
+    // `nextPropietarioSeq`/`VENTAS_FACTURAS`/`VENTAS_COTIZACIONES`: esos
+    // cinco ahora se cargan de verdad desde Supabase (tablas propietarios/
+    // mascotas/documentos/ventas_facturas/ventas_cotizaciones) vía
     // cargarDatosClinicaDesdeSupabase(), llamada aparte desde
     // bootstrapSession(). Todo lo demás en esta función sigue siendo mock
     // (fuera del alcance de la fase 1 de persistencia real).
@@ -18628,11 +18880,11 @@
       VENTAS_CLIENTES.length = 0;
       if (seed) VENTAS_CLIENTES.push(...seed.VENTAS_CLIENTES);
 
-      VENTAS_FACTURAS.length = 0;
-      if (seed) VENTAS_FACTURAS.push(...seed.VENTAS_FACTURAS);
-
-      VENTAS_COTIZACIONES.length = 0;
-      if (seed) VENTAS_COTIZACIONES.push(...seed.VENTAS_COTIZACIONES);
+      // VENTAS_FACTURAS/VENTAS_COTIZACIONES ya NO se resetean/siembran acá
+      // (mismo criterio que propietarios/patientData, ver nota junto a
+      // cargarDatosClinicaDesdeSupabase()): se cargan de verdad desde las
+      // tablas ventas_facturas/ventas_cotizaciones, filtradas por
+      // establecimiento_id, en esa función — aparte, después de esta.
 
       VENTAS_NOTAS_CREDITO.length = 0;
       if (seed) VENTAS_NOTAS_CREDITO.push(...seed.VENTAS_NOTAS_CREDITO);
@@ -18779,6 +19031,29 @@
       };
     }
 
+    // A diferencia de propietarios/mascotas/consultas (que reconstruyen un
+    // objeto con muchos campos derivados), Facturas/Cuentas y Cotizaciones
+    // (Ventas > Documentos) ya usaban en memoria la misma forma plana que
+    // Supabase guarda como jsonb (items[], total, etc.) — `id` es
+    // directamente el uuid real de la fila, sin un `dbId` aparte, porque
+    // acá `id` siempre fue la única clave usada para buscar/editar/eliminar
+    // (a diferencia de consultas, que ya tenía su propio esquema de índices
+    // locales antes de conectarse a Supabase).
+    function construirFacturaDesdeFila(r) {
+      return {
+        id: r.id, numero: r.numero, clienteId: r.cliente_id, fecha: r.fecha, estado: r.estado,
+        items: Array.isArray(r.items) ? r.items : [], total: Number(r.total) || 0,
+        observaciones: r.observaciones || '', pago: r.pago || null
+      };
+    }
+    function construirCotizacionDesdeFila(r) {
+      return {
+        id: r.id, numero: r.numero, clienteId: r.cliente_id, fecha: r.fecha, estado: r.estado,
+        items: Array.isArray(r.items) ? r.items : [], total: Number(r.total) || 0,
+        observaciones: r.observaciones || ''
+      };
+    }
+
     // Clínica recién creada (o clínica demo la primerísima vez): siembra en
     // Supabase el contenido de DEMO_SEED.propietarios/patientData/documentos
     // UNA sola vez (solo si seedDemoSiVacio y la tabla está realmente vacía —
@@ -18855,6 +19130,30 @@
           const { error: docErr } = await window.supabase.from('documentos').insert(docInsertRows);
           if (docErr) throw docErr;
         }
+
+        // Facturas/Cuentas y Cotizaciones no dependen de los propietarios/
+        // mascotas recién insertados arriba (su clienteId apunta a
+        // VENTAS_CLIENTES, un mock aparte que no se persiste) — se siembran
+        // en paralelo, sin bloquear si esta parte falla.
+        const facturaInsertRows = DEMO_SEED.VENTAS_FACTURAS.map(f => ({
+          establecimiento_id: establecimientoId, numero: f.numero, cliente_id: f.clienteId, fecha: f.fecha,
+          estado: f.estado, items: f.items, total: f.total, observaciones: f.observaciones || null,
+          pago: f.pago || null, created_by: userId
+        }));
+        if (facturaInsertRows.length) {
+          const { error: facturaErr } = await window.supabase.from('ventas_facturas').insert(facturaInsertRows);
+          if (facturaErr) throw facturaErr;
+        }
+
+        const cotizacionInsertRows = DEMO_SEED.VENTAS_COTIZACIONES.map(c => ({
+          establecimiento_id: establecimientoId, numero: c.numero, cliente_id: c.clienteId, fecha: c.fecha,
+          estado: c.estado, items: c.items, total: c.total, observaciones: c.observaciones || null,
+          created_by: userId
+        }));
+        if (cotizacionInsertRows.length) {
+          const { error: cotizacionErr } = await window.supabase.from('ventas_cotizaciones').insert(cotizacionInsertRows);
+          if (cotizacionErr) throw cotizacionErr;
+        }
       } catch (err) {
         console.error('[IRIS] No se pudo sembrar la clínica demo en Supabase:', err);
       }
@@ -18867,13 +19166,15 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('examenes').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('consultas').select('*').eq('establecimiento_id', establecimientoId).order('fecha_hora', { ascending: false }),
-          window.supabase.from('formulas_medicas').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false })
+          window.supabase.from('formulas_medicas').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('ventas_facturas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
+          window.supabase.from('ventas_cotizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -18881,21 +19182,33 @@
         if (examRes.error) throw examRes.error;
         if (consultaRes.error) throw consultaRes.error;
         if (formulaRes.error) throw formulaRes.error;
+        if (facturaRes.error) throw facturaRes.error;
+        if (cotizacionRes.error) throw cotizacionRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
-          consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || []
+          consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
+          facturaRows: facturaRes.data || [], cotizacionRows: cotizacionRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows } = await leerTodo());
       }
 
       propietarios.length = 0;
       propRows.forEach(r => propietarios.push(construirPropietarioDesdeFila(r)));
+
+      // Pre-registra en VENTAS_CLIENTES (mock en memoria, ver nota junto a
+      // getVentasClienteIdDePropietario()) un cliente por cada propietario
+      // real recién cargado -- si no, una factura/cotización ya persistida
+      // con clienteId 'c-prop-<uuid>' se ve sin nombre de cliente
+      // ("—" en la tabla) hasta que alguien abra el modal de Facturación de
+      // ese propietario puntual en esta misma sesión (que es lo único que
+      // hoy dispara esa creación perezosa).
+      propietarios.forEach(p => getVentasClienteIdDePropietario(p.id));
 
       Object.keys(patientData).forEach(k => delete patientData[k]);
       petRows.forEach(r => {
@@ -18932,6 +19245,12 @@
         const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
         if (pet) pet.formulas.push(construirFormulaDesdeFila(r));
       });
+
+      VENTAS_FACTURAS.length = 0;
+      facturaRows.forEach(r => VENTAS_FACTURAS.push(construirFacturaDesdeFila(r)));
+
+      VENTAS_COTIZACIONES.length = 0;
+      cotizacionRows.forEach(r => VENTAS_COTIZACIONES.push(construirCotizacionDesdeFila(r)));
     }
 
     // Clínica nueva: el único "usuario del sistema" visible en Admin >
@@ -19171,6 +19490,8 @@
             nombre: profile.nombre || '',
             telefono: profile.telefono || '',
             fotoUrl: profile.foto_url || '',
+            matricula: profile.matricula || '',
+            firmaUrl: profile.firma_url || '',
             role: profile.role || null
           },
           memberships: finalMemberList,
@@ -20652,7 +20973,7 @@
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn-primary" id="doc-venta-cerrar-cuenta-btn" style="display:none;margin-right:auto;" onclick="abrirCerrarCuentaModal()"><i data-lucide="lock" style="width:14px;height:14px;"></i> Cerrar cuenta</button>
         <button class="btn-secondary" onclick="closeDocVentaModal()">Cancelar</button>
-        <button class="btn-primary" onclick="guardarDocVenta()">Guardar</button>
+        <button class="btn-primary" id="doc-venta-guardar-btn" onclick="guardarDocVenta()">Guardar</button>
       </div>
     </div>
   </div>

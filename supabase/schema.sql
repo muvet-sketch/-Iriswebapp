@@ -159,6 +159,11 @@ create policy "pdfs_delete_own_folder"
 alter table public.profiles add column if not exists nombre text;
 alter table public.profiles add column if not exists telefono text;
 alter table public.profiles add column if not exists foto_url text;
+-- matricula/firma_url: datos profesionales del médico (Mi perfil), usados
+-- por Consultorio > Fórmulas médicas para mostrar la firma electrónica y
+-- el número de matrícula bajo el nombre del médico en la fórmula generada.
+alter table public.profiles add column if not exists matricula text;
+alter table public.profiles add column if not exists firma_url text;
 
 -- ── TABLA: establecimientos (clínicas) ─────────────────────────
 create table if not exists public.establecimientos (
@@ -836,4 +841,40 @@ create policy "logos_clinica_delete_member"
   using (
     bucket_id = 'logos-clinica'
     and public.user_is_member_of(((storage.foldername(name))[1])::uuid)
+  );
+
+-- ── STORAGE: bucket `firmas` (firma electrónica del médico) ────
+-- Público (igual que `avatars`) — por usuario individual, path
+-- "<user_id>/firma.<ext>", mismo patrón "own folder" que `avatars`.
+-- Se pinta sobre el nombre del médico en la fórmula médica generada
+-- (ver profiles.firma_url y formulaViewContentHTML en index.html).
+insert into storage.buckets (id, name, public)
+values ('firmas', 'firmas', true)
+on conflict (id) do nothing;
+
+-- Sin policy de select: bucket público, mismo criterio que avatars
+-- (evita el advisor public_bucket_allows_listing).
+
+drop policy if exists "firmas_insert_own_folder" on storage.objects;
+create policy "firmas_insert_own_folder"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'firmas'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "firmas_update_own_folder" on storage.objects;
+create policy "firmas_update_own_folder"
+  on storage.objects for update
+  using (
+    bucket_id = 'firmas'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "firmas_delete_own_folder" on storage.objects;
+create policy "firmas_delete_own_folder"
+  on storage.objects for delete
+  using (
+    bucket_id = 'firmas'
+    and (storage.foldername(name))[1] = auth.uid()::text
   );
