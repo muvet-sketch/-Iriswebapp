@@ -291,7 +291,18 @@ facturación electrónica" ahora es un bloque de 2 tabs
 (`.factconfig-tabs`, mismo clon) Siigo (credenciales/impuestos/medios
 de pago/grupo de inventario, todo mock) y Facturación POS (toggle +
 límite + tablas `SIIGO_RESOLUCIONES`/`SIIGO_DISPOSITIVOS` con sus
-modales de registro).
+modales de registro). Ventas > Clientes: botón "Importar clientes"
+(`openImportarClientesModal()`) que lee un .csv (ej. export OkVet con
+columnas T.Doc/Identificación/Nombre/Correo/Teléfono/Dirección) con un
+parser CSV propio que respeta comillas/comas internas
+(`parsearFilasCSV`), detecta las columnas por nombre de encabezado
+tolerante a acentos/mayúsculas (`normalizarHeaderCSV`) y muestra un
+paso de previsualización antes de confirmar — mismo patrón de 2 pasos
+(seleccionar → previsualizar → confirmar) que "Importar Excel" de
+Inventario, pero sin SheetJS porque el archivo es texto plano. Es
+creación pura: si el número de identificación de una fila (solo
+dígitos) ya coincide con un cliente existente en `VENTAS_CLIENTES`, esa
+fila se omite en vez de sobreescribir.
 
 ## Al recibir un prompt nuevo de módulo
 1. Lee solo la sección del sidebar/JS relevante al módulo pedido, no

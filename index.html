@@ -38,6 +38,8 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <!-- html2canvas (requerido por jsPDF.html() para rasterizar HTML a PDF) -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <!-- SheetJS/xlsx (lectura de .xlsx en el navegador para Inventario > Importar Excel) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     /* VARIABLES DE DISEÑO (SISTEMA DE COLOR CRÍTICO) */
     :root {
@@ -810,12 +812,6 @@
       height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius);
       font-size: 13px; font-weight: 500; color: var(--text-1); background-color: var(--surface); cursor: pointer;
     }
-    .agenda-badge {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-width: 17px; height: 17px; padding: 0 4px; margin-left: 2px;
-      border-radius: 999px; background-color: var(--warning); color: #fff;
-      font-size: 10.5px; font-weight: 700; line-height: 1;
-    }
     .agenda-legend { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); margin-top: 12px; }
     .agenda-legend-item { display: flex; align-items: center; gap: 6px; }
     .agenda-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
@@ -861,17 +857,11 @@
     #agenda-calendar .fc-daygrid-day.fc-day-today,
     #agenda-calendar .fc-timegrid-col.fc-day-today { background-color: rgba(var(--clinic-accent-rgb), 0.05); }
     #agenda-calendar .fc-event { border: none; cursor: pointer; }
-    #agenda-calendar .fc-event.agenda-event-pre_registro { border: 1px dashed rgba(0,0,0,0.25); }
 
     /* Modal Crear/Editar evento — grupo Propietario/Mascota oculto con "Solo reservar espacio" */
     .agenda-owner-pet-group.hidden { display: none; }
     .agenda-hora-wrap.hidden { display: none; }
     .searchable-select.ss-disabled .ss-control { pointer-events: none; opacity: 0.6; }
-    .agenda-pre-registro-row {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;
-    }
-    .agenda-pre-registro-row:hover { background-color: #F8FAFC; }
 
     /* MÓDULO: RESULTADOS (vinculados a Órdenes de Imagen diagnóstica / Prueba-Examen) */
     .parametros-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
@@ -3964,7 +3954,7 @@
         <div class="admin-pane-header">
           <div>
             <h2 class="admin-pane-title">Agenda</h2>
-            <p class="admin-pane-subtitle">Consultas, cirugías, vacunaciones y pre-registros del establecimiento</p>
+            <p class="admin-pane-subtitle">Consultas, cirugías, vacunaciones y demás eventos del establecimiento</p>
           </div>
         </div>
 
@@ -3981,10 +3971,6 @@
             <select class="agenda-filtro-select" id="agenda-filtro-encargado" onchange="onCambiarFiltroAgenda()">
               <option value="todos">Todos los usuarios</option>
             </select>
-            <button type="button" class="btn-outline" id="btn-pre-registro-agenda" onclick="abrirListaPreRegistroModal()">
-              <i data-lucide="inbox" style="width:14px;height:14px;"></i> Lista de solicitudes pre-registro
-              <span class="agenda-badge" id="agenda-pre-registro-badge" style="display:none;">0</span>
-            </button>
             <button type="button" class="btn-primary" id="btn-crear-evento-agenda" onclick="openCrearEventoAgendaModal()">
               <i data-lucide="plus" style="width: 16px; height: 16px;"></i> Crear evento
             </button>
@@ -3994,7 +3980,10 @@
             <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#0F766E;"></span>Consulta</span>
             <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#16A34A;"></span>Vacunación</span>
             <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#DC2626;"></span>Cirugía</span>
-            <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#F59E0B;"></span>Pre-registro</span>
+            <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#0891B2;"></span>Imágenes diagnósticas</span>
+            <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#CA8A04;"></span>Exámenes de laboratorio</span>
+            <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#DB2777;"></span>Revisión</span>
+            <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#4F46E5;"></span>Consulta especializada</span>
             <span class="agenda-legend-item"><span class="agenda-legend-dot" style="background:#64748B;"></span>Otro</span>
           </div>
 
@@ -4050,6 +4039,10 @@
                   <option value="vacunacion">Vacunación</option>
                   <option value="desparasitacion">Desparasitación</option>
                   <option value="control">Control</option>
+                  <option value="imagenes_diagnosticas">Imágenes diagnósticas</option>
+                  <option value="examenes_laboratorio">Exámenes de laboratorio</option>
+                  <option value="revision">Revisión</option>
+                  <option value="consulta_especializada">Consulta especializada</option>
                   <option value="otro">Otro</option>
                 </select>
               </div>
@@ -5118,7 +5111,7 @@
               <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="kardexAccionSimple('Falleció')"><i data-lucide="heart-crack" style="width:13px;height:13px;"></i> Falleció</button>
               <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="kardexAccionSimple('Salida')"><i data-lucide="log-out" style="width:13px;height:13px;"></i> Salida</button>
               <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="kardexAccionSimple('Trasladar')"><i data-lucide="move" style="width:13px;height:13px;"></i> Trasladar</button>
-              <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="kardexAccionSimple('Nuevo día')"><i data-lucide="calendar-plus" style="width:13px;height:13px;"></i> Nuevo día</button>
+              <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="agregarKardexDia()"><i data-lucide="calendar-plus" style="width:13px;height:13px;"></i> Nuevo día</button>
               <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="openEditMascotaModal(kardexContext && kardexContext.petKey)"><i data-lucide="pencil" style="width:13px;height:13px;"></i> Editar mascota</button>
               <button class="btn-primary" style="font-size:12px;padding:7px 12px;" onclick="verEnConsultorioDesdeKardex()"><i data-lucide="stethoscope" style="width:13px;height:13px;"></i> Ver en consultorio</button>
             </div>
@@ -5539,6 +5532,9 @@
           <div class="card">
             <div class="card-header">
               <span class="card-title"><i data-lucide="users" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Clientes</span>
+              <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="openImportarClientesModal()">
+                <i data-lucide="upload" style="width:14px;height:14px;"></i> Importar clientes
+              </button>
             </div>
             <div class="input-group" style="max-width:320px;margin-bottom:14px;">
               <div class="input-wrapper">
@@ -6838,15 +6834,16 @@
     // ── MÓDULO: AGENDA (FullCalendar) ──────────────────────────────
     const AGENDA_TIPO_LABELS = {
       consulta: 'Consulta', vacunacion: 'Vacunación', cirugia: 'Cirugía',
-      pre_registro: 'Pre-registro', desparasitacion: 'Desparasitación', control: 'Control', otro: 'Otro'
+      desparasitacion: 'Desparasitación', control: 'Control',
+      imagenes_diagnosticas: 'Imágenes diagnósticas', examenes_laboratorio: 'Exámenes de laboratorio',
+      revision: 'Revisión', consulta_especializada: 'Consulta especializada', otro: 'Otro'
     };
     const AGENDA_TIPO_COLORS = {
       consulta: '#0F766E', vacunacion: '#16A34A', cirugia: '#DC2626',
-      pre_registro: '#F59E0B', desparasitacion: '#7C3AED', control: '#2563EB', otro: '#64748B'
+      desparasitacion: '#7C3AED', control: '#2563EB',
+      imagenes_diagnosticas: '#0891B2', examenes_laboratorio: '#CA8A04',
+      revision: '#DB2777', consulta_especializada: '#4F46E5', otro: '#64748B'
     };
-    // Estado del ciclo de vida de una cita ya confirmada (tipo !== 'pre_registro').
-    // 'pre_registro' es un estado aparte, gobernado por el campo Tipo (ver
-    // guardarEventoAgenda) — no forma parte de este ciclo de 6 estados.
     const AGENDA_ESTADOS_CITA = {
       programada: { label: 'Programada', badgeClass: 'status-badge-pendiente' },
       confirmada: { label: 'Confirmada', badgeClass: 'status-badge-activo' },
@@ -6856,19 +6853,19 @@
       cancelada: { label: 'Cancelada', badgeClass: 'status-badge-cancelada' }
     };
     // Mock de eventos distribuidos en la semana actual (lunes 06/07/2026 a
-    // domingo 12/07/2026). petKey referencia patientData; cuando es null y
-    // soloEspacio es false, es una solicitud de pre-registro de un
-    // propietario/mascota aún no registrados en el sistema (solo texto libre).
+    // domingo 12/07/2026). petKey referencia patientData; puede ser null
+    // (propietario/mascota aún no registrados en el sistema, solo texto libre)
+    // siempre que soloEspacio sea false.
     let AGENDA_EVENTOS = [
       { id: 'ag-1', tipo: 'consulta', estado: 'completada', title: 'Consulta — Luna', startISO: '2026-07-06T09:00:00', endISO: '2026-07-06T09:30:00', sinHora: false, soloEspacio: false, propietario: 'Carlos Mendoza', petKey: 'luna', encargadoId: 2, lugar: 'Consultorio 1', descripcion: 'Control de rutina y valoración general.' },
       { id: 'ag-2', tipo: 'vacunacion', estado: 'completada', title: 'Vacunación — Toby', startISO: '2026-07-06T14:00:00', endISO: '2026-07-06T14:30:00', sinHora: false, soloEspacio: false, propietario: 'Andrea Gómez', petKey: 'toby', encargadoId: 5, lugar: 'Consultorio 2', descripcion: 'Refuerzo vacuna polivalente.' },
       { id: 'ag-3', tipo: 'cirugia', estado: 'completada', title: 'Cirugía — Milo', startISO: '2026-07-07T10:00:00', endISO: '2026-07-07T11:30:00', sinHora: false, soloEspacio: false, propietario: 'Liliana Pérez', petKey: 'milo', encargadoId: 2, lugar: 'Quirófano', descripcion: 'Esterilización programada.' },
       { id: 'ag-4', tipo: 'consulta', estado: 'no_asistio', title: 'Consulta — Toby', startISO: '2026-07-07T16:00:00', endISO: '2026-07-07T16:30:00', sinHora: false, soloEspacio: false, propietario: 'Andrea Gómez', petKey: 'toby', encargadoId: 5, lugar: 'Consultorio 1', descripcion: 'Seguimiento post-vacunación.' },
       { id: 'ag-5', tipo: 'vacunacion', estado: 'en_curso', title: 'Vacunación — Luna', startISO: '2026-07-08T08:30:00', endISO: '2026-07-08T09:00:00', sinHora: false, soloEspacio: false, propietario: 'Carlos Mendoza', petKey: 'luna', encargadoId: 2, lugar: 'Consultorio 2', descripcion: 'Triple felina.' },
-      { id: 'ag-6', tipo: 'pre_registro', estado: 'pre_registro', title: 'Pre-registro — Milo', startISO: '2026-07-08T11:00:00', endISO: '2026-07-08T11:30:00', sinHora: false, soloEspacio: false, propietario: 'Liliana Pérez', petKey: 'milo', encargadoId: 5, lugar: 'Consultorio 1', descripcion: 'Solicitud pendiente de confirmación por el propietario.' },
+      { id: 'ag-6', tipo: 'examenes_laboratorio', estado: 'confirmada', title: 'Exámenes de laboratorio — Milo', startISO: '2026-07-08T11:00:00', endISO: '2026-07-08T11:30:00', sinHora: false, soloEspacio: false, propietario: 'Liliana Pérez', petKey: 'milo', encargadoId: 5, lugar: 'Consultorio 1', descripcion: 'Hemograma y perfil bioquímico de control.' },
       { id: 'ag-7', tipo: 'otro', estado: 'confirmada', title: 'Otro — Reserva de espacio', startISO: '2026-07-09T09:00:00', endISO: '2026-07-09T09:30:00', sinHora: false, soloEspacio: true, propietario: null, petKey: null, encargadoId: 2, lugar: 'Consultorio 1', descripcion: 'Revisión de equipos de diagnóstico.' },
       { id: 'ag-8', tipo: 'cirugia', estado: 'confirmada', title: 'Cirugía — Toby', startISO: '2026-07-09T15:00:00', endISO: '2026-07-09T16:00:00', sinHora: false, soloEspacio: false, propietario: 'Andrea Gómez', petKey: 'toby', encargadoId: 5, lugar: 'Quirófano', descripcion: 'Extracción de cuerpo extraño.' },
-      { id: 'ag-9', tipo: 'pre_registro', estado: 'pre_registro', title: 'Pre-registro — Nuevo paciente', startISO: '2026-07-10T00:00:00', endISO: '2026-07-10T00:00:00', sinHora: true, soloEspacio: false, propietario: 'María Fernanda Ospina', petKey: null, encargadoId: 2, lugar: 'Por definir', descripcion: 'Propietario nuevo, aún sin mascota registrada en el sistema. Solicita valoración general.' },
+      { id: 'ag-9', tipo: 'imagenes_diagnosticas', estado: 'programada', title: 'Imágenes diagnósticas — Nuevo paciente', startISO: '2026-07-10T00:00:00', endISO: '2026-07-10T00:00:00', sinHora: true, soloEspacio: false, propietario: 'María Fernanda Ospina', petKey: null, encargadoId: 2, lugar: 'Por definir', descripcion: 'Propietario nuevo, aún sin mascota registrada en el sistema. Solicita valoración general.' },
       { id: 'ag-10', tipo: 'consulta', estado: 'programada', title: 'Consulta — Milo', startISO: '2026-07-11T09:00:00', endISO: '2026-07-11T09:30:00', sinHora: false, soloEspacio: false, propietario: 'Liliana Pérez', petKey: 'milo', encargadoId: 2, lugar: 'Consultorio 1', descripcion: 'Control post-quirúrgico.' }
     ];
     let agendaEventSeq = 11;
@@ -6900,9 +6897,13 @@
       { id: 'evs-4', fechaSugeridaISO: '2026-07-15', propietario: 'Liliana Pérez', petKey: 'milo', tipoEvento: 'vacunacion', origen: 'Vacunación — Milo — Próxima vacunación 15/07/2026', estado: 'pendiente', agendaEventoId: null },
       { id: 'evs-5', fechaSugeridaISO: '2026-07-20', propietario: 'Carlos Mendoza', petKey: 'luna', tipoEvento: 'control', origen: 'Seguimiento — Luna — Próximo control 20/07/2026', estado: 'pendiente', agendaEventoId: null },
       { id: 'evs-6', fechaSugeridaISO: '2026-07-25', propietario: 'Liliana Pérez', petKey: 'milo', tipoEvento: 'desparasitacion', origen: 'Desparasitación — Milo — Próximo control 25/07/2026', estado: 'agendado', agendaEventoId: 'ag-1' },
-      { id: 'evs-7', fechaSugeridaISO: '2026-08-05', propietario: 'Andrea Gómez', petKey: 'toby', tipoEvento: 'otro', origen: 'Seguimiento — Toby — Control general 05/08/2026', estado: 'pendiente', agendaEventoId: null }
+      { id: 'evs-7', fechaSugeridaISO: '2026-08-05', propietario: 'Andrea Gómez', petKey: 'toby', tipoEvento: 'otro', origen: 'Seguimiento — Toby — Control general 05/08/2026', estado: 'pendiente', agendaEventoId: null },
+      { id: 'evs-8', fechaSugeridaISO: '2026-07-18', propietario: 'Carlos Mendoza', petKey: 'luna', tipoEvento: 'imagenes_diagnosticas', origen: 'Seguimiento — Luna — Próximas imágenes diagnósticas 18/07/2026', estado: 'pendiente', agendaEventoId: null },
+      { id: 'evs-9', fechaSugeridaISO: '2026-07-22', propietario: 'Liliana Pérez', petKey: 'milo', tipoEvento: 'examenes_laboratorio', origen: 'Seguimiento — Milo — Próximos exámenes de laboratorio 22/07/2026', estado: 'pendiente', agendaEventoId: null },
+      { id: 'evs-10', fechaSugeridaISO: '2026-08-01', propietario: 'Andrea Gómez', petKey: 'toby', tipoEvento: 'revision', origen: 'Seguimiento — Toby — Próxima revisión 01/08/2026', estado: 'pendiente', agendaEventoId: null },
+      { id: 'evs-11', fechaSugeridaISO: '2026-08-10', propietario: 'Carlos Mendoza', petKey: 'luna', tipoEvento: 'consulta_especializada', origen: 'Seguimiento — Luna — Próxima consulta especializada 10/08/2026', estado: 'pendiente', agendaEventoId: null }
     ];
-    let eventosSeguimientoSeq = 8;
+    let eventosSeguimientoSeq = 12;
     let agendaModalOrigenEventoSeguimientoId = null;
 
     // ── PROTOTIPO: SIMULADOR DE VISTA POR PRIVILEGIOS ──────────
@@ -7996,11 +7997,8 @@
       document.getElementById('ag-hora-fin-wrap').classList.toggle('hidden', sinHora);
     }
 
-    // Tipo 'pre_registro' gobierna su propio estado ('pre_registro', ver
-    // guardarEventoAgenda) — el select Estado no aplica ahí, se deshabilita.
     function handleAgendaTipoChange() {
       sugerirTituloEventoAgenda();
-      document.getElementById('ag-estado').disabled = document.getElementById('ag-tipo').value === 'pre_registro';
     }
 
     // Autocompletado de Título: se recalcula en cada cambio de Tipo/Mascota
@@ -8101,7 +8099,7 @@
 
       setAgendaModalCamposDisabled(readonly);
       document.getElementById('ag-encargado').disabled = readonly || lockEncargadoAMedicoActual;
-      document.getElementById('ag-estado').disabled = readonly || document.getElementById('ag-tipo').value === 'pre_registro';
+      document.getElementById('ag-estado').disabled = readonly;
 
       // Contexto "Registrar cita" desde la Historia clínica del paciente:
       // Propietario+Mascota quedan fijos a esa mascota y bloqueados; el
@@ -8212,7 +8210,7 @@
       const evento = {
         id: agendaEditingId || `ag-${agendaEventSeq++}`,
         tipo,
-        estado: tipo === 'pre_registro' ? 'pre_registro' : document.getElementById('ag-estado').value,
+        estado: document.getElementById('ag-estado').value,
         title: titulo,
         startISO,
         endISO: `${fechaFin}T${horaFin}:00`,
@@ -8263,7 +8261,6 @@
       }
 
       refreshAgendaCalendarEvents();
-      refreshAgendaPreRegistroBadge();
       refreshAgendaPersonalCalendarEvents();
       if (document.getElementById('agenda-view-personal').classList.contains('active')) renderAgendaPersonalActiveView();
       if (selectedPetKey) renderCitasPacienteTable(selectedPetKey);
@@ -8568,7 +8565,11 @@
       const estado = document.getElementById('eventos-filtro-estado').value;
       const desde = document.getElementById('eventos-filtro-desde').value;
       const hasta = document.getElementById('eventos-filtro-hasta').value;
-      const tipoLabels = { vacunacion: 'Vacunación', desparasitacion: 'Desparasitación', control: 'Control', otro: 'Otro' };
+      const tipoLabels = {
+        vacunacion: 'Vacunación', desparasitacion: 'Desparasitación', control: 'Control',
+        imagenes_diagnosticas: 'Imágenes diagnósticas', examenes_laboratorio: 'Exámenes de laboratorio',
+        revision: 'Revisión', consulta_especializada: 'Consulta especializada', otro: 'Otro'
+      };
       const estadoLabels = { pendiente: 'Pendiente de agendar', agendado: 'Agendado' };
 
       let items = EVENTOS_SEGUIMIENTO.filter(it => {
@@ -8608,7 +8609,11 @@
       const item = EVENTOS_SEGUIMIENTO.find(it => it.id === id);
       if (!item) return;
       agendaModalOrigenEventoSeguimientoId = id;
-      const tipoMap = { vacunacion: 'vacunacion', desparasitacion: 'desparasitacion', control: 'control', otro: 'otro' };
+      const tipoMap = {
+        vacunacion: 'vacunacion', desparasitacion: 'desparasitacion', control: 'control',
+        imagenes_diagnosticas: 'imagenes_diagnosticas', examenes_laboratorio: 'examenes_laboratorio',
+        revision: 'revision', consulta_especializada: 'consulta_especializada', otro: 'otro'
+      };
       abrirAgendaEventoModalInterno('create', null, `${item.fechaSugeridaISO}T09:00:00`);
       document.getElementById('ag-tipo').value = tipoMap[item.tipoEvento] || 'otro';
       if (item.propietario) {
@@ -8618,14 +8623,6 @@
         renderAgendaMascotaSelect(item.propietario, item.petKey);
       }
       sugerirTituloEventoAgenda();
-    }
-
-    // ── Lista de solicitudes pre-registro (simple, sin lógica de estado) ──
-    function refreshAgendaPreRegistroBadge() {
-      const count = AGENDA_EVENTOS.filter(ev => ev.estado === 'pre_registro').length;
-      const badge = document.getElementById('agenda-pre-registro-badge');
-      badge.textContent = String(count);
-      badge.style.display = count > 0 ? 'inline-flex' : 'none';
     }
 
     function formatearFechaHoraAgenda(ev) {
@@ -8656,9 +8653,7 @@
         tbody.innerHTML = citas.map(ev => {
           const medico = USUARIOS_SISTEMA.find(u => u.id === ev.encargadoId);
           const estadoInfo = AGENDA_ESTADOS_CITA[ev.estado];
-          const estadoBadge = ev.estado === 'pre_registro'
-            ? '<span class="status-badge status-badge-pendiente">Pre-registro</span>'
-            : `<span class="status-badge ${estadoInfo ? estadoInfo.badgeClass : 'status-badge-pendiente'}">${estadoInfo ? estadoInfo.label : ev.estado}</span>`;
+          const estadoBadge = `<span class="status-badge ${estadoInfo ? estadoInfo.badgeClass : 'status-badge-pendiente'}">${estadoInfo ? estadoInfo.label : ev.estado}</span>`;
           return `
             <tr>
               <td>${formatearFechaHoraAgenda(ev)}</td>
@@ -8676,28 +8671,6 @@
       if (counter) counter.textContent = citas.length;
 
       lucide.createIcons();
-    }
-
-    function abrirListaPreRegistroModal() {
-      const solicitudes = AGENDA_EVENTOS.filter(ev => ev.estado === 'pre_registro');
-      const list = document.getElementById('agenda-pre-registro-list');
-      list.innerHTML = solicitudes.length
-        ? solicitudes.map(ev => `
-          <div class="agenda-pre-registro-row" onclick="closeAgendaPreRegistroModal(); abrirEventoAgendaPorId('${ev.id}');">
-            <div>
-              <div style="font-weight:600;font-size:13px;">${ev.title}</div>
-              <div style="font-size:12px;color:var(--text-2);">${formatearFechaHoraAgenda(ev)} · ${ev.propietario || 'Sin propietario asignado'} · ${ev.lugar || 'Sin lugar'}</div>
-            </div>
-            <span class="status-badge status-badge-pendiente">Pre-registro</span>
-          </div>
-        `).join('')
-        : '<p style="font-size:13px;color:var(--text-2);">No hay solicitudes de pre-registro pendientes.</p>';
-      document.getElementById('agenda-pre-registro-modal').classList.add('show');
-      lucide.createIcons();
-    }
-    function closeAgendaPreRegistroModal() { document.getElementById('agenda-pre-registro-modal').classList.remove('show'); }
-    function handleAgendaPreRegistroOverlayClick(e) {
-      if (e.target === document.getElementById('agenda-pre-registro-modal')) closeAgendaPreRegistroModal();
     }
 
     // ── COMPONENTE REUTILIZABLE: FOTO + PESO + DATOS GENERALES (Parte 1) ──
@@ -9821,7 +9794,11 @@
       document.querySelectorAll('#tablero-nav-list .sidebar-item').forEach(item => item.classList.remove('active'));
       const data = patientData[selectedPetKey];
       const eventos = EVENTOS_SEGUIMIENTO.filter(e => e.petKey === selectedPetKey && e.estado === 'pendiente');
-      const TIPO_EVENTO_LABEL = { vacunacion: 'Próxima vacunación', desparasitacion: 'Próxima desparasitación', control: 'Próximo control', otro: 'Próximo seguimiento' };
+      const TIPO_EVENTO_LABEL = {
+        vacunacion: 'Próxima vacunación', desparasitacion: 'Próxima desparasitación', control: 'Próximo control',
+        imagenes_diagnosticas: 'Próximas imágenes diagnósticas', examenes_laboratorio: 'Próximos exámenes de laboratorio',
+        revision: 'Próxima revisión', consulta_especializada: 'Próxima consulta especializada', otro: 'Próximo seguimiento'
+      };
       const eventosHtml = eventos.length
         ? `<div class="info-label" style="margin-top:8px;">Próximos vencimientos</div>` +
           eventos.map(e => `<div class="info-value">${TIPO_EVENTO_LABEL[e.tipoEvento] || 'Próximo evento'} — ${formatFechaCorta(e.fechaSugeridaISO)}</div>`).join('')
@@ -10514,7 +10491,14 @@
       document.body.appendChild(container);
 
       try {
-        const canvas = await html2canvas(container, { backgroundColor: '#ffffff', scale: 2 });
+        // useCORS:true es necesario para que html2canvas cargue imágenes de
+        // otro origen (firma electrónica, bucket público `firmas` de
+        // Supabase Storage) — sin esto las omite en silencio (canvas en
+        // blanco donde iría la imagen) para no "manchar" el canvas. El
+        // bucket ya responde con Access-Control-Allow-Origin: *, así que
+        // basta con esta opción, sin allowTaint (que sí rompería el
+        // doc.addImage() posterior al tainted el canvas).
+        const canvas = await html2canvas(container, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
         container.parentNode.removeChild(container);
 
         const imgWidth = pageWidth - marginX * 2;
@@ -10809,7 +10793,6 @@
       } else if (moduleKey === 'agenda-evento') {
         AGENDA_EVENTOS = AGENDA_EVENTOS.filter(ev => ev.id !== recordId);
         refreshAgendaCalendarEvents();
-        refreshAgendaPreRegistroBadge();
         if (selectedPetKey) renderCitasPacienteTable(selectedPetKey);
         closeAgendaEventoModal();
       } else if (moduleKey === 'cotizacion') {
@@ -13700,6 +13683,17 @@
       }
     }
 
+    function construirHospitalizacionDesdeFila(r) {
+      return {
+        id: r.id, hospId: r.id, tipo: r.tipo,
+        fechaIngresoISO: r.fecha_ingreso, fechaIngreso: formatFechaCorta(r.fecha_ingreso),
+        fechaSalidaISO: r.fecha_salida || null, fechaSalida: r.fecha_salida ? formatFechaCorta(r.fecha_salida) : null,
+        motivoSalida: r.motivo_salida || '', razon: r.razon, observaciones: r.observaciones || '',
+        estado: r.estado, usuario: r.usuario || '',
+        dias: Array.isArray(r.dias) ? r.dias : []
+      };
+    }
+
     function construirExamenDesdeFila(r) {
       return {
         id: r.id, tipo: r.tipo,
@@ -13999,7 +13993,7 @@
       if (e.target === document.getElementById('hospitalizacion-modal')) closeHospitalizacionModal();
     }
 
-    function guardarHospitalizacion() {
+    async function guardarHospitalizacion() {
       const isEdit = !!editingHospitalizacionContext;
       const petKey = isEdit ? editingHospitalizacionContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -14016,37 +14010,73 @@
         return;
       }
 
-      if (isEdit) {
-        const record = data.hospitalizaciones[editingHospitalizacionContext.index];
-        record.tipo = tipo;
-        record.fechaIngresoISO = fechaIngresoISO;
-        record.fechaIngreso = formatFechaCorta(fechaIngresoISO);
-        record.motivoSalida = motivoSalida;
-        record.fechaSalidaISO = fechaSalidaISO || null;
-        record.fechaSalida = fechaSalidaISO ? formatFechaCorta(fechaSalidaISO) : null;
-        record.estado = fechaSalidaISO ? 'finalizada' : 'activa';
-        record.razon = razon;
-        record.observaciones = observaciones;
-      } else {
-        data.hospitalizaciones.unshift({
-          tipo, fechaIngresoISO, fechaIngreso: formatFechaCorta(fechaIngresoISO),
-          motivoSalida, fechaSalidaISO: fechaSalidaISO || null, fechaSalida: fechaSalidaISO ? formatFechaCorta(fechaSalidaISO) : null,
-          razon, observaciones, estado: fechaSalidaISO ? 'finalizada' : 'activa',
-          usuario: 'Dr. Sebastián Ríos', hospId: `hosp-${hospitalizacionSeq++}`, dias: []
-        });
-        data.timeline.unshift({
-          type: tipo,
-          date: formatFechaCorta(fechaIngresoISO),
-          title: `Ingreso — ${razon}`,
-          summary: observaciones || `Tipo: ${tipo}`,
-          vet: 'Dr. Sebastián Ríos'
-        });
-        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
       }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || '';
+      const estado = fechaSalidaISO ? 'finalizada' : 'activa';
 
-      renderHospitalizacionesTable(petKey);
-      closeHospitalizacionModal();
-      showToast(isEdit ? 'Registro actualizado' : 'Hospitalización/ambulatorio registrado');
+      const saveBtn = document.getElementById('hosp-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        if (isEdit) {
+          const record = data.hospitalizaciones[editingHospitalizacionContext.index];
+          const { error } = await window.supabase.from('hospitalizaciones').update({
+            tipo, fecha_ingreso: fechaIngresoISO, motivo_salida: motivoSalida || null,
+            fecha_salida: fechaSalidaISO || null, estado, razon, observaciones: observaciones || null,
+            updated_at: new Date().toISOString()
+          }).eq('id', record.id);
+          if (error) throw error;
+
+          record.tipo = tipo;
+          record.fechaIngresoISO = fechaIngresoISO;
+          record.fechaIngreso = formatFechaCorta(fechaIngresoISO);
+          record.motivoSalida = motivoSalida;
+          record.fechaSalidaISO = fechaSalidaISO || null;
+          record.fechaSalida = fechaSalidaISO ? formatFechaCorta(fechaSalidaISO) : null;
+          record.estado = estado;
+          record.razon = razon;
+          record.observaciones = observaciones;
+        } else {
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+
+          const { data: inserted, error } = await window.supabase.from('hospitalizaciones').insert({
+            establecimiento_id: establecimientoId, mascota_id: data.mascotaId, tipo,
+            fecha_ingreso: fechaIngresoISO, motivo_salida: motivoSalida || null,
+            fecha_salida: fechaSalidaISO || null, estado, razon, observaciones: observaciones || null,
+            usuario: usuarioNombre, created_by: userId
+          }).select().single();
+          if (error) throw error;
+
+          data.hospitalizaciones.unshift({
+            id: inserted.id, tipo, fechaIngresoISO, fechaIngreso: formatFechaCorta(fechaIngresoISO),
+            motivoSalida, fechaSalidaISO: fechaSalidaISO || null, fechaSalida: fechaSalidaISO ? formatFechaCorta(fechaSalidaISO) : null,
+            razon, observaciones, estado,
+            usuario: usuarioNombre, hospId: inserted.id, dias: []
+          });
+          data.timeline.unshift({
+            type: tipo,
+            date: formatFechaCorta(fechaIngresoISO),
+            title: `Ingreso — ${razon}`,
+            summary: observaciones || `Tipo: ${tipo}`,
+            vet: usuarioNombre
+          });
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderHospitalizacionesTable(petKey);
+        closeHospitalizacionModal();
+        showToast(isEdit ? 'Registro actualizado' : 'Hospitalización/ambulatorio registrado');
+      } catch (err) {
+        console.error('[IRIS] Error guardando hospitalización en Supabase:', err);
+        showToast('No se pudo guardar el registro — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
     }
 
     // ── VISTA KARDEX / TRAZABILIDAD ──────────────────────────────
@@ -14175,13 +14205,67 @@
       `;
     }
 
+    // Persiste el árbol completo `dias` (jsonb) de la hospitalización dada —
+    // mismo criterio "reescribir el blob entero" que examenes.pruebas. Se
+    // llama tras cada mutación local (nuevo día, tratamiento, hora
+    // administrada, signo vital) para que ninguna sobreviva solo en memoria.
+    // No bloquea el render: se dispara y sigue, mostrando un toast propio
+    // solo si falla (el toast de éxito de la acción ya lo puso el llamador).
+    async function persistKardexDias(petKey, hospIndex) {
+      const hosp = patientData[petKey] && patientData[petKey].hospitalizaciones[hospIndex];
+      if (!hosp || !window.supabase || !hosp.id) return;
+      const { error } = await window.supabase.from('hospitalizaciones')
+        .update({ dias: hosp.dias, updated_at: new Date().toISOString() })
+        .eq('id', hosp.id);
+      if (error) {
+        console.error('[IRIS] Error guardando trazabilidad del Kardex en Supabase:', error);
+        showToast('El cambio se ve en pantalla pero no se pudo guardar en el servidor');
+      }
+    }
+
     function eliminarKardexDia(di) {
       closeAllRowMenus();
       const { petKey, hospIndex } = kardexContext;
       patientData[petKey].hospitalizaciones[hospIndex].dias.splice(di, 1);
       if (kardexExpandedDayIndex >= di) kardexExpandedDayIndex = 0;
       renderKardexTrazabilidad();
+      persistKardexDias(petKey, hospIndex);
       showToast('Día eliminado');
+    }
+
+    function formatFechaLargaHoy() {
+      return new Date()
+        .toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+        .replace(/ de /g, ' ');
+    }
+
+    function agregarKardexDia() {
+      const { petKey, hospIndex } = kardexContext;
+      const data = patientData[petKey];
+      const hosp = data.hospitalizaciones[hospIndex];
+
+      const usuario = USUARIOS_SISTEMA.find(u => u.id === getCurrentSimUserId());
+      const pesoHistorico = data.pesoHistorico || [];
+      const pesoActual = pesoHistorico.length ? pesoHistorico[pesoHistorico.length - 1].peso : 0;
+
+      hosp.dias.push({
+        fechaLabel: formatFechaLargaHoy(),
+        usuario: usuario ? usuario.nombre : 'Dr. Sebastián Ríos',
+        pesoActual,
+        ultimaActualizacionHoras: 0,
+        tratamientos: [],
+        signos: {
+          presion: Array(24).fill(''), temperatura: Array(24).fill(''), spo2: Array(24).fill(''),
+          glicemia: Array(24).fill(''), tiempoLlenadoCapilar: Array(24).fill(''),
+          frecuenciaCardiaca: Array(24).fill(''), frecuenciaRespiratoria: Array(24).fill(''),
+          palpacionAbdominal: Array(24).fill('')
+        }
+      });
+
+      kardexExpandedDayIndex = hosp.dias.length - 1;
+      renderKardexTrazabilidad();
+      persistKardexDias(petKey, hospIndex);
+      showToast('Nuevo día agregado');
     }
 
     function hourGridHeaderHTML() {
@@ -14327,12 +14411,14 @@
       if (val === null) return;
       dia.signos[field][hi] = val.trim();
       renderKardexTrazabilidad();
+      persistKardexDias(petKey, hospIndex);
     }
 
     function toggleHoraAdministrada(petKey, hospIndex, di, ti, hi) {
       const dia = patientData[petKey].hospitalizaciones[hospIndex].dias[di];
       dia.tratamientos[ti].horas[hi] = !dia.tratamientos[ti].horas[hi];
       renderKardexTrazabilidad();
+      persistKardexDias(petKey, hospIndex);
     }
 
     function toggleModoProgramacion(checkbox) {
@@ -14542,6 +14628,7 @@
       const wasEdit = !!editingTratamientoContext;
       closeTratamientoModal();
       renderKardexTrazabilidad();
+      persistKardexDias(kardexContext.petKey, kardexContext.hospIndex);
       showToast(wasEdit ? 'Tratamiento actualizado' : 'Tratamiento registrado');
     }
 
@@ -14550,6 +14637,7 @@
       const dia = patientData[kardexContext.petKey].hospitalizaciones[kardexContext.hospIndex].dias[diaIndex];
       dia.tratamientos.splice(tratIndex, 1);
       renderKardexTrazabilidad();
+      persistKardexDias(kardexContext.petKey, kardexContext.hospIndex);
       showToast('Tratamiento eliminado');
     }
 
@@ -16004,6 +16092,7 @@
         estado: 'activo', descripcion: 'ALT + bilirrubina total + bilirrubina directa + GGT + proteínas totales + albúmina.', duracionMinutos: 20, impuesto: 'Excluido' }
     ];
 
+    let clienteIdCounter = 16;
     const VENTAS_CLIENTES = [
       { id: 'c1',  nombre: 'Carlos Mendoza',      cedula: 'C.C. 1.018.456.789', telefono: '310 456 7890', origen: 'Referido',       propietarioKey: 'luna' },
       { id: 'c2',  nombre: 'Andrea Gómez',        cedula: 'C.C. 52.345.678',    telefono: '315 789 0123', origen: 'Redes sociales', propietarioKey: 'toby' },
@@ -17426,11 +17515,201 @@
         <div class="info-label">Nombre</div><div class="info-value">${c.nombre}</div>
         <div class="info-label">Cédula/NIT</div><div class="info-value">${c.cedula}</div>
         <div class="info-label">Teléfono</div><div class="info-value">${c.telefono}</div>
+        ${c.email ? `<div class="info-label">Correo</div><div class="info-value">${c.email}</div>` : ''}
+        ${c.direccion ? `<div class="info-label">Dirección</div><div class="info-value">${c.direccion}</div>` : ''}
         <div class="info-label">Origen</div><div class="info-value">${c.origen}</div>
         <div class="info-label">Total comprado</div><div class="info-value">${formatCOP(total)}</div>
         <div class="info-label">Facturas</div><div class="info-value">${facturasCliente.length}</div>
         <div class="info-label">Vínculo con Consultorio</div><div class="info-value">${c.propietarioKey && patientData[c.propietarioKey] ? `Propietario de ${patientData[c.propietarioKey].name}` : 'Cliente nuevo (no vinculado)'}</div>
       `;
+    }
+
+    // ── VENTAS — CLIENTES — Importar desde CSV (ej. export OkVet) ──
+    // Lee el .csv con FileReader (texto plano, sin dependencia externa),
+    // detecta columnas por nombre de encabezado (tolerante a acentos/
+    // mayúsculas) y normaliza cada fila al mismo shape que VENTAS_CLIENTES.
+    // La confirmación NO sobreescribe: si el número de identificación de la
+    // fila ya existe en algún cliente (comparando solo dígitos), esa fila
+    // se omite para no duplicar — mismo criterio "creación, no edición
+    // masiva" que otros imports de este archivo.
+    let importarClientesParsed = null; // { items }
+
+    function openImportarClientesModal() {
+      resetImportarClientesModal();
+      document.getElementById('importar-clientes-modal').classList.add('show');
+    }
+    function closeImportarClientesModal() {
+      document.getElementById('importar-clientes-modal').classList.remove('show');
+      resetImportarClientesModal();
+    }
+    function handleImportarClientesModalOverlayClick(e) { if (e.target === document.getElementById('importar-clientes-modal')) closeImportarClientesModal(); }
+    function resetImportarClientesModal() {
+      importarClientesParsed = null;
+      document.getElementById('importar-clientes-input').value = '';
+      document.getElementById('importar-clientes-error').style.display = 'none';
+      document.getElementById('importar-clientes-step-select').style.display = '';
+      document.getElementById('importar-clientes-step-preview').style.display = 'none';
+    }
+    function cancelarImportacionClientes() { resetImportarClientesModal(); }
+    function mostrarErrorImportarClientes(msg) {
+      const el = document.getElementById('importar-clientes-error');
+      el.textContent = msg;
+      el.style.display = '';
+    }
+
+    function handleImportarClientesFileChange(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      document.getElementById('importar-clientes-error').style.display = 'none';
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        let parsed;
+        try {
+          parsed = parsearClientesCSV(e.target.result);
+        } catch (err) {
+          mostrarErrorImportarClientes('No se pudo leer el archivo. Verifica que sea un .csv válido.');
+          return;
+        }
+        if (!parsed.reconocido) {
+          mostrarErrorImportarClientes('No se reconoce el formato de este archivo. Debe traer al menos una columna "Nombre".');
+          return;
+        }
+        if (!parsed.items.length) {
+          mostrarErrorImportarClientes('El archivo no tiene filas de clientes para importar.');
+          return;
+        }
+        importarClientesParsed = parsed;
+        renderImportarClientesPreview(parsed);
+      };
+      reader.onerror = () => mostrarErrorImportarClientes('No se pudo leer el archivo. Intenta de nuevo.');
+      reader.readAsText(file, 'UTF-8');
+    }
+
+    // Parser CSV genérico: respeta comillas (campos con comas/saltos de
+    // línea dentro) y comillas escapadas (""), como el export de OkVet.
+    function parsearFilasCSV(text) {
+      const rows = [];
+      let row = [], field = '', inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (inQuotes) {
+          if (c === '"') {
+            if (text[i + 1] === '"') { field += '"'; i++; }
+            else inQuotes = false;
+          } else field += c;
+        } else {
+          if (c === '"') inQuotes = true;
+          else if (c === ',') { row.push(field); field = ''; }
+          else if (c === '\r') { /* ignorar, \n cierra la fila */ }
+          else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+          else field += c;
+        }
+      }
+      if (field.length || row.length) { row.push(field); rows.push(row); }
+      return rows.filter(r => r.some(v => v !== ''));
+    }
+    const ACENTOS_CSV_MAP = { 'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ñ': 'n', 'ü': 'u' };
+    function normalizarHeaderCSV(s) {
+      return (s || '').toString().trim().toLowerCase()
+        .replace(/[áéíóúñü]/g, ch => ACENTOS_CSV_MAP[ch] || ch)
+        .replace(/[^a-z0-9]/g, '');
+    }
+    function soloDigitos(s) { return (s || '').toString().replace(/\D/g, ''); }
+    function mapTipoDocClienteImportado(v) {
+      const n = normalizarHeaderCSV(v);
+      if (n.includes('nit')) return 'NIT';
+      if (n.includes('ciudadania') || n === 'cc') return 'C.C.';
+      if (n.includes('extranjer')) return 'C.E.';
+      if (n.includes('pasaporte')) return 'P.';
+      return (v || '').toString().trim();
+    }
+
+    function parsearClientesCSV(text) {
+      text = (text || '');
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const rows = parsearFilasCSV(text);
+      if (!rows.length) return { reconocido: false, items: [] };
+      const header = rows[0].map(normalizarHeaderCSV);
+      const idx = {
+        tdoc: header.indexOf('tdoc'),
+        identificacion: header.findIndex(h => h.startsWith('identificacion')),
+        nombre: header.indexOf('nombre'),
+        correo: header.indexOf('correo'),
+        telefono: header.indexOf('telefono'),
+        direccion: header.indexOf('direccion')
+      };
+      if (idx.nombre === -1) return { reconocido: false, items: [] };
+      const items = [];
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r) continue;
+        const nombre = (r[idx.nombre] || '').trim();
+        if (!nombre) continue;
+        const docNumero = idx.identificacion > -1 ? (r[idx.identificacion] || '').trim() : '';
+        const docTipo = idx.tdoc > -1 ? mapTipoDocClienteImportado(r[idx.tdoc]) : '';
+        items.push({
+          nombre,
+          cedula: [docTipo, docNumero].filter(Boolean).join(' '),
+          docDigitos: soloDigitos(docNumero),
+          telefono: idx.telefono > -1 ? (r[idx.telefono] || '').trim() : '',
+          email: idx.correo > -1 ? (r[idx.correo] || '').trim() : '',
+          direccion: idx.direccion > -1 ? (r[idx.direccion] || '').trim() : '',
+          origen: 'Importado',
+          propietarioKey: null
+        });
+      }
+      return { reconocido: true, items };
+    }
+
+    function clienteImportadoYaExiste(item) {
+      if (!item.docDigitos) return false;
+      return VENTAS_CLIENTES.some(c => soloDigitos(c.cedula) === item.docDigitos);
+    }
+
+    function renderImportarClientesPreview(parsed) {
+      document.getElementById('importar-clientes-step-select').style.display = 'none';
+      document.getElementById('importar-clientes-step-preview').style.display = '';
+      const items = parsed.items;
+      const existentes = items.filter(clienteImportadoYaExiste).length;
+      document.getElementById('importar-clientes-summary').innerHTML =
+        `${items.length} filas reconocidas (${items.length - existentes} nuevas, ${existentes} ya existen por número de identificación y se omitirán).`;
+      const PREVIEW_LIMIT = 300;
+      const rowsHtml = items.slice(0, PREVIEW_LIMIT).map(it => {
+        const existe = clienteImportadoYaExiste(it);
+        return `
+          <tr>
+            <td>${it.nombre}</td>
+            <td>${it.cedula || '—'}</td>
+            <td>${it.telefono || '—'}</td>
+            <td>${it.email || '—'}</td>
+            <td>${existe ? 'Ya existe (se omite)' : 'Nuevo'}</td>
+          </tr>`;
+      }).join('');
+      const truncNote = items.length > PREVIEW_LIMIT
+        ? `<tr><td colspan="5" style="text-align:center;color:var(--text-2);">…y ${items.length - PREVIEW_LIMIT} filas más (se importan todas al confirmar)</td></tr>`
+        : '';
+      document.getElementById('importar-clientes-preview-body').innerHTML = rowsHtml + truncNote;
+      const nuevos = items.length - existentes;
+      document.getElementById('importar-clientes-confirm-btn').textContent = `Importar ${nuevos} cliente${nuevos === 1 ? '' : 's'}`;
+      lucide.createIcons();
+    }
+
+    function confirmarImportacionClientes() {
+      if (!importarClientesParsed || !importarClientesParsed.items.length) return;
+      let creados = 0, omitidos = 0;
+      importarClientesParsed.items.forEach(it => {
+        if (clienteImportadoYaExiste(it)) { omitidos++; return; }
+        VENTAS_CLIENTES.push({
+          id: 'c' + (clienteIdCounter++),
+          nombre: it.nombre, cedula: it.cedula, telefono: it.telefono,
+          email: it.email, direccion: it.direccion,
+          origen: it.origen, propietarioKey: null
+        });
+        creados++;
+      });
+      renderClientesTable();
+      closeImportarClientesModal();
+      showToast(`Importación completa: ${creados} cliente${creados === 1 ? '' : 's'} nuevo${creados === 1 ? '' : 's'}${omitidos ? `, ${omitidos} omitido${omitidos === 1 ? '' : 's'} (ya existían)` : ''}`);
     }
 
     // ── MÓDULO: VENTAS — CONFIGURACIÓN DE FACTURACIÓN ────────────
@@ -17754,9 +18033,7 @@
       if (editingProductoId) {
         Object.assign(VENTAS_CATALOGO.find(x => x.id === editingProductoId), data);
       } else {
-        const prefix = tipo === 'producto' ? 'p' : (tipo === 'servicio' ? 's' : 'o');
-        const nums = VENTAS_CATALOGO.filter(x => x.id.startsWith(prefix)).map(x => Number(x.id.slice(1)) || 0);
-        const nextId = prefix + ((nums.length ? Math.max(...nums) : 0) + 1);
+        const nextId = generarNuevoIdProducto(tipo);
         VENTAS_CATALOGO.push({ id: nextId, ...data });
         if (productoModalPendingDocItem !== null) {
           handleDocItemConceptoChange(productoModalPendingDocItem, nextId);
@@ -18160,10 +18437,236 @@
       `;
     }
 
-    // ── INVENTARIO — Importar/Exportar Excel (mock) ──────────────
-    function openImportarExcelModal() { document.getElementById('importar-excel-modal').classList.add('show'); }
-    function closeImportarExcelModal() { document.getElementById('importar-excel-modal').classList.remove('show'); }
+    // ── INVENTARIO — Importar Excel (Siigo / OkVet) ──────────────
+    // Lee el .xlsx con SheetJS (window.XLSX, cargado por CDN en <head>),
+    // detecta el formato por la fila de encabezados (el export de Siigo
+    // trae 3 filas de título/NIT antes del header real) y normaliza cada
+    // fila al mismo shape que usa VENTAS_CATALOGO. La confirmación hace
+    // upsert: si el código/referencia de la fila ya existe como `sku` en
+    // el catálogo, actualiza ese producto; si no, lo crea.
+    let importarExcelParsed = null; // { formato, items }
+
+    function openImportarExcelModal() {
+      resetImportarExcelModal();
+      document.getElementById('importar-excel-modal').classList.add('show');
+    }
+    function closeImportarExcelModal() {
+      document.getElementById('importar-excel-modal').classList.remove('show');
+      resetImportarExcelModal();
+    }
     function handleImportarExcelModalOverlayClick(e) { if (e.target === document.getElementById('importar-excel-modal')) closeImportarExcelModal(); }
+    function resetImportarExcelModal() {
+      importarExcelParsed = null;
+      document.getElementById('importar-excel-input').value = '';
+      document.getElementById('importar-excel-error').style.display = 'none';
+      document.getElementById('importar-excel-step-select').style.display = '';
+      document.getElementById('importar-excel-step-preview').style.display = 'none';
+    }
+    function cancelarImportacionExcel() { resetImportarExcelModal(); }
+    function mostrarErrorImportarExcel(msg) {
+      const el = document.getElementById('importar-excel-error');
+      el.textContent = msg;
+      el.style.display = '';
+    }
+
+    function handleImportarExcelFileChange(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      document.getElementById('importar-excel-error').style.display = 'none';
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        let parsed;
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+          parsed = parsearInventarioExcelRows(rows);
+        } catch (err) {
+          mostrarErrorImportarExcel('No se pudo leer el archivo. Verifica que sea un .xlsx válido.');
+          return;
+        }
+        if (!parsed.formato) {
+          mostrarErrorImportarExcel('No se reconoce el formato de este archivo. Se aceptan exports de Siigo ("Gestión de productos y servicios") u OkVet ("Inventario").');
+          return;
+        }
+        if (!parsed.items.length) {
+          mostrarErrorImportarExcel('El archivo no tiene filas de productos o servicios para importar.');
+          return;
+        }
+        importarExcelParsed = parsed;
+        renderImportarExcelPreview(parsed);
+      };
+      reader.onerror = () => mostrarErrorImportarExcel('No se pudo leer el archivo. Intenta de nuevo.');
+      reader.readAsArrayBuffer(file);
+    }
+
+    function parsearInventarioExcelRows(rows) {
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const row = (rows[i] || []).map(c => (c == null ? '' : String(c).trim()));
+        if (row.includes('Referencia') && row.includes('Tributario')) {
+          return { formato: 'OkVet (Inventario)', items: parsearFilasOkVet(rows, i, row) };
+        }
+        if (row.includes('Código') && row.includes('Precios')) {
+          return { formato: 'Siigo (Gestión de productos y servicios)', items: parsearFilasSiigo(rows, i, row) };
+        }
+      }
+      return { formato: null, items: [] };
+    }
+
+    function mapEstadoImportado(valor) {
+      const v = (valor || '').toString().trim().toLowerCase();
+      return (v === 'inactive' || v === 'inactivo') ? 'inactivo' : 'activo';
+    }
+    function mapTipoImportado(valor) {
+      const v = (valor || '').toString().trim().toLowerCase();
+      if (v === 'servicio') return 'servicio';
+      if (v === 'producto') return 'producto';
+      return 'otro';
+    }
+    function mapUnidadImportada(valor) {
+      const opciones = ['Unidad', 'Caja', 'Frasco', 'ml', 'mg', 'kg'];
+      const v = (valor || '').toString().trim();
+      return opciones.find(o => o.toLowerCase() === v.toLowerCase()) || 'Unidad';
+    }
+    function normalizarFechaImportada(valor) {
+      if (!valor) return null;
+      if (valor instanceof Date) return valor.toISOString().slice(0, 10);
+      const m = valor.toString().trim().match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
+    }
+
+    // Export "Gestión de productos y servicios" de Siigo: Tipo/Código/Nombre/
+    // Unidad/Precios/Impuestos/Stock/Estado. "Precios" ya viene con impuestos
+    // incluidos, así que el valor base se deriva con la misma TASA_TRIBUTARIA
+    // que usa el tab "Precio" del modal de producto.
+    function parsearFilasSiigo(rows, headerIdx, header) {
+      const idx = {
+        tipo: header.indexOf('Tipo'), codigo: header.indexOf('Código'), nombre: header.indexOf('Nombre'),
+        unidad: header.indexOf('Unidad'), precio: header.indexOf('Precios'), impuestos: header.indexOf('Impuestos'),
+        stock: header.indexOf('Stock'), estado: header.indexOf('Estado')
+      };
+      const items = [];
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r) continue;
+        const nombre = (r[idx.nombre] || '').toString().trim();
+        if (!nombre) continue;
+        const tipo = mapTipoImportado(r[idx.tipo]);
+        const impuesto = (r[idx.impuestos] || '').toString().trim() === 'IVA 19%' ? 'Gravado' : 'Excluido';
+        const precio = Number(r[idx.precio]) || 0;
+        const tasa = TASA_TRIBUTARIA[impuesto] || 0;
+        items.push({
+          sku: (r[idx.codigo] || '').toString().trim(), nombre, tipo,
+          categoria: tipo === 'servicio' ? 'Servicios médicos' : 'Sin categoría',
+          unidadMedida: mapUnidadImportada(r[idx.unidad]),
+          precio, valorBase: Math.round(precio / (1 + tasa)), costo: 0, impuesto,
+          estado: mapEstadoImportado(r[idx.estado]),
+          cuantificable: tipo === 'producto',
+          stock: Number(r[idx.stock]) || 0, stockMinimo: 0,
+          barcode: '', lote: null, vencimiento: null, descripcion: '',
+          duracionMinutos: null, excluidoListaPrecio: false
+        });
+      }
+      return items;
+    }
+
+    // Export "Inventario" de OkVet: trae Valor base/Valor impuestos/Valor
+    // final y Tributario (Gravado/Excluido/Exento) ya calculados — se usan
+    // directo en vez de recalcularlos con TASA_TRIBUTARIA.
+    function parsearFilasOkVet(rows, headerIdx, header) {
+      const idx = {
+        referencia: header.indexOf('Referencia'), nombre: header.indexOf('Nombre'), tipo: header.indexOf('Tipo'),
+        lote: header.indexOf('Lote'), vencimiento: header.indexOf('Fecha de vencimiento'),
+        cuantificable: header.indexOf('Cuantificable'), cantidad: header.indexOf('Cantidad'),
+        unidad: header.indexOf('Unidad/Presentación'), cantidadMinima: header.indexOf('Cantidad mínima'),
+        costo: header.indexOf('Costo'), categoria: header.indexOf('Categoría'),
+        barcode: header.indexOf('Código de barras'), tributario: header.indexOf('Tributario'),
+        valorBase: header.indexOf('Valor base'), valorFinal: header.indexOf('Valor final')
+      };
+      const items = [];
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r) continue;
+        const nombre = (r[idx.nombre] || '').toString().trim();
+        if (!nombre) continue;
+        const tipo = mapTipoImportado(r[idx.tipo]);
+        const tributario = (r[idx.tributario] || '').toString().trim();
+        const categoria = (r[idx.categoria] || '').toString().trim();
+        items.push({
+          sku: (r[idx.referencia] || '').toString().trim(), nombre, tipo,
+          categoria: categoria || (tipo === 'servicio' ? 'Servicios médicos' : 'Sin categoría'),
+          unidadMedida: mapUnidadImportada(r[idx.unidad]),
+          precio: Number(r[idx.valorFinal]) || 0, valorBase: Number(r[idx.valorBase]) || 0,
+          costo: Number(r[idx.costo]) || 0,
+          impuesto: ['Gravado', 'Excluido', 'Exento'].includes(tributario) ? tributario : 'Exento',
+          estado: 'activo',
+          cuantificable: (r[idx.cuantificable] || '').toString().trim().toLowerCase() === 'si',
+          stock: Number(r[idx.cantidad]) || 0, stockMinimo: Number(r[idx.cantidadMinima]) || 0,
+          barcode: (r[idx.barcode] || '').toString().trim(),
+          lote: (r[idx.lote] || '').toString().trim() || null,
+          vencimiento: normalizarFechaImportada(r[idx.vencimiento]),
+          descripcion: '', duracionMinutos: null, excluidoListaPrecio: false
+        });
+      }
+      return items;
+    }
+
+    function renderImportarExcelPreview(parsed) {
+      document.getElementById('importar-excel-step-select').style.display = 'none';
+      document.getElementById('importar-excel-step-preview').style.display = '';
+      const items = parsed.items;
+      const actualizan = items.filter(it => it.sku && VENTAS_CATALOGO.some(p => p.sku && p.sku === it.sku)).length;
+      document.getElementById('importar-excel-summary').innerHTML =
+        `Formato detectado: <strong>${parsed.formato}</strong> · ${items.length} filas reconocidas ` +
+        `(${items.length - actualizan} nuevas, ${actualizan} actualizan un producto existente por código/referencia).`;
+      const PREVIEW_LIMIT = 300;
+      const rowsHtml = items.slice(0, PREVIEW_LIMIT).map(it => {
+        const existe = it.sku && VENTAS_CATALOGO.some(p => p.sku && p.sku === it.sku);
+        return `
+          <tr>
+            <td>${it.nombre}</td>
+            <td>${it.tipo === 'producto' ? 'Producto' : (it.tipo === 'servicio' ? 'Servicio' : 'Otro')}</td>
+            <td>${it.categoria}</td>
+            <td>${formatCOP(it.precio)}</td>
+            <td><span class="status-badge status-badge-${it.estado}">${it.estado === 'activo' ? 'Activo' : 'Inactivo'}</span></td>
+            <td>${existe ? 'Actualiza' : 'Nuevo'}</td>
+          </tr>`;
+      }).join('');
+      const truncNote = items.length > PREVIEW_LIMIT
+        ? `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">…y ${items.length - PREVIEW_LIMIT} filas más (se importan todas al confirmar)</td></tr>`
+        : '';
+      document.getElementById('importar-excel-preview-body').innerHTML = rowsHtml + truncNote;
+      document.getElementById('importar-excel-confirm-btn').textContent = `Importar ${items.length} producto${items.length === 1 ? '' : 's'}`;
+      lucide.createIcons();
+    }
+
+    function generarNuevoIdProducto(tipo) {
+      const prefix = tipo === 'producto' ? 'p' : (tipo === 'servicio' ? 's' : 'o');
+      const nums = VENTAS_CATALOGO.filter(x => x.id.startsWith(prefix)).map(x => Number(x.id.slice(1)) || 0);
+      return prefix + ((nums.length ? Math.max(...nums) : 0) + 1);
+    }
+
+    function confirmarImportacionExcel() {
+      if (!importarExcelParsed || !importarExcelParsed.items.length) return;
+      let creados = 0, actualizados = 0;
+      importarExcelParsed.items.forEach(it => {
+        if (it.categoria && !VENTAS_CATEGORIAS.includes(it.categoria)) VENTAS_CATEGORIAS.push(it.categoria);
+        const existente = it.sku ? VENTAS_CATALOGO.find(p => p.sku && p.sku === it.sku) : null;
+        if (existente) {
+          Object.assign(existente, it);
+          actualizados++;
+        } else {
+          VENTAS_CATALOGO.push({ id: generarNuevoIdProducto(it.tipo), ...it });
+          creados++;
+        }
+      });
+      poblarFiltroCategoriasInventario();
+      renderProductosServiciosTable();
+      renderCategoriasTable();
+      closeImportarExcelModal();
+      showToast(`Importación completa: ${creados} nuevo${creados === 1 ? '' : 's'}, ${actualizados} actualizado${actualizados === 1 ? '' : 's'}`);
+    }
+
     function exportarInventarioExcel() { showToast('Exportación disponible próximamente'); }
 
     // ── INVENTARIO — Actualizar desde Siigo (mock, Tarea 5.1) ────────
@@ -18756,7 +19259,6 @@
       renderVariablesTable();
       renderVetConfigGeneral();
       poblarFiltroAgendaEncargados();
-      refreshAgendaPreRegistroBadge();
 
       // Módulo Ventas — poblar filtros y renderizar todas las sub-vistas
       poblarFiltrosVentasDashboard();
@@ -19166,7 +19668,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -19174,7 +19676,8 @@
           window.supabase.from('consultas').select('*').eq('establecimiento_id', establecimientoId).order('fecha_hora', { ascending: false }),
           window.supabase.from('formulas_medicas').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('ventas_facturas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
-          window.supabase.from('ventas_cotizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
+          window.supabase.from('ventas_cotizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
+          window.supabase.from('hospitalizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -19184,18 +19687,20 @@
         if (formulaRes.error) throw formulaRes.error;
         if (facturaRes.error) throw facturaRes.error;
         if (cotizacionRes.error) throw cotizacionRes.error;
+        if (hospRes.error) throw hospRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
-          facturaRows: facturaRes.data || [], cotizacionRows: cotizacionRes.data || []
+          facturaRows: facturaRes.data || [], cotizacionRows: cotizacionRes.data || [],
+          hospRows: hospRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -19224,6 +19729,11 @@
       examRows.forEach(r => {
         const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
         if (pet) pet.examenes.push(construirExamenDesdeFila(r));
+      });
+
+      hospRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (pet) pet.hospitalizaciones.push(construirHospitalizacionDesdeFila(r));
       });
 
       // consultas es hoy la única fuente real de `timeline` (vacunaciones/
@@ -21090,6 +21600,43 @@
     </div>
   </div>
 
+  <!-- Modal: Importar clientes (CSV) -->
+  <div class="modal-overlay" id="importar-clientes-modal" onclick="handleImportarClientesModalOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:720px;max-height:88vh;overflow-y:auto;">
+      <div class="modal-header">
+        <span class="modal-title">Importar clientes</span>
+        <button class="modal-close" onclick="closeImportarClientesModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <div id="importar-clientes-step-select">
+        <p style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:16px;">
+          Carga un archivo .csv con tu base de datos de clientes de referencia (ej. export de
+          OkVet, columnas T.Doc/Identificación/Nombre/Correo/Teléfono/Dirección). Los clientes
+          cuyo número de identificación ya exista no se duplican.
+        </p>
+        <input type="file" id="importar-clientes-input" accept=".csv" style="display:none;" onchange="handleImportarClientesFileChange(this)">
+        <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="document.getElementById('importar-clientes-input').click()">
+          <i data-lucide="upload" style="width:14px;height:14px;"></i> Seleccionar archivo .csv
+        </button>
+        <div id="importar-clientes-error" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;background:#FEF2F2;color:var(--danger);font-size:13px;"></div>
+      </div>
+
+      <div id="importar-clientes-step-preview" style="display:none;">
+        <div id="importar-clientes-summary" style="font-size:13px;color:var(--text-2);margin-bottom:12px;"></div>
+        <div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:16px;">
+          <table class="results-table" style="margin:0;">
+            <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Correo</th><th>Acción</th></tr></thead>
+            <tbody id="importar-clientes-preview-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="cancelarImportacionClientes()">Elegir otro archivo</button>
+          <button type="button" class="btn-primary" id="importar-clientes-confirm-btn" onclick="confirmarImportacionClientes()">Importar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Nuevo/Editar producto o servicio (Inventario) -->
   <div class="modal-overlay" id="producto-modal" onclick="handleProductoModalOverlayClick(event)">
     <div class="modal-card" onclick="event.stopPropagation()" style="width:620px;max-height:88vh;overflow-y:auto;">
@@ -21326,20 +21873,41 @@
     </div>
   </div>
 
-  <!-- Modal: Importar Excel (mock, Inventario) -->
+  <!-- Modal: Importar Excel (Inventario) -->
   <div class="modal-overlay" id="importar-excel-modal" onclick="handleImportarExcelModalOverlayClick(event)">
-    <div class="modal-card" onclick="event.stopPropagation()" style="width:440px;">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:720px;max-height:88vh;overflow-y:auto;">
       <div class="modal-header">
         <span class="modal-title">Importar desde Excel</span>
         <button class="modal-close" onclick="closeImportarExcelModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
       </div>
-      <p style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:16px;">
-        Próximamente podrás cargar un archivo .xlsx con tu catálogo de productos y servicios
-        (usando SheetJS para leerlo directamente en el navegador). Esta iteración solo deja
-        lista la entrada al flujo — todavía sin lógica real de importación.
-      </p>
-      <div style="display:flex;justify-content:flex-end;">
-        <button class="btn-primary" onclick="closeImportarExcelModal()">Entendido</button>
+
+      <div id="importar-excel-step-select">
+        <p style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:16px;">
+          Carga un archivo .xlsx con tu catálogo de productos y servicios. Se reconocen
+          automáticamente los exports de <strong>Siigo</strong> ("Gestión de productos y
+          servicios") y de <strong>OkVet</strong> ("Inventario"). Si una fila trae un
+          código/referencia que ya existe en el catálogo, ese producto se actualiza en vez
+          de duplicarse.
+        </p>
+        <input type="file" id="importar-excel-input" accept=".xlsx,.xls" style="display:none;" onchange="handleImportarExcelFileChange(this)">
+        <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="document.getElementById('importar-excel-input').click()">
+          <i data-lucide="upload" style="width:14px;height:14px;"></i> Seleccionar archivo .xlsx
+        </button>
+        <div id="importar-excel-error" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;background:#FEF2F2;color:var(--danger);font-size:13px;"></div>
+      </div>
+
+      <div id="importar-excel-step-preview" style="display:none;">
+        <div id="importar-excel-summary" style="font-size:13px;color:var(--text-2);margin-bottom:12px;"></div>
+        <div style="max-height:340px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:16px;">
+          <table class="results-table" style="margin:0;">
+            <thead><tr><th>Nombre</th><th>Tipo</th><th>Categoría</th><th>Precio</th><th>Estado</th><th>Acción</th></tr></thead>
+            <tbody id="importar-excel-preview-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="cancelarImportacionExcel()">Elegir otro archivo</button>
+          <button type="button" class="btn-primary" id="importar-excel-confirm-btn" onclick="confirmarImportacionExcel()">Importar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -21862,7 +22430,10 @@
               <option value="cirugia">Cirugía</option>
               <option value="desparasitacion">Desparasitación</option>
               <option value="control">Control</option>
-              <option value="pre_registro">Pre-registro</option>
+              <option value="imagenes_diagnosticas">Imágenes diagnósticas</option>
+              <option value="examenes_laboratorio">Exámenes de laboratorio</option>
+              <option value="revision">Revisión</option>
+              <option value="consulta_especializada">Consulta especializada</option>
               <option value="otro">Otro</option>
             </select>
           </div>
@@ -21947,20 +22518,6 @@
       <p style="font-size:13px;color:var(--text-1);line-height:1.6;" id="agenda-notif-modal-body"></p>
       <div style="display:flex;justify-content:flex-end;margin-top:10px;">
         <button class="btn-primary" onclick="closeAgendaNotifModal()">Entendido</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: Lista de solicitudes pre-registro (Agenda) -->
-  <div class="modal-overlay" id="agenda-pre-registro-modal" onclick="handleAgendaPreRegistroOverlayClick(event)">
-    <div class="modal-card" onclick="event.stopPropagation()" style="width:560px;">
-      <div class="modal-header">
-        <span class="modal-title">Solicitudes de pre-registro</span>
-        <button class="modal-close" onclick="closeAgendaPreRegistroModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
-      </div>
-      <div id="agenda-pre-registro-list" style="display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;"></div>
-      <div style="display:flex;justify-content:flex-end;margin-top:20px;">
-        <button class="btn-secondary" onclick="closeAgendaPreRegistroModal()">Cerrar</button>
       </div>
     </div>
   </div>

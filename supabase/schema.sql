@@ -764,6 +764,59 @@ create policy "examenes_delete_member"
 -- clínica) -- sin bucket nuevo. Los resultados de examenes van en
 -- "clinica/<establecimiento_id>/examenes/<examen_id>/<n>-<nombre>".
 
+-- ── TABLA: hospitalizaciones (Hospitalizaciones/ambulatorios + Kardex) ──
+-- Un registro por ingreso. `dias` es jsonb (mismo criterio que
+-- examenes.pruebas/mascotas.peso_historico) y guarda el árbol completo del
+-- Kardex de trazabilidad -- acordeón por día, cada uno con tratamientos[]
+-- (grilla horaria de 24h) y signos{} (8 filas x 24h) -- en vez de tablas
+-- hijas, porque index.html ya trata esa estructura como un solo blob que se
+-- relee/reescribe entero (nunca se consulta por campo interno). seguimientos[]
+-- sigue siendo 100% mock (no persiste todavía) y enlaza a esta tabla por el
+-- `id` real (uuid), no por el hospId sintético que usaba el mock en memoria.
+create table if not exists public.hospitalizaciones (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id         uuid not null references public.mascotas (id) on delete cascade,
+  tipo               text not null,
+  fecha_ingreso      date not null,
+  fecha_salida       date,
+  motivo_salida      text,
+  razon              text not null,
+  observaciones      text,
+  estado             text not null default 'activa' check (estado in ('activa','finalizada')),
+  dias               jsonb not null default '[]'::jsonb,
+  usuario            text,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create index if not exists hospitalizaciones_establecimiento_id_idx on public.hospitalizaciones (establecimiento_id);
+create index if not exists hospitalizaciones_mascota_id_idx on public.hospitalizaciones (mascota_id);
+
+alter table public.hospitalizaciones enable row level security;
+
+drop policy if exists "hospitalizaciones_select_member" on public.hospitalizaciones;
+create policy "hospitalizaciones_select_member"
+  on public.hospitalizaciones for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "hospitalizaciones_insert_member" on public.hospitalizaciones;
+create policy "hospitalizaciones_insert_member"
+  on public.hospitalizaciones for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "hospitalizaciones_update_member" on public.hospitalizaciones;
+create policy "hospitalizaciones_update_member"
+  on public.hospitalizaciones for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "hospitalizaciones_delete_member" on public.hospitalizaciones;
+create policy "hospitalizaciones_delete_member"
+  on public.hospitalizaciones for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── STORAGE: bucket `avatars` (foto de perfil de usuario) ───────
 -- Público (igual que `fotos-mascotas`) — a diferencia de ese bucket, que
 -- es por establecimiento ("clinica/<estab>/..."), este es por usuario
@@ -774,8 +827,20 @@ insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
 on conflict (id) do nothing;
 
--- Sin policy de select: bucket público, mismo criterio que fotos-mascotas
--- (evita el advisor public_bucket_allows_listing).
+-- Policy de select SÍ hace falta pese a ser bucket público: el upload de
+-- storage-api hace un INSERT ... RETURNING, y el RETURNING evalúa la
+-- policy de SELECT de RLS (que "bucket público" NO reemplaza — eso solo
+-- habilita la ruta anónima /object/public/... para leer, no la respuesta
+-- del propio insert). Sin esto, el insert falla con "new row violates
+-- row-level security policy" aunque el WITH CHECK de insert sea correcto
+-- (bug real sufrido en `firmas`, mismo patrón exacto — ver ahí).
+drop policy if exists "avatars_select_own_folder" on storage.objects;
+create policy "avatars_select_own_folder"
+  on storage.objects for select
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
 
 drop policy if exists "avatars_insert_own_folder" on storage.objects;
 create policy "avatars_insert_own_folder"
@@ -816,8 +881,15 @@ insert into storage.buckets (id, name, public)
 values ('logos-clinica', 'logos-clinica', true)
 on conflict (id) do nothing;
 
--- Sin policy de select: bucket público, mismo criterio que fotos-mascotas
--- (evita el advisor public_bucket_allows_listing).
+-- Policy de select SÍ hace falta pese a ser bucket público (ver nota en
+-- `avatars` arriba — el RETURNING del insert de storage-api la exige).
+drop policy if exists "logos_clinica_select_member" on storage.objects;
+create policy "logos_clinica_select_member"
+  on storage.objects for select
+  using (
+    bucket_id = 'logos-clinica'
+    and public.user_is_member_of(((storage.foldername(name))[1])::uuid)
+  );
 
 drop policy if exists "logos_clinica_insert_member" on storage.objects;
 create policy "logos_clinica_insert_member"
@@ -852,8 +924,23 @@ insert into storage.buckets (id, name, public)
 values ('firmas', 'firmas', true)
 on conflict (id) do nothing;
 
--- Sin policy de select: bucket público, mismo criterio que avatars
--- (evita el advisor public_bucket_allows_listing).
+-- Policy de select SÍ hace falta pese a ser bucket público — bug real
+-- sufrido en producción: el upload de storage-api hace un
+-- INSERT ... RETURNING, y ese RETURNING evalúa la policy de SELECT de
+-- RLS ("bucket público" solo habilita la ruta anónima
+-- /object/public/... para lectura externa, no reemplaza la policy de
+-- select que necesita el propio insert). Sin esto, el insert falla con
+-- "new row violates row-level security policy" pese a que el WITH CHECK
+-- de insert sea correcto — mismo fix aplicado también en `avatars` y
+-- `logos-clinica` (arriba), que tenían el mismo hueco sin haber sido
+-- probados todavía.
+drop policy if exists "firmas_select_own_folder" on storage.objects;
+create policy "firmas_select_own_folder"
+  on storage.objects for select
+  using (
+    bucket_id = 'firmas'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
 
 drop policy if exists "firmas_insert_own_folder" on storage.objects;
 create policy "firmas_insert_own_folder"
