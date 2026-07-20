@@ -4110,14 +4110,14 @@
                 <label class="input-label" for="search-propietario">Buscar propietario</label>
                 <div class="input-wrapper">
                   <i data-lucide="search" class="input-icon"></i>
-                  <input type="text" id="search-propietario" class="input-control" placeholder="Documento, teléfono, nombre...">
+                  <input type="text" id="search-propietario" class="input-control" placeholder="Documento, teléfono, nombre..." oninput="renderPropietariosTable()" onkeydown="if(event.key==='Enter'){event.preventDefault(); renderPropietariosTable();}">
                 </div>
               </div>
               <div class="input-group">
                 <label class="input-label" for="search-mascota">Buscar mascota</label>
                 <div class="input-wrapper">
                   <i data-lucide="search" class="input-icon"></i>
-                  <input type="text" id="search-mascota" class="input-control" placeholder="Nombre de la mascota...">
+                  <input type="text" id="search-mascota" class="input-control" placeholder="Nombre de la mascota..." oninput="renderPropietariosTable()" onkeydown="if(event.key==='Enter'){event.preventDefault(); renderPropietariosTable();}">
                 </div>
               </div>
             </div>
@@ -6512,9 +6512,9 @@
     // que el Perfil de propietario y "Trasladar mascota" funcionen igual
     // para cualquier propietario, sin importar su origen.
     let propietarios = [
-      { id: 'prop-seed-1', docTipo: 'C.C.', docNumero: '1.018.456.789', movil: '+57 310 456 7890', email: '', nombre: 'Carlos Mendoza', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Hace 2 horas', ultimaGestionDetail: 'Consulta General' },
-      { id: 'prop-seed-2', docTipo: 'C.C.', docNumero: '52.345.678', movil: '+57 315 789 0123', email: '', nombre: 'Andrea Gómez', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Ayer', ultimaGestionDetail: 'Vacunación Anual' },
-      { id: 'prop-seed-3', docTipo: 'C.C.', docNumero: '1.032.765.432', movil: '+57 320 987 6543', email: '', nombre: 'Liliana Pérez', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', expedicionDocumento: '', comoNosEncontro: '', ultimaGestionTime: 'Hace 3 días', ultimaGestionDetail: 'Corte y Baño Spa' }
+      { id: 'prop-seed-1', docTipo: 'C.C.', docNumero: '1.018.456.789', movil: '+57 310 456 7890', email: '', nombre: 'Carlos Mendoza', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', comoNosEncontro: '', ultimaGestionTime: 'Hace 2 horas', ultimaGestionDetail: 'Consulta General' },
+      { id: 'prop-seed-2', docTipo: 'C.C.', docNumero: '52.345.678', movil: '+57 315 789 0123', email: '', nombre: 'Andrea Gómez', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', comoNosEncontro: '', ultimaGestionTime: 'Ayer', ultimaGestionDetail: 'Vacunación Anual' },
+      { id: 'prop-seed-3', docTipo: 'C.C.', docNumero: '1.032.765.432', movil: '+57 320 987 6543', email: '', nombre: 'Liliana Pérez', direccion: '', ciudad: '', contactoAutorizado: '', telefonoAlterno: '', telefonoOpcional: '', comoNosEncontro: '', ultimaGestionTime: 'Hace 3 días', ultimaGestionDetail: 'Corte y Baño Spa' }
     ];
     let editingPropietarioId = null; // propietario en edición dentro de "Registrar propietario" (Parte B.2)
 
@@ -6565,7 +6565,30 @@
     function renderPropietariosTable() {
       const tbody = document.getElementById('propietarios-tbody');
       if (!tbody) return;
-      tbody.innerHTML = propietarios.map(p => {
+      const searchPropietarioEl = document.getElementById('search-propietario');
+      const searchMascotaEl = document.getElementById('search-mascota');
+      const filtroPropietario = (searchPropietarioEl ? searchPropietarioEl.value : '').trim().toLowerCase();
+      const filtroMascota = (searchMascotaEl ? searchMascotaEl.value : '').trim().toLowerCase();
+      const propietariosFiltrados = propietarios.filter(p => {
+        const mascotas = getMascotasDePropietario(p.id);
+        if (filtroPropietario) {
+          const enPropietario = p.nombre.toLowerCase().includes(filtroPropietario)
+            || (p.docNumero || '').toLowerCase().includes(filtroPropietario)
+            || (p.movil || '').toLowerCase().includes(filtroPropietario);
+          if (!enPropietario) return false;
+        }
+        if (filtroMascota) {
+          const enMascota = mascotas.some(([, d]) => (d.name || '').toLowerCase().includes(filtroMascota));
+          if (!enMascota) return false;
+        }
+        return true;
+      });
+      if (!propietariosFiltrados.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No se encontraron resultados</td></tr>`;
+        lucide.createIcons();
+        return;
+      }
+      tbody.innerHTML = propietariosFiltrados.map(p => {
         const mascotas = getMascotasDePropietario(p.id);
         const chips = mascotas.length
           ? mascotas.map(([petKey, d]) => `
@@ -7611,7 +7634,7 @@
     const PROPIETARIO_FORM_FIELD_IDS = [
       'prop-doc-numero', 'prop-movil', 'prop-email', 'prop-nombre',
       'prop-direccion', 'prop-ciudad', 'prop-contacto-autorizado',
-      'prop-telefono-alterno', 'prop-telefono-opcional', 'prop-expedicion-documento'
+      'prop-telefono-alterno', 'prop-telefono-opcional'
     ];
 
     function openRegistrarPropietarioModal() {
@@ -7671,7 +7694,6 @@
       document.getElementById('prop-contacto-autorizado').value = p.contactoAutorizado;
       document.getElementById('prop-telefono-alterno').value = p.telefonoAlterno;
       document.getElementById('prop-telefono-opcional').value = p.telefonoOpcional;
-      document.getElementById('prop-expedicion-documento').value = p.expedicionDocumento;
       document.getElementById('prop-como-encontro').value = p.comoNosEncontro || '';
       PROPIETARIO_FORM_FIELD_IDS.forEach(id => document.getElementById(id).classList.remove('field-error'));
 
@@ -7767,7 +7789,6 @@
         contactoAutorizado: document.getElementById('prop-contacto-autorizado').value.trim(),
         telefonoAlterno: document.getElementById('prop-telefono-alterno').value.trim(),
         telefonoOpcional: document.getElementById('prop-telefono-opcional').value.trim(),
-        expedicionDocumento: document.getElementById('prop-expedicion-documento').value.trim(),
         comoNosEncontro: document.getElementById('prop-como-encontro').value
       };
       const filaForm = {
@@ -7775,7 +7796,7 @@
         email: datosForm.email || null, nombre: datosForm.nombre, direccion: datosForm.direccion || null,
         ciudad: datosForm.ciudad || null, contacto_autorizado: datosForm.contactoAutorizado || null,
         telefono_alterno: datosForm.telefonoAlterno || null, telefono_opcional: datosForm.telefonoOpcional || null,
-        expedicion_documento: datosForm.expedicionDocumento || null, como_nos_encontro: datosForm.comoNosEncontro || null
+        como_nos_encontro: datosForm.comoNosEncontro || null
       };
 
       const btn = document.getElementById('prop-guardar-btn');
@@ -9134,6 +9155,22 @@
     // campos de #editar-mascota-modal + "Nombre" (que falta ahí), vinculada
     // a un propietario ya definido por contexto (no editable en este modal).
     let registrandoMascotaPropietarioId = null;
+    // La mascota todavía no existe en Supabase mientras se llena este modal
+    // (no hay mascotaId aún), así que la foto no puede subirse con
+    // subirFotoMascotaReal hasta después del insert — se guarda el File acá
+    // y se sube recién en guardarMascotaRegistro() una vez creado el registro.
+    let nuevaMascotaFotoFile = null;
+
+    function handleNuevaMascotaFotoChange(input) {
+      if (!input.files || !input.files[0]) return;
+      nuevaMascotaFotoFile = input.files[0];
+      const reader = new FileReader();
+      reader.onload = e => {
+        const photoEl = document.getElementById('nueva-mascota-foto-preview');
+        photoEl.innerHTML = `<img src="${e.target.result}" alt="Foto de la mascota">`;
+      };
+      reader.readAsDataURL(nuevaMascotaFotoFile);
+    }
 
     function crearMascotaKey(nombre) {
       const base = nombre.toLowerCase()
@@ -9182,6 +9219,8 @@
       document.getElementById('nueva-mascota-estado-reproductivo').value = 'Desconocido';
       document.getElementById('nueva-mascota-animal-servicio').checked = false;
       document.getElementById('nueva-mascota-fallecido').checked = false;
+      nuevaMascotaFotoFile = null;
+      document.getElementById('nueva-mascota-foto-preview').innerHTML = '<i data-lucide="camera" style="width:18px;height:18px;"></i>';
 
       document.getElementById('registrar-mascota-modal').classList.add('show');
       lucide.createIcons();
@@ -9191,6 +9230,7 @@
       document.getElementById('registrar-mascota-modal').classList.remove('show');
       registrandoMascotaPropietarioId = null;
       postRegistroMascotaAccion = null; // cancelado sin guardar — no continuar con la acción pendiente
+      nuevaMascotaFotoFile = null;
     }
 
     function handleRegistrarMascotaOverlayClick(e) {
@@ -9277,6 +9317,18 @@
           createdAt: inserted.created_at || new Date().toISOString(),
           ...crearScaffoldClinicoVacio()
         };
+
+        // La mascota recién obtuvo mascotaId arriba — recién ahora puede
+        // subirse la foto (subirFotoMascotaReal la necesita). El modal ya
+        // se cierra igual sin esperar a que termine (mismo criterio que
+        // handleFotoInputChange: preview/errores no bloquean el flujo).
+        if (nuevaMascotaFotoFile) {
+          subirFotoMascotaReal(nuevaMascotaFotoFile, petKey, null).catch(err => {
+            console.error('[IRIS] Error subiendo la foto de la mascota nueva:', err);
+            const detalle = (err && err.message) ? err.message : 'error desconocido';
+            showToast(`Mascota registrada, pero no se pudo guardar la foto: ${detalle}`);
+          });
+        }
 
         renderPerfilMascotasTable(registrandoMascotaPropietarioId);
         renderPropietariosTable();
@@ -19640,7 +19692,7 @@
         docTipo: r.doc_tipo || '', docNumero: r.doc_numero || '', movil: r.movil || '', email: r.email || '',
         nombre: r.nombre, direccion: r.direccion || '', ciudad: r.ciudad || '',
         contactoAutorizado: r.contacto_autorizado || '', telefonoAlterno: r.telefono_alterno || '',
-        telefonoOpcional: r.telefono_opcional || '', expedicionDocumento: r.expedicion_documento || '',
+        telefonoOpcional: r.telefono_opcional || '',
         comoNosEncontro: r.como_nos_encontro || '',
         ultimaGestionTime: r.ultima_gestion_time ? new Date(r.ultima_gestion_time).toLocaleString('es-CO') : 'Recién registrado',
         ultimaGestionDetail: r.ultima_gestion_detail || '',
@@ -19792,7 +19844,7 @@
           doc_tipo: p.docTipo || null, doc_numero: p.docNumero || null, movil: p.movil || null, email: p.email || null,
           nombre: p.nombre, direccion: p.direccion || null, ciudad: p.ciudad || null,
           contacto_autorizado: p.contactoAutorizado || null, telefono_alterno: p.telefonoAlterno || null,
-          telefono_opcional: p.telefonoOpcional || null, expedicion_documento: p.expedicionDocumento || null,
+          telefono_opcional: p.telefonoOpcional || null,
           como_nos_encontro: p.comoNosEncontro || null, ultima_gestion_detail: p.ultimaGestionDetail || null,
           created_by: userId
         }));
@@ -21278,10 +21330,6 @@
             <label class="input-label" for="prop-doc-numero">Número de identificación</label>
             <input type="text" class="input-control" style="padding-left:12px;" id="prop-doc-numero">
           </div>
-          <div class="input-group">
-            <label class="input-label" for="prop-expedicion-documento">Expedición documento (opcional)</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="prop-expedicion-documento" placeholder="Ciudad y fecha de expedición">
-          </div>
         </div>
 
         <div class="input-group">
@@ -22487,8 +22535,17 @@
     <div class="soap-modal-card" style="width:640px;" onclick="event.stopPropagation()">
       <div class="soap-modal-header">
         <div class="soap-modal-pet">
-          <span class="soap-modal-pet-name">Registrar mascota</span>
-          <span class="soap-modal-pet-meta" id="registrar-mascota-propietario-label">Propietario: —</span>
+          <div class="pet-photo-circle-wrap" style="width:56px;height:56px;">
+            <div class="pet-photo-circle" id="nueva-mascota-foto-preview" style="width:56px;height:56px;font-size:18px;"><i data-lucide="camera" style="width:18px;height:18px;"></i></div>
+            <label class="pet-photo-edit-btn" title="Subir foto" style="width:22px;height:22px;">
+              <i data-lucide="camera" style="width:11px;height:11px;"></i>
+              <input type="file" accept="image/*" class="pet-photo-edit-input" onchange="handleNuevaMascotaFotoChange(this)">
+            </label>
+          </div>
+          <div>
+            <div class="soap-modal-pet-name">Registrar mascota</div>
+            <div class="soap-modal-pet-meta" id="registrar-mascota-propietario-label">Propietario: —</div>
+          </div>
         </div>
         <button class="soap-modal-close" onclick="closeRegistrarMascotaModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
       </div>
@@ -22496,6 +22553,10 @@
         <div class="input-group">
           <label class="input-label">Nombre</label>
           <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-nombre">
+        </div>
+        <div class="input-group" style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--surface);">
+          <label class="input-label" for="nueva-mascota-chip">N° Microchip</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-chip" placeholder="Ej: 985141000000000">
         </div>
         <div class="med-block-grid">
           <div class="input-group">
@@ -22557,10 +22618,6 @@
           <div class="input-group">
             <label class="input-label">Edad o fecha de nacimiento</label>
             <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-edad" placeholder="Ej: 3 años 2 meses">
-          </div>
-          <div class="input-group">
-            <label class="input-label">Código/Chip</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-chip">
           </div>
           <div class="input-group">
             <label class="input-label">Frecuencia de baño</label>
@@ -22785,7 +22842,6 @@
       const rows = [
         ['Tipo de identificación', datos.docTipo || '—'],
         ['Número de identificación', datos.docNumero || '—'],
-        ['Expedición documento', datos.expedicionDocumento || '—'],
         ['Nombre / Razón social', datos.nombre || '—'],
         ['Móvil / WhatsApp', datos.movil || '—'],
         ['Email', datos.email || 'No registra'],
