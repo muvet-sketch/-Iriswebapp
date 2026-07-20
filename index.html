@@ -2064,7 +2064,7 @@
     }
 
     /* Lista de navegación por módulo clínico — clon de .sidebar-menu/
-       .sidebar-item (mismo look & feel que el sidebar de 17), pero acotada
+       .sidebar-item (mismo look & feel que el sidebar de 18), pero acotada
        a los 10 módulos relevantes durante una consulta activa. */
     .tablero-nav-col .sidebar-menu { padding: 4px; }
 
@@ -3582,7 +3582,7 @@
 
   <!-- ══════════════════════════════════════════════════════════════
        APP SHELL — shell normal de IRIS (Dashboard/Consultorio/etc,
-       sidebar de 17 módulos). Visible solo cuando hay sesión activa.
+       sidebar de 18 módulos). Visible solo cuando hay sesión activa.
   ══════════════════════════════════════════════════════════════════ -->
   <div id="app-shell">
 
@@ -4151,7 +4151,7 @@
         <!-- ESTADO B: Ficha clínica de paciente seleccionado -->
         <div class="patient-view" id="consultorio-patient-view">
           
-          <!-- NIVEL 2 — Sidebar Vertical Izquierdo (17 elementos requeridos) -->
+          <!-- NIVEL 2 — Sidebar Vertical Izquierdo (18 elementos) -->
           <aside class="sidebar-left">
             <nav class="sidebar-menu">
               <div class="sidebar-item active" data-subtab="historia" onclick="switchSubTab('historia')">
@@ -4207,6 +4207,13 @@
                 <div class="sidebar-label-group">
                   <i data-lucide="clipboard-list" class="sidebar-icon"></i>
                   <span>Órdenes</span>
+                </div>
+                <span class="sidebar-counter">0</span>
+              </div>
+              <div class="sidebar-item" data-subtab="tareas-pendientes" onclick="switchSubTab('tareas-pendientes')">
+                <div class="sidebar-label-group">
+                  <i data-lucide="list-checks" class="sidebar-icon"></i>
+                  <span>Tareas Pendientes</span>
                 </div>
                 <span class="sidebar-counter">0</span>
               </div>
@@ -4540,6 +4547,38 @@
                   <div class="placeholder-content" id="resultados-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
                     <div class="placeholder-icon"><i data-lucide="file-check-2" style="width: 24px; height: 24px;"></i></div>
                     <p class="placeholder-text" style="font-size: 12px;">No hay resultados registrados</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Subtab: Tareas Pendientes -->
+              <div class="module-pane" id="subtab-tareas-pendientes">
+                <div class="card">
+                  <div class="card-header">
+                    <span class="card-title"><i data-lucide="list-checks" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Tareas Pendientes</span>
+                    <button class="btn-outline module-create-btn" style="padding: 6px 12px; font-size: 12px;" onclick="openTareaPendienteModal('create', selectedPetKey)">
+                      <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar tarea pendiente
+                    </button>
+                  </div>
+                  <table class="results-table">
+                    <thead>
+                      <tr>
+                        <th>Descripción</th>
+                        <th>Responsable</th>
+                        <th>Prioridad</th>
+                        <th>Fecha límite</th>
+                        <th>Estado</th>
+                        <th>Usuario</th>
+                        <th style="text-align: right;">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tareas-pendientes-table-body">
+                      <!-- Dinámico por JS -->
+                    </tbody>
+                  </table>
+                  <div class="placeholder-content" id="tareas-pendientes-empty-state" style="display: none; background-color: transparent; padding: 32px 0;">
+                    <div class="placeholder-icon"><i data-lucide="list-checks" style="width: 24px; height: 24px;"></i></div>
+                    <p class="placeholder-text" style="font-size: 12px;">No hay tareas pendientes registradas</p>
                   </div>
                 </div>
               </div>
@@ -4953,7 +4992,7 @@
           <div class="tablero-grid">
 
             <!-- Columna izquierda: navegación por módulo clínico (acota los
-                 17 del sidebar normal a los 10 relevantes durante una
+                 18 del sidebar normal a los 10 relevantes durante una
                  consulta activa — ver TABLERO_QUICKNAV_MODULOS) -->
             <div class="tablero-nav-col">
               <div class="card">
@@ -6273,6 +6312,7 @@
         examenes: [],
         vacunaciones: [],
         desparasitaciones: [],
+        tareasPendientes: [],
         peluquerias: [],
         guarderias: [],
         remisiones: [],
@@ -6428,6 +6468,7 @@
         examenes: [],
         vacunaciones: [],
         desparasitaciones: [],
+        tareasPendientes: [],
         peluquerias: [],
         guarderias: [],
         remisiones: [],
@@ -6485,6 +6526,7 @@
         examenes: [],
         vacunaciones: [],
         desparasitaciones: [],
+        tareasPendientes: [],
         peluquerias: [],
         guarderias: [],
         remisiones: [],
@@ -9187,14 +9229,14 @@
     }
 
     // Arrays/objetos de los m\u00f3dulos cl\u00ednicos que todav\u00eda son 100% mock (las
-    // 17 sub-secciones de Historia salvo Documentos) \u2014 comparten este mismo
+    // 18 sub-secciones de Historia salvo Documentos) \u2014 comparten este mismo
     // scaffold vac\u00edo tanto al registrar una mascota nueva (guardarMascotaRegistro)
     // como al reconstruir patientData desde Supabase
     // (cargarDatosClinicaDesdeSupabase), para no duplicar la lista de campos.
     function crearScaffoldClinicoVacio() {
       return {
         timeline: [], consultas: [],
-        formulas: [], ordenes: [], documentos: [], resultados: [], vacunaciones: [], desparasitaciones: [],
+        formulas: [], ordenes: [], documentos: [], resultados: [], vacunaciones: [], desparasitaciones: [], tareasPendientes: [],
         peluquerias: [], guarderias: [], remisiones: [], mensajes: [], seguimientos: [], hospitalizaciones: [], cirugias: [],
         problemas: [], examenes: []
       };
@@ -9377,6 +9419,7 @@
       document.getElementById('subtab-formulas').classList.remove('active');
       document.getElementById('subtab-desparasitaciones').classList.remove('active');
       document.getElementById('subtab-ordenes').classList.remove('active');
+      document.getElementById('subtab-tareas-pendientes').classList.remove('active');
       document.getElementById('subtab-laboratorio').classList.remove('active');
       document.getElementById('subtab-imagenes').classList.remove('active');
       document.getElementById('subtab-documentos').classList.remove('active');
@@ -9403,6 +9446,9 @@
         document.getElementById('subtab-desparasitaciones').classList.add('active');
       } else if (subtabName === 'ordenes') {
         document.getElementById('subtab-ordenes').classList.add('active');
+      } else if (subtabName === 'tareas-pendientes') {
+        document.getElementById('subtab-tareas-pendientes').classList.add('active');
+        if (selectedPetKey) renderTareasPendientesTable(selectedPetKey);
       } else if (subtabName === 'laboratorio') {
         document.getElementById('subtab-laboratorio').classList.add('active');
       } else if (subtabName === 'imagenes') {
@@ -9814,7 +9860,7 @@
 
     // Tablero de trabajo — pantalla completa de consulta (mismo patrón que
     // abrirKardex()/cerrarKardexAConsultorio(): oculta .consultorio-wrapper
-    // en vez de navegar dentro del sidebar de 17).
+    // en vez de navegar dentro del sidebar de 18).
     function abrirTableroTrabajo() {
       const role = ROLES[currentSimRole];
       if (!role.canNewConsult || !selectedPetKey) return; // Sin privilegio — mismo criterio que el modal clásico
@@ -9917,11 +9963,15 @@
       lucide.createIcons();
     }
 
-    // Módulos clínicos del nav de .tablero-nav-col — subconjunto de los 17
+    // Módulos clínicos del nav de .tablero-nav-col — subconjunto de los 18
     // del sidebar normal, enfocado en lo que se consulta/registra durante
     // una consulta activa. Cada entrada reutiliza el modal de crear/editar
     // que ya tiene ese módulo completo (no se duplica lógica de guardado).
-    const TABLERO_NAV_ORDEN = ['vacunaciones', 'desparasitaciones', 'formulas', 'laboratorio', 'imagenes', 'cirugias', 'seguimientos', 'ordenes', 'remisiones', 'citas'];
+    // "Tareas Pendientes" reemplaza a "Órdenes" en este nav acotado del
+    // Tablero (a pedido de negocio) — Órdenes sigue existiendo como
+    // módulo completo en el sidebar normal de 18, solo dejó de tener
+    // acceso directo desde la consulta activa.
+    const TABLERO_NAV_ORDEN = ['vacunaciones', 'desparasitaciones', 'formulas', 'laboratorio', 'imagenes', 'cirugias', 'seguimientos', 'tareas-pendientes', 'remisiones', 'citas'];
 
     const TABLERO_QUICKNAV_MODULOS = {
       vacunaciones: {
@@ -9978,14 +10028,14 @@
         openEdit: (petKey, idx) => openCirugiaModal('edit', petKey, idx),
         viewModuleKey: 'cirugia'
       },
-      ordenes: {
-        label: 'Órdenes', icon: 'clipboard-list',
-        getRecords: data => (data.ordenes || []).map((r, idx) => ({ idx, r })),
-        line: r => r.tipoLabel,
-        sub: r => `${r.fecha} · ${r.detalle}`,
-        openCreate: petKey => openOrdenModal('create', petKey),
-        openEdit: (petKey, idx) => openOrdenModal('edit', petKey, idx),
-        viewModuleKey: 'orden'
+      'tareas-pendientes': {
+        label: 'Tareas Pendientes', icon: 'list-checks',
+        getRecords: data => (data.tareasPendientes || []).map((r, idx) => ({ idx, r })),
+        line: r => r.descripcion,
+        sub: r => `${r.responsableNombre}${r.fechaLimite ? ' · Vence: ' + r.fechaLimite : ''}${r.estado === 'completada' ? ' · Completada' : ''}`,
+        openCreate: petKey => openTareaPendienteModal('create', petKey),
+        openEdit: (petKey, idx) => openTareaPendienteModal('edit', petKey, idx),
+        viewModuleKey: 'tarea'
       },
       seguimientos: {
         label: 'Seguimientos', icon: 'phone-call',
@@ -10223,6 +10273,7 @@
       if (selectedPetKey) renderVacunacionesTable(selectedPetKey);
       if (selectedPetKey) renderDesparasitacionesTable(selectedPetKey);
       if (selectedPetKey) renderOrdenesTable(selectedPetKey);
+      if (selectedPetKey) renderTareasPendientesTable(selectedPetKey);
       if (selectedPetKey) renderDocumentosTable(selectedPetKey);
       if (selectedPetKey) renderResultadosTable(selectedPetKey);
       if (selectedPetKey) renderExamenesTable(selectedPetKey);
@@ -10275,6 +10326,11 @@
         const record = patientData[petKey].ordenes[Number(idx)];
         if (!record) return null;
         return { title: 'Orden', html: ordenViewContentHTML(record) };
+      } else if (moduleKey === 'tarea') {
+        const [petKey, idx] = recordId.split(':');
+        const record = patientData[petKey].tareasPendientes[Number(idx)];
+        if (!record) return null;
+        return { title: 'Tarea pendiente', html: tareaPendienteViewContentHTML(record) };
       } else if (moduleKey === 'documento') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].documentos[Number(idx)];
@@ -10390,6 +10446,9 @@
       } else if (moduleKey === 'orden') {
         const [petKey, idx] = recordId.split(':');
         openOrdenModal('edit', petKey, Number(idx));
+      } else if (moduleKey === 'tarea') {
+        const [petKey, idx] = recordId.split(':');
+        openTareaPendienteModal('edit', petKey, Number(idx));
       } else if (moduleKey === 'documento') {
         const [petKey, idx] = recordId.split(':');
         openDocumentoModal('edit', petKey, Number(idx));
@@ -10744,6 +10803,17 @@
           setTimeout(() => {
             patientData[petKey].desparasitaciones.splice(idx, 1);
             renderDesparasitacionesTable(petKey);
+          }, 250);
+        }
+      } else if (moduleKey === 'tarea') {
+        const [petKey, idxStr] = recordId.split(':');
+        const idx = Number(idxStr);
+        const row = document.querySelector(`tr[data-tarea-pendiente-row="${idx}"]`);
+        if (row) {
+          row.classList.add('row-fade-out');
+          setTimeout(() => {
+            patientData[petKey].tareasPendientes.splice(idx, 1);
+            renderTareasPendientesTable(petKey);
           }, 250);
         }
       } else if (moduleKey === 'peluqueria') {
@@ -11750,6 +11820,178 @@
           origen: `Desparasitación — ${data.name} — Próximo control ${record.proximoControl}`
         });
       }
+    }
+
+    // ── MÓDULO: TAREAS PENDIENTES ────────────────────────────────
+    const TAREA_PRIORIDADES = [
+      { value: 'alta', label: 'Alta', color: '#DC2626' },
+      { value: 'media', label: 'Media', color: '#F59E0B' },
+      { value: 'baja', label: 'Baja', color: '#64748B' }
+    ];
+    function tareaPrioridadInfo(value) {
+      return TAREA_PRIORIDADES.find(p => p.value === value) || TAREA_PRIORIDADES[1];
+    }
+
+    function poblarSelectResponsableTarea(selectedId) {
+      const activos = USUARIOS_SISTEMA.filter(u => u.estado === 'activo');
+      const sel = document.getElementById('tp-responsable');
+      sel.innerHTML = activos.map(u => `<option value="${u.id}" ${selectedId && Number(selectedId) === u.id ? 'selected' : ''}>${u.nombre}</option>`).join('');
+    }
+
+    let editingTareaPendienteContext = null;
+
+    function renderTareasPendientesTable(petKey) {
+      const data = patientData[petKey];
+      const tbody = document.getElementById('tareas-pendientes-table-body');
+      const emptyState = document.getElementById('tareas-pendientes-empty-state');
+
+      if (!data.tareasPendientes.length) {
+        tbody.innerHTML = '';
+        emptyState.style.display = 'flex';
+      } else {
+        emptyState.style.display = 'none';
+        tbody.innerHTML = data.tareasPendientes.map((t, i) => {
+          const prio = tareaPrioridadInfo(t.prioridad);
+          const extraActions = [{
+            icon: t.estado === 'completada' ? 'rotate-ccw' : 'check',
+            label: t.estado === 'completada' ? 'Reabrir tarea' : 'Marcar como completada',
+            onclick: `toggleEstadoTareaPendiente('${petKey}', ${i})`
+          }];
+          return `
+            <tr data-tarea-pendiente-row="${i}">
+              <td>${t.descripcion}</td>
+              <td>${t.responsableNombre}</td>
+              <td><span class="priority-tag"><span class="priority-dot" style="background:${prio.color};"></span>${prio.label}</span></td>
+              <td>${t.fechaLimite || '—'}</td>
+              <td><span class="status-badge ${t.estado === 'completada' ? 'status-badge-completado' : 'status-badge-pendiente'}">${t.estado === 'completada' ? 'Completada' : 'Pendiente'}</span></td>
+              <td>${t.usuario}</td>
+              <td style="text-align: right;">${renderRowActionsMenu('tarea', `${petKey}:${i}`, extraActions)}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // A diferencia de otros contadores del sidebar (total de registros),
+      // este cuenta solo las tareas sin completar — es el número que
+      // importa para un módulo llamado "Tareas Pendientes".
+      const counter = document.querySelector('.sidebar-item[data-subtab="tareas-pendientes"] .sidebar-counter');
+      if (counter) counter.textContent = data.tareasPendientes.filter(t => t.estado !== 'completada').length;
+
+      lucide.createIcons();
+    }
+
+    function tareaPendienteViewContentHTML(record) {
+      const prio = tareaPrioridadInfo(record.prioridad);
+      return `
+        <div class="info-label">Descripción</div>
+        <div class="info-value">${record.descripcion}</div>
+        <div class="info-label">Responsable</div>
+        <div class="info-value">${record.responsableNombre}</div>
+        <div class="info-label">Prioridad</div>
+        <div class="info-value"><span class="priority-tag"><span class="priority-dot" style="background:${prio.color};"></span>${prio.label}</span></div>
+        <div class="info-label">Fecha límite</div>
+        <div class="info-value">${record.fechaLimite || '—'}</div>
+        <div class="info-label">Estado</div>
+        <div class="info-value"><span class="status-badge ${record.estado === 'completada' ? 'status-badge-completado' : 'status-badge-pendiente'}">${record.estado === 'completada' ? 'Completada' : 'Pendiente'}</span></div>
+        <div class="info-label">Notas</div>
+        <div class="info-value">${record.notas || '—'}</div>
+        <div class="info-label" style="margin-top:8px;">Usuario</div>
+        <div class="info-value">${record.usuario}</div>
+      `;
+    }
+
+    function openTareaPendienteModal(mode, petKey, tareaIndex) {
+      const data = patientData[petKey];
+      editingTareaPendienteContext = (mode === 'edit') ? { petKey, index: tareaIndex } : null;
+
+      const avatar = document.getElementById('tp-pet-avatar');
+      avatar.textContent = data.avatarText;
+      avatar.className = `soap-modal-pet-avatar ${data.avatarClass}`;
+      document.getElementById('tp-pet-name').textContent = data.name;
+      document.getElementById('tp-pet-weight-chip').textContent = data.weight;
+
+      const saveBtn = document.getElementById('tarea-pendiente-save-btn');
+
+      if (mode === 'edit') {
+        const record = data.tareasPendientes[tareaIndex];
+        document.getElementById('tp-descripcion').value = record.descripcion;
+        poblarSelectResponsableTarea(record.responsableId);
+        document.getElementById('tp-prioridad').value = record.prioridad;
+        document.getElementById('tp-fecha-limite').value = record.fechaLimiteISO || '';
+        document.getElementById('tp-notas').value = record.notas || '';
+        saveBtn.textContent = 'Guardar cambios';
+      } else {
+        document.getElementById('tp-descripcion').value = '';
+        poblarSelectResponsableTarea(null);
+        document.getElementById('tp-prioridad').value = 'media';
+        document.getElementById('tp-fecha-limite').value = '';
+        document.getElementById('tp-notas').value = '';
+        saveBtn.textContent = 'Guardar';
+      }
+
+      document.getElementById('tarea-pendiente-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeTareaPendienteModal() {
+      document.getElementById('tarea-pendiente-modal').classList.remove('show');
+      editingTareaPendienteContext = null;
+    }
+    function handleTareaPendienteModalOverlayClick(e) {
+      if (e.target === document.getElementById('tarea-pendiente-modal')) closeTareaPendienteModal();
+    }
+
+    function guardarTareaPendiente() {
+      const isEdit = !!editingTareaPendienteContext;
+      const petKey = isEdit ? editingTareaPendienteContext.petKey : selectedPetKey;
+      const data = patientData[petKey];
+
+      const descripcion = document.getElementById('tp-descripcion').value.trim();
+      const responsableId = Number(document.getElementById('tp-responsable').value);
+      const prioridad = document.getElementById('tp-prioridad').value;
+      const fechaLimiteISO = document.getElementById('tp-fecha-limite').value;
+      const notas = document.getElementById('tp-notas').value.trim();
+
+      if (!descripcion || !responsableId) {
+        showToast('Completa la descripción y el responsable');
+        return;
+      }
+
+      const responsable = USUARIOS_SISTEMA.find(u => u.id === responsableId);
+      const responsableNombre = responsable ? responsable.nombre : '—';
+      const fechaLimite = fechaLimiteISO ? formatFechaCorta(fechaLimiteISO) : null;
+
+      if (isEdit) {
+        const record = data.tareasPendientes[editingTareaPendienteContext.index];
+        record.descripcion = descripcion;
+        record.responsableId = responsableId;
+        record.responsableNombre = responsableNombre;
+        record.prioridad = prioridad;
+        record.fechaLimiteISO = fechaLimiteISO || null;
+        record.fechaLimite = fechaLimite;
+        record.notas = notas;
+      } else {
+        data.tareasPendientes.unshift({
+          descripcion, responsableId, responsableNombre, prioridad,
+          fechaLimiteISO: fechaLimiteISO || null, fechaLimite,
+          notas,
+          estado: 'pendiente',
+          usuario: 'Dr. Sebastián Ríos'
+        });
+      }
+
+      renderTareasPendientesTable(petKey);
+      refrescarTableroQuicknavSi('tareas-pendientes', petKey);
+      closeTareaPendienteModal();
+      showToast(isEdit ? 'Tarea actualizada' : 'Tarea registrada');
+    }
+
+    function toggleEstadoTareaPendiente(petKey, idx) {
+      const record = patientData[petKey].tareasPendientes[idx];
+      record.estado = record.estado === 'completada' ? 'pendiente' : 'completada';
+      renderTareasPendientesTable(petKey);
+      refrescarTableroQuicknavSi('tareas-pendientes', petKey);
+      showToast(record.estado === 'completada' ? 'Tarea marcada como completada' : 'Tarea reabierta');
     }
 
     // ── MÓDULO: PELUQUERÍA Y SPA ──────────────────────────────────
@@ -13110,7 +13352,6 @@
       }
 
       renderOrdenesTable(petKey);
-      refrescarTableroQuicknavSi('ordenes', petKey);
       closeOrdenModal();
       showToast(isEdit ? 'Orden actualizada' : (nuevasOrdenes.length > 1 ? 'Órdenes registradas' : 'Orden registrada'));
     }
@@ -19177,7 +19418,7 @@
       }
       localStorage.setItem('iris_active_estab_id', estabId);
       showToast('Cambiando de establecimiento...');
-      // Recarga completa: cada uno de los ~17 módulos del Consultorio (y
+      // Recarga completa: cada uno de los ~18 módulos del Consultorio (y
       // Ventas/Inventario/Agenda) renderiza sus datos mock desde bindings
       // top-level una sola vez al cargar la página — recargar es la forma
       // más simple y segura de que todos vuelvan a pintar con los datos
@@ -20284,7 +20525,7 @@
         // A partir de aquí SIEMPRE se entra al app shell (localStorage +
         // mostrarShellSegunSesion), incluso si algo dentro de
         // resetMockDataForClinic/renderAllModulesData falla: muchas de las
-        // funciones de render de los 17 módulos se escribieron asumiendo
+        // funciones de render de los 18 módulos se escribieron asumiendo
         // los datos de demo ya sembrados y nunca se probaron contra un
         // establecimiento realmente vacío (clínica nueva). Que una de esas
         // funciones truene no debe dejar al usuario atascado en el spinner
@@ -20599,6 +20840,58 @@
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeDesparasitacionModal()">Cerrar</button>
         <button class="btn-primary" id="desparasitacion-save-btn" onclick="guardarDesparasitacion()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Registro de tarea pendiente -->
+  <div class="modal-overlay" id="tarea-pendiente-modal" onclick="handleTareaPendienteModalOverlayClick(event)">
+    <div class="soap-modal-card" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <div class="soap-modal-pet-avatar" id="tp-pet-avatar">L</div>
+          <div>
+            <div class="soap-modal-pet-name" id="tp-pet-name">Luna</div>
+            <span class="pet-chip-tag" id="tp-pet-weight-chip">4.2 kg</span>
+          </div>
+        </div>
+        <button class="soap-modal-close" onclick="closeTareaPendienteModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <div class="soap-modal-body">
+        <div class="input-group">
+          <label class="input-label" for="tp-descripcion">Descripción de la tarea</label>
+          <textarea class="soap-textarea" id="tp-descripcion"></textarea>
+        </div>
+
+        <div class="soap-meta-row">
+          <div class="input-group">
+            <label class="input-label">Responsable</label>
+            <select class="soap-select-control" id="tp-responsable"></select>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Prioridad</label>
+            <select class="soap-select-control" id="tp-prioridad">
+              <option value="alta">Alta</option>
+              <option value="media" selected>Media</option>
+              <option value="baja">Baja</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="tp-fecha-limite">Fecha límite</label>
+            <input type="date" class="input-control" style="padding-left:12px;" id="tp-fecha-limite">
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label" for="tp-notas">Notas</label>
+          <textarea class="soap-textarea" id="tp-notas"></textarea>
+        </div>
+      </div>
+
+      <div class="soap-modal-footer">
+        <button class="btn-secondary" onclick="closeTareaPendienteModal()">Cerrar</button>
+        <button class="btn-primary" id="tarea-pendiente-save-btn" onclick="guardarTareaPendiente()">Guardar</button>
       </div>
     </div>
   </div>

@@ -11,7 +11,7 @@ pantalla de aprobación pendiente con el bypass "Simular aprobación y
 continuar") vive dentro de `index.html`, en `<div id="auth-shell">`,
 justo después de `<body>`, con su propio `<script>` inmediatamente
 después (mismo scope global que el resto — sin `type="module"`). El
-shell normal (header/nav/sidebar de 17 módulos) vive en
+shell normal (header/nav/sidebar de 18 módulos) vive en
 `<div id="app-shell">`, más abajo en el mismo archivo. Al cargar la
 página, `mostrarShellSegunSesion()` decide cuál de los dos se muestra
 según `localStorage.getItem('iris_session_active')`. El auth shell
@@ -215,12 +215,13 @@ cierra el script") en vez del literal `</script>`.
     patient-view), agrégaselo también, si no, no hay forma de probar
     la restricción de rol sin salir de esa pantalla.
 
-## Sidebar de Consultorio (17 módulos, orden fijo)
+## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·
 Desparasitaciones · Hospitalizaciones/ambulatorios ·
-Cirugías/procedimientos · Órdenes · Exámenes de laboratorio ·
-Imágenes diagnósticas · Peluquería y spa · Guardería · Seguimientos ·
-Documentos · Remisiones · Citas · Mensajes al propietario
+Cirugías/procedimientos · Órdenes · Tareas Pendientes ·
+Exámenes de laboratorio · Imágenes diagnósticas · Peluquería y spa ·
+Guardería · Seguimientos · Documentos · Remisiones · Citas ·
+Mensajes al propietario
 
 ## Ya construido
 Consultas, Fórmulas médicas, Órdenes (con catálogo mock dinámico) +
@@ -303,6 +304,39 @@ Inventario, pero sin SheetJS porque el archivo es texto plano. Es
 creación pura: si el número de identificación de una fila (solo
 dígitos) ya coincide con un cliente existente en `VENTAS_CLIENTES`, esa
 fila se omite en vez de sobreescribir.
+
+Tareas Pendientes (18º módulo del sidebar de Consultorio, agregado
+después de Órdenes): mismo patrón simple de Vacunaciones/
+Desparasitaciones (formulario + lista, sin patrón de dos estados
+borrador/finalizado ni timeline al crear — a diferencia de esos dos,
+acá el propio registro ES el estado que importa, no hay evento
+clínico que documentar en Historia). Campos: descripción, responsable
+(select poblado desde `USUARIOS_SISTEMA` activos vía
+`poblarSelectResponsableTarea()`), prioridad (Alta/Media/Baja, mismo
+`.priority-tag`/`.priority-dot` que Órdenes pero con paleta propia
+`TAREA_PRIORIDADES`, sin el selector buscable con descripción que sí
+usa Órdenes), fecha límite y notas. Estado pendiente/completada NO se
+edita desde el modal — se alterna con la acción extra "Marcar como
+completada"/"Reabrir tarea" del menú "..." de cada fila
+(`toggleEstadoTareaPendiente()`, vía el 3er parámetro `extraActions` de
+`renderRowActionsMenu()`, mismo mecanismo que "Registrar resultado" en
+Órdenes). El contador del sidebar (`renderTareasPendientesTable()`)
+es la única excepción al criterio de "total de registros" que usan
+todos los demás módulos con contador: acá cuenta solo las tareas SIN
+completar, porque es el número que importa para un módulo llamado
+"Tareas Pendientes" — replicar este criterio si se agrega otro módulo
+con semántica de pendiente/completado y contador propio.
+`patientData[petKey].tareasPendientes` se agregó tanto a los 3
+pacientes mock (Luna/Toby/Milo) como a `crearScaffoldClinicoVacio()`
+(mascota nueva + reconstrucción desde Supabase). Este módulo también
+reemplazó a Órdenes dentro de `TABLERO_QUICKNAV_MODULOS`/
+`TABLERO_NAV_ORDEN` (el nav acotado de la pantalla de "Registro de
+consulta"/Tablero de trabajo, ver patrón de Kardex arriba aunque el
+Tablero es una pantalla distinta) — Órdenes sigue existiendo intacto
+como módulo completo del sidebar normal, simplemente ya no tiene
+entrada en ese nav acotado de 10 módulos durante una consulta activa;
+si se necesita volver a él desde ahí, es vía "Ver órdenes completo"
+saliendo del Tablero, no hay atajo directo.
 
 ## Al recibir un prompt nuevo de módulo
 1. Lee solo la sección del sidebar/JS relevante al módulo pedido, no
