@@ -3431,6 +3431,7 @@
       // pantalla -- evita arrastrar la foto de una sesión anterior si
       // bootstrapSession() vuelve a caer aquí (ej. tras un error).
       document.getElementById('perfil-foto-url-hidden').value = '';
+      perfilFotoUploadPromise = null;
       const preview = document.getElementById('perfil-foto-preview');
       preview.innerHTML = '<i data-lucide="user" style="width:22px;height:22px;"></i>';
       preview.className = 'pet-photo-circle';
@@ -3441,6 +3442,15 @@
     // bucket `avatars` (mismo criterio que handleFotoInputChange de fotos
     // de mascota) -- pendingAuthUserId ya está fijado por
     // prepararScreenPerfil() al entrar a esta pantalla.
+    // perfilFotoUploadPromise queda guardada para que handleCompletarPerfil
+    // la espere antes de guardar -- el preview local aparece al instante
+    // (FileReader) pero la subida real es de red, y sin esto un usuario que
+    // hace click en "Continuar" apenas selecciona la foto dispara el submit
+    // antes de que #perfil-foto-url-hidden se llene, guardando foto_url NULL
+    // aunque el archivo sí termine subiendo a storage segundos después (bug
+    // real detectado: fila en profiles con foto_url null pese a existir el
+    // objeto en el bucket avatars).
+    let perfilFotoUploadPromise = null;
     async function handlePerfilCompletarFotoChange(input) {
       if (!input.files || !input.files[0] || !pendingAuthUserId) return;
       const file = input.files[0];
@@ -3452,14 +3462,17 @@
       };
       reader.readAsDataURL(file);
 
-      try {
-        const url = await subirFotoPerfilReal(file, pendingAuthUserId);
-        document.getElementById('perfil-foto-url-hidden').value = url;
-      } catch (err) {
-        console.error('[IRIS] Error subiendo foto de perfil:', err);
-        const detalle = (err && err.message) ? err.message : 'error desconocido';
-        showToast(`La foto se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
-      }
+      perfilFotoUploadPromise = (async () => {
+        try {
+          const url = await subirFotoPerfilReal(file, pendingAuthUserId);
+          document.getElementById('perfil-foto-url-hidden').value = url;
+        } catch (err) {
+          console.error('[IRIS] Error subiendo foto de perfil:', err);
+          const detalle = (err && err.message) ? err.message : 'error desconocido';
+          showToast(`La foto se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
+        }
+      })();
+      await perfilFotoUploadPromise;
     }
 
     async function handleCompletarPerfil(e) {
@@ -3482,6 +3495,11 @@
       const btn = document.getElementById('perfil-completar-btn');
       btn.disabled = true;
       btn.textContent = 'Guardando...';
+
+      // Espera a que la subida de foto (si el usuario seleccionó una y
+      // todavía está en vuelo) termine de llenar #perfil-foto-url-hidden
+      // antes de leerlo -- ver nota junto a perfilFotoUploadPromise.
+      if (perfilFotoUploadPromise) await perfilFotoUploadPromise;
 
       const { data: { user } } = await window.supabase.auth.getUser();
       const { error } = await window.supabase.from('profiles').update({
