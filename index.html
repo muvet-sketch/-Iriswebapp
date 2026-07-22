@@ -41,25 +41,40 @@
   <!-- SheetJS/xlsx (lectura de .xlsx en el navegador para Inventario > Importar Excel) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
-    /* VARIABLES DE DISEÑO (SISTEMA DE COLOR CRÍTICO) */
+    /* VARIABLES DE DISEÑO (SISTEMA DE COLOR CRÍTICO - STITCH) */
     :root {
       --clinic-accent: #0F766E;       /* Simula color_primario de la clínica (Teal por defecto) */
-      --clinic-accent-light: #14B8A6; /* Accent secundario/brillante */
-      --bg-app: #F8FAFC;
-      --surface: #FFFFFF;
-      --border: #E2E8F0;
-      --text-1: #0F172A;
-      --text-2: #64748B;
-      --danger: #DC2626;
-      --warning: #F59E0B;
-      --success: #16A34A;
+      --clinic-accent-light: #14B8A6; /* Accent secundario/brillante (Fresh Mint) */
+      --bg-app: #faf8ff;              /* Fondo de aplicación Stitch */
+      --surface: #FFFFFF;             /* Superficie Level 1 (Blanco puro) */
+      --border: rgba(189, 201, 198, 0.4); /* outline_variant con transparencia suave */
+      --border-solid: #bdc9c6;        /* outline_variant sólido */
+      --text-1: #131b2e;              /* on_surface (azul/negro clínico oscuro) */
+      --text-2: #3e4947;              /* on_surface_variant (gris verdoso) */
+      --danger: #EF4444;              /* emergency_red */
+      --warning: #F59E0B;             /* caution_amber */
+      --success: #14B8A6;             /* fresh_mint */
       
+      /* Superficies tonales de Stitch */
+      --surface-base: #F8FAFC;
+      --surface-container-lowest: #ffffff;
+      --surface-container-low: #f2f3ff;
+      --surface-container: #eaedff;
+      --surface-container-high: #e2e7ff;
+      --surface-container-highest: #dae2fd;
+      --surface-dim: #d2d9f4;
+
       /* Variables calculadas/derivadas */
       --clinic-accent-rgb: 15, 118, 110;
-      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
-      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
-      --radius: 8px;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0px 2px 4px rgba(15, 23, 42, 0.05); /* Level 1 shadow */
+      --shadow-lg: 0px 10px 25px rgba(15, 23, 42, 0.1);  /* Level 2 shadow */
+      
+      /* Escalas de redondeado */
+      --radius-sm: 4px;
+      --radius: 8px;                  /* 0.5rem (Estándar) */
+      --radius-lg: 16px;              /* 1rem (Contenedores grandes / modales) */
+      
       --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
@@ -450,7 +465,7 @@
     .modal-overlay.show { display: flex; }
     .modal-card {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; box-shadow: var(--shadow-lg);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
       width: 520px; max-width: 92vw; padding: 28px;
       animation: slideUp .25s ease-out;
     }
@@ -461,13 +476,13 @@
     .modal-search-wrap  { position:relative; margin-bottom:16px; }
     .modal-search-icon  { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--text-2); }
     .modal-search-input {
-      width:100%; border:1px solid var(--border); border-radius:8px;
+      width:100%; border:1px solid var(--border); border-radius:var(--radius);
       padding:10px 12px 10px 38px; font-size:13px; font-family:inherit;
       background:#FAFBFD; outline:none; transition:var(--transition);
     }
     .modal-search-input:focus { border-color:var(--clinic-accent); box-shadow:0 0 0 3px rgba(var(--clinic-accent-rgb),.1); }
     .modal-result {
-      border:1px solid var(--border); border-radius:8px; padding:14px 16px;
+      border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;
       display:flex; align-items:center; gap:12px; margin-bottom:10px; transition:var(--transition);
     }
     .modal-result:hover { border-color:#CBD5E1; background:#F8FAFC; }
@@ -476,7 +491,7 @@
     .modal-result-name { font-size:13px; font-weight:600; }
     .modal-result-meta { font-size:11px; color:var(--text-2); margin-top:2px; }
     .modal-btn-solic {
-      flex-shrink:0; padding:6px 14px; border-radius:8px;
+      flex-shrink:0; padding:6px 14px; border-radius:var(--radius);
       border:1.5px solid var(--clinic-accent); color:var(--clinic-accent);
       background:var(--surface); font-size:12px; font-weight:600;
       font-family:inherit; cursor:pointer; transition:var(--transition);
@@ -487,7 +502,7 @@
     /* MODAL: NUEVA CONSULTA (SOAP) */
     .soap-modal-card {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; box-shadow: var(--shadow-lg);
+      border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
       width: 860px; max-width: 94vw; max-height: 90vh;
       display: flex; flex-direction: column; overflow: hidden;
       animation: slideUp .25s ease-out;
@@ -1106,7 +1121,7 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 20px;
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--shadow-md); /* Stitch Level 1 Elevation */
     }
 
     .search-grid {
@@ -1196,7 +1211,7 @@
       background-color: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--shadow-md); /* Stitch Level 1 Elevation */
       overflow: hidden;
     }
 
@@ -1207,12 +1222,12 @@
     }
 
     .results-table th {
-      background-color: #F8FAFC;
+      background-color: rgba(var(--clinic-accent-rgb), 0.05); /* Stitch light teal header background */
       border-bottom: 1px solid var(--border);
       padding: 12px 16px;
       font-size: 12px;
       font-weight: 600;
-      color: var(--text-2);
+      color: var(--clinic-accent);                            /* Stitch teal text for headers */
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
@@ -1233,8 +1248,12 @@
       transition: var(--transition);
     }
 
+    .results-table tr:nth-child(even) {
+      background-color: rgba(var(--clinic-accent-rgb), 0.015); /* Stitch alternating row background */
+    }
+
     .results-table tr:hover {
-      background-color: #F8FAFC;
+      background-color: rgba(var(--clinic-accent-rgb), 0.05);  /* Stitch interactive teal hover highlight */
     }
 
     /* Celda Propietario */
@@ -1354,7 +1373,7 @@
     /* NIVEL 2 — Sidebar Vertical Izquierdo */
     .sidebar-left {
       width: 280px;
-      background-color: var(--surface);
+      background-color: var(--surface-container-low); /* Stitch tonal background */
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
@@ -1367,15 +1386,15 @@
       padding: 12px 8px;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 3px;
     }
 
     .sidebar-item {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 12px;
-      border-radius: 6px;
+      padding: 10px 14px;              /* Stitch premium spacing */
+      border-radius: var(--radius);    /* 8px radius */
       font-size: 13px;
       font-weight: 500;
       color: var(--text-2);
@@ -1386,13 +1405,14 @@
     }
 
     .sidebar-item:hover {
-      background-color: #F8FAFC;
+      background-color: var(--surface-container-lowest); /* White hover cards on light blue background */
       color: var(--text-1);
+      box-shadow: var(--shadow-sm);
     }
 
     .sidebar-item.active {
       color: var(--clinic-accent);
-      background-color: rgba(var(--clinic-accent-rgb), 0.06);
+      background-color: rgba(var(--clinic-accent-rgb), 0.08);
       border-left-color: var(--clinic-accent);
       font-weight: 600;
     }
@@ -1400,7 +1420,7 @@
     /* Ítem del sidebar "consultado" desde Navegación rápida del Tablero de
        trabajo (sin navegar) — distinto de .active, que significa pane abierto */
     .sidebar-item.quicknav-selected {
-      background-color: rgba(var(--clinic-accent-rgb), 0.03);
+      background-color: rgba(var(--clinic-accent-rgb), 0.04);
       border-left-color: var(--clinic-accent);
     }
 
@@ -1626,7 +1646,7 @@
       background-color: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--shadow-md); /* Stitch Level 1 Elevation */
       padding: 20px;
     }
 
@@ -1685,13 +1705,13 @@
     .stat-card {
       background-color: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: var(--radius); /* Stitch 8px rounded corners */
       padding: 20px;
       height: 120px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--shadow-md); /* Stitch Level 1 shadow */
       position: relative;
       overflow: hidden;
       transition: var(--transition);
@@ -1699,7 +1719,7 @@
 
     .stat-card:hover {
       transform: translateY(-2px);
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-lg); /* Stitch Level 2 shadow */
     }
 
     .stat-label-row {
@@ -1962,7 +1982,8 @@
       top: 10px;
       bottom: 10px;
       width: 2px;
-      background-color: var(--border);
+      background-color: var(--clinic-accent); /* Stitch primary accent for vertical line */
+      opacity: 0.25;                          /* Stitch soft opacity */
     }
 
     .timeline-node {
@@ -1982,9 +2003,10 @@
     }
 
     .timeline-content-card {
-      background-color: #FAFBFD;
+      background-color: var(--surface);       /* Stitch Level 1 Card White surface */
       border: 1px solid var(--border);
       border-radius: var(--radius);
+      box-shadow: var(--shadow-md);            /* Stitch Level 1 shadow */
       padding: 14px 16px;
     }
 
