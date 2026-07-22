@@ -3404,11 +3404,28 @@
 
     /* ── Completar perfil personal (Tarea 4/8) ───────────────────
        Primer paso obligatorio tras login/registro — bootstrapSession()
-       navega aquí mientras profiles.nombre esté vacío. */
-    function prepararScreenPerfil(email, userId) {
+       navega aquí mientras profiles.nombre esté vacío. emailConfirmed
+       viene de session.user.email_confirmed_at: si Supabase ya
+       confirmó el correo (login normal, o "Confirm email" desactivado
+       en Authentication > Providers al momento del signUp -> Supabase
+       marca email_confirmed_at de inmediato), no tiene sentido pedir
+       el código propio de acá encima -- sería una segunda verificación
+       redundante. Si "Confirm email" está activo, Supabase deja
+       email_confirmed_at en null hasta que el usuario confirma por su
+       link, así que acá seguimos exigiendo el código como antes. Esto
+       hace que reactivar el toggle en Supabase vuelva a pedir
+       verificación automáticamente, sin ningún flag propio que
+       mantener sincronizado a mano. */
+    function prepararScreenPerfil(email, userId, emailConfirmed) {
       pendingAuthUserId = userId;
       document.getElementById('perfil-email-display').textContent = email;
-      perfilEmailVerifier = mountEmailVerifier('perfil-email-verify', () => email, () => pendingAuthUserId, () => {});
+      if (emailConfirmed) {
+        perfilEmailVerifier = { isVerified: () => true };
+        const container = document.getElementById('perfil-email-verify');
+        container.innerHTML = '<span style="font-size:12px;color:var(--text-2);">✓ Correo verificado</span>';
+      } else {
+        perfilEmailVerifier = mountEmailVerifier('perfil-email-verify', () => email, () => pendingAuthUserId, () => {});
+      }
 
       // Reinicia el preview/hidden de foto cada vez que se entra a esta
       // pantalla -- evita arrastrar la foto de una sesión anterior si
@@ -20405,7 +20422,27 @@
     // él salta selección de rol y creación/solicitud de establecimiento —
     // el rol y el establecimiento ya vienen fijados en la fila `invites`
     // (ver accept_invite() en supabase/schema.sql).
-    const pendingInviteToken = new URLSearchParams(location.search).get('invite') || null;
+    //
+    // Si el invitado tiene que crear cuenta y el proyecto de Supabase
+    // exige confirmar el correo ("Confirm email" activo), el link de
+    // confirmación que Supabase manda por correo redirige a la Site URL
+    // configurada en el proyecto SIN el ?invite=... original -- esa URL
+    // la arma Supabase, no nosotros, así que el token se perdería al
+    // volver. Por eso se guarda en localStorage apenas se ve en la URL
+    // (y se limpia de la URL con replaceState para no dejarlo visible/
+    // reusable desde el historial) y se lee de ahí como respaldo si ya
+    // no viene en la URL. bootstrapSession() lo borra de localStorage en
+    // cuanto intenta usarlo (con éxito o no -- un token ya usado o
+    // vencido no tiene sentido seguir reintentándolo en cada carga).
+    const INVITE_TOKEN_STORAGE_KEY = 'iris_pending_invite_token';
+    const inviteTokenFromUrl = new URLSearchParams(location.search).get('invite');
+    if (inviteTokenFromUrl) {
+      localStorage.setItem(INVITE_TOKEN_STORAGE_KEY, inviteTokenFromUrl);
+      const cleanUrl = new URL(location.href);
+      cleanUrl.searchParams.delete('invite');
+      history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+    }
+    const pendingInviteToken = inviteTokenFromUrl || localStorage.getItem(INVITE_TOKEN_STORAGE_KEY) || null;
 
     // ── ORQUESTADOR DE SESIÓN ───────────────────────────────────────
     // Reemplaza el viejo interruptor puramente local (iris_session_active
@@ -20455,7 +20492,7 @@
 
         // 1) Perfil incompleto -> completar nombre/teléfono/foto + verificar email
         if (!profile || !profile.nombre) {
-          prepararScreenPerfil(session.user.email, session.user.id);
+          prepararScreenPerfil(session.user.email, session.user.id, !!session.user.email_confirmed_at);
           irAAuthShell('screen-perfil-completar');
           return;
         }
@@ -20471,6 +20508,7 @@
         // fijado en la invitación) antes de seguir evaluando memberships
         if (pendingInviteToken) {
           await window.supabase.rpc('accept_invite', { p_token: pendingInviteToken });
+          localStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
         }
 
         const memberList = (membershipRows || []).map(m => ({
