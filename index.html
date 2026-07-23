@@ -2462,7 +2462,17 @@
       padding: 12px 16px; margin: 14px 0;
     }
     .kardex-weight-now-value { font-size: 20px; font-weight: 700; color: var(--text-1); }
+    .tt-sugerencia-hint { font-size: 11px; color: var(--text-2); margin-top: 4px; }
+    .tt-sugerencia-hint a { color: var(--clinic-accent); font-weight: 600; text-decoration: none; margin-left: 4px; }
+    .tt-sugerencia-hint a:hover { text-decoration: underline; }
     .kardex-weight-now-updated { font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
+    .calc-dosis-resultado-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background-color: #FAFBFD; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 10px 14px; margin-top: 10px;
+    }
+    .calc-dosis-resultado-label { font-size: 11px; color: var(--text-2); }
+    .calc-dosis-resultado-value { font-size: 17px; font-weight: 700; color: var(--text-1); margin-top: 2px; }
     .modo-programacion-wrap { display: flex; align-items: center; gap: 8px; }
     .modo-programacion-disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -2480,8 +2490,8 @@
     .tt-row-action-btn { background: none; border: none; color: var(--text-2); cursor: pointer; padding: 3px; border-radius: 4px; display: flex; }
     .tt-row-action-btn:hover { background-color: #F1F5F9; color: var(--text-1); }
     .tt-row-action-btn.danger:hover { background-color: #FEF2F2; color: var(--danger); }
-    .hour-th { min-width: 26px; width: 26px; padding: 4px 2px !important; font-size: 9px !important; }
-    .hour-cell { min-width: 26px; width: 26px; padding: 4px 2px !important; }
+    .hour-th { min-width: 38px; width: 38px; padding: 4px 2px !important; font-size: 9px !important; }
+    .hour-cell { min-width: 38px; width: 38px; padding: 4px 2px !important; }
     .hour-dot {
       width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--border);
       background-color: var(--surface); margin: 0 auto; display: flex; align-items: center; justify-content: center;
@@ -5207,7 +5217,13 @@
               <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="kardexAccionSimple('Falleció')"><i data-lucide="heart-crack" style="width:13px;height:13px;"></i> Falleció</button>
               <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="kardexAccionSimple('Salida')"><i data-lucide="log-out" style="width:13px;height:13px;"></i> Salida</button>
               <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="kardexAccionSimple('Trasladar')"><i data-lucide="move" style="width:13px;height:13px;"></i> Trasladar</button>
-              <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="agregarKardexDia()"><i data-lucide="calendar-plus" style="width:13px;height:13px;"></i> Nuevo día</button>
+              <div class="registrar-nuevo-wrap">
+                <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="event.stopPropagation(); toggleKardexNuevoDiaMenu()"><i data-lucide="calendar-plus" style="width:13px;height:13px;"></i> Nuevo día <i data-lucide="chevron-down" style="width:12px;height:12px;"></i></button>
+                <div class="registrar-nuevo-menu" id="kardex-nuevo-dia-menu">
+                  <div class="row-actions-item" onclick="event.stopPropagation(); agregarKardexDia()"><i data-lucide="file-plus"></i> Día en blanco</div>
+                  <div class="row-actions-item" onclick="event.stopPropagation(); agregarKardexDiaDesdeAnterior()"><i data-lucide="copy-plus"></i> A partir del día anterior</div>
+                </div>
+              </div>
               <button class="btn-outline" style="font-size:12px;padding:7px 12px;" onclick="openEditMascotaModal(kardexContext && kardexContext.petKey)"><i data-lucide="pencil" style="width:13px;height:13px;"></i> Editar mascota</button>
               <button class="btn-primary" style="font-size:12px;padding:7px 12px;" onclick="verEnConsultorioDesdeKardex()"><i data-lucide="stethoscope" style="width:13px;height:13px;"></i> Ver en consultorio</button>
             </div>
@@ -6412,20 +6428,20 @@
                     presentacionUnidad: 'mg', presentacionMg: '10', concentracion: '5mg/mL',
                     dosisPorPeso: '0.2', dosis: '0.5', dosisTextual: '0.5 mL IV', via: 'IV',
                     periodicidad: 'TID', horaInicial: '08:00', duracionDias: 3,
-                    observaciones: 'Administrar lento.', horas: [false,false,false,false,false,false,false,false,true,false,false,false,false,false,false,false,true,false,false,false,false,false,false,false]
+                    observaciones: 'Administrar lento.', horas: [false,false,false,false,true,false,false,false,true,false,false,false]
                   },
                   {
                     tipo: 'fluidoterapia', nombre: 'Lactato de Ringer', tipoFluido: 'Lactato de Ringer',
                     dosisPorPeso: '60', via: 'IV', periodicidad: 'Manual', venoclisis: 'Sí',
                     dosis: '10', dosisTextual: '10 mL/h', horaInicial: '08:00', duracionDias: 2,
-                    observaciones: '', horas: [false,false,false,false,false,false,false,false,true,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]
+                    observaciones: '', horas: [false,false,false,false,true,false,false,false,false,false,false,false]
                   }
                 ],
                 signos: {
-                  presion: Array(24).fill(''), temperatura: Array(24).fill(''), spo2: Array(24).fill(''),
-                  glicemia: Array(24).fill(''), tiempoLlenadoCapilar: Array(24).fill(''),
-                  frecuenciaCardiaca: Array(24).fill(''), frecuenciaRespiratoria: Array(24).fill(''),
-                  palpacionAbdominal: Array(24).fill('')
+                  presion: Array(12).fill(''), temperatura: Array(12).fill(''), spo2: Array(12).fill(''),
+                  glicemia: Array(12).fill(''), tiempoLlenadoCapilar: Array(12).fill(''),
+                  frecuenciaCardiaca: Array(12).fill(''), frecuenciaRespiratoria: Array(12).fill(''),
+                  palpacionAbdominal: Array(12).fill('')
                 }
               }
             ]
@@ -11660,6 +11676,62 @@
       }
     }
 
+    // ── CALCULADORA DE DOSIS (acceso rápido desde Fórmulas médicas) ──
+    // Utilidad standalone: no está atada a un campo específico de la
+    // fórmula (Cantidad/Posología son texto libre, sin un único destino
+    // claro como sí lo tiene el modal de tratamiento del Kardex) — cada
+    // resultado se copia al portapapeles con su botón "Copiar" para que
+    // el usuario lo pegue donde corresponda.
+    function abrirCalculadoraDosis() {
+      const petKey = editingFormulaContext ? editingFormulaContext.petKey : selectedPetKey;
+      const data = patientData[petKey];
+      document.getElementById('calc-dosis-peso-paciente').value = data ? (parseFloat(data.weight) || '') : '';
+      document.getElementById('calc-dosis-mgkg').value = '';
+      document.getElementById('calc-dosis-concentracion').value = '';
+      recalcularCalculadoraDosis();
+      document.getElementById('calculadora-dosis-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeCalculadoraDosisModal() {
+      document.getElementById('calculadora-dosis-modal').classList.remove('show');
+    }
+    function handleCalculadoraDosisOverlayClick(e) {
+      if (e.target === document.getElementById('calculadora-dosis-modal')) closeCalculadoraDosisModal();
+    }
+
+    function recalcularCalculadoraDosis() {
+      const peso = parseFloat(document.getElementById('calc-dosis-peso-paciente').value);
+      const mgKg = parseFloat(document.getElementById('calc-dosis-mgkg').value);
+      const concentracion = parseFloat(document.getElementById('calc-dosis-concentracion').value);
+
+      const dosisTotalEl = document.getElementById('calc-dosis-total');
+      const volumenEl = document.getElementById('calc-dosis-volumen');
+
+      if (!isNaN(peso) && !isNaN(mgKg) && peso > 0 && mgKg > 0) {
+        const dosisTotal = Math.round(peso * mgKg * 100) / 100;
+        dosisTotalEl.textContent = `${dosisTotal} mg`;
+
+        if (!isNaN(concentracion) && concentracion > 0) {
+          const volumen = Math.round((dosisTotal / concentracion) * 100) / 100;
+          volumenEl.textContent = `${volumen} mL`;
+        } else {
+          volumenEl.textContent = '—';
+        }
+      } else {
+        dosisTotalEl.textContent = '—';
+        volumenEl.textContent = '—';
+      }
+    }
+
+    function copiarCalculadoraValor(elementId) {
+      const texto = document.getElementById(elementId).textContent;
+      if (!texto || texto === '—') { showToast('Todavía no hay un valor para copiar'); return; }
+      navigator.clipboard.writeText(texto)
+        .then(() => showToast('Copiado al portapapeles'))
+        .catch(() => showToast('No se pudo copiar — copia el valor manualmente'));
+    }
+
     // ── MÓDULO: VACUNACIONES ─────────────────────────────────────
     // TODO: ITERACIÓN FUTURA — calcular alertas de vencimiento a partir de
     // "próxima vacunación" (ej. badge de vencida/próxima a vencer). No
@@ -14398,7 +14470,8 @@
     let kardexExpandedDayIndex = 0;
     let editingTratamientoContext = null; // { diaIndex, tratIndex } al editar un tratamiento existente
     let activeTratamientoDiaIndex = null; // día sobre el que se está registrando/editando un tratamiento
-    let tratamientoHorasState = Array(24).fill(false);
+    let tratamientoHorasState = Array(12).fill(false);
+    let activeTratamientoPesoActual = 0; // peso del día activo — base para "Dosis sugerida" en el modal
     // Seguimientos — registro único patientData[petKey].seguimientos[], con
     // múltiples puntos de entrada (Kardex de Hospitalización, módulo central
     // Seguimientos). editingSeguimientoContext identifica el registro en
@@ -14628,6 +14701,7 @@
       mountKardexHeader(petKey);
       switchKardexTab('trazabilidad');
       renderKardexTrazabilidad();
+      suscribirKardexRealtime(petKey, hospIndex);
 
       document.getElementById('consultorio-patient-view').classList.remove('active');
       document.querySelector('.consultorio-wrapper').style.display = 'none';
@@ -14639,6 +14713,7 @@
       document.getElementById('kardex-view').classList.remove('active');
       document.querySelector('.consultorio-wrapper').style.display = '';
       document.getElementById('consultorio-patient-view').classList.add('active');
+      desuscribirKardexRealtime();
       kardexContext = null;
     }
 
@@ -14646,8 +14721,55 @@
       const petKey = kardexContext ? kardexContext.petKey : selectedPetKey;
       document.getElementById('kardex-view').classList.remove('active');
       document.querySelector('.consultorio-wrapper').style.display = '';
+      desuscribirKardexRealtime();
       kardexContext = null;
       selectPet(petKey);
+    }
+
+    // ── SINCRONIZACIÓN EN VIVO DEL KARDEX ────────────────────────
+    // Médico y auxiliar pueden estar viendo/editando el mismo Kardex al
+    // mismo tiempo (uno marca horas administradas, otro registra un
+    // tratamiento nuevo). persistKardexDias() ya guarda cada cambio propio
+    // al instante; este canal de Supabase Realtime es el lado que RECIBE
+    // los cambios que hizo otro usuario y los refleja sin recargar. Se
+    // suscribe a la fila puntual de `hospitalizaciones` (id=eq.hosp.id) que
+    // está abierta en el Kardex — no a toda la tabla — y solo actualiza
+    // `hosp.dias` + re-renderiza si la vista sigue abierta sobre esa misma
+    // mascota/hospitalización (pudo haberse cerrado entre el cambio remoto
+    // y la respuesta). Si el modal de tratamiento está abierto se omite el
+    // re-render (evita perder lo que el usuario está escribiendo); el dato
+    // ya quedó actualizado en memoria y se ve al cerrar el modal.
+    let kardexRealtimeChannel = null;
+
+    function suscribirKardexRealtime(petKey, hospIndex) {
+      desuscribirKardexRealtime();
+      if (!window.supabase) return;
+      const hosp = patientData[petKey].hospitalizaciones[hospIndex];
+      if (!hosp || !hosp.id) return;
+
+      kardexRealtimeChannel = window.supabase
+        .channel(`kardex-${hosp.id}`)
+        .on('postgres_changes', {
+          event: 'UPDATE', schema: 'public', table: 'hospitalizaciones', filter: `id=eq.${hosp.id}`
+        }, (payload) => {
+          if (!kardexContext || kardexContext.petKey !== petKey || kardexContext.hospIndex !== hospIndex) return;
+          const diasRemotos = payload.new && payload.new.dias;
+          if (!diasRemotos) return;
+
+          hosp.dias = diasRemotos;
+          if (kardexExpandedDayIndex >= hosp.dias.length) kardexExpandedDayIndex = hosp.dias.length - 1;
+
+          const modalAbierto = document.getElementById('tratamiento-modal').classList.contains('show');
+          if (!modalAbierto) renderKardexTrazabilidad();
+        })
+        .subscribe();
+    }
+
+    function desuscribirKardexRealtime() {
+      if (kardexRealtimeChannel) {
+        window.supabase.removeChannel(kardexRealtimeChannel);
+        kardexRealtimeChannel = null;
+      }
     }
 
     function kardexAccionSimple(label) {
@@ -14778,27 +14900,37 @@
         .replace(/ de /g, ' ');
     }
 
-    function agregarKardexDia() {
-      const { petKey, hospIndex } = kardexContext;
-      const data = patientData[petKey];
-      const hosp = data.hospitalizaciones[hospIndex];
+    function crearSignosVaciosKardex() {
+      return {
+        presion: Array(12).fill(''), temperatura: Array(12).fill(''), spo2: Array(12).fill(''),
+        glicemia: Array(12).fill(''), tiempoLlenadoCapilar: Array(12).fill(''),
+        frecuenciaCardiaca: Array(12).fill(''), frecuenciaRespiratoria: Array(12).fill(''),
+        palpacionAbdominal: Array(12).fill('')
+      };
+    }
 
+    function pesoActualParaNuevoDiaKardex(petKey) {
+      const pesoHistorico = patientData[petKey].pesoHistorico || [];
+      return pesoHistorico.length ? pesoHistorico[pesoHistorico.length - 1].peso : 0;
+    }
+
+    function usuarioNombreSimActual() {
       const usuario = USUARIOS_SISTEMA.find(u => u.id === getCurrentSimUserId());
-      const pesoHistorico = data.pesoHistorico || [];
-      const pesoActual = pesoHistorico.length ? pesoHistorico[pesoHistorico.length - 1].peso : 0;
+      return usuario ? usuario.nombre : 'Dr. Sebastián Ríos';
+    }
+
+    function agregarKardexDia() {
+      closeAllRegistrarNuevoMenus();
+      const { petKey, hospIndex } = kardexContext;
+      const hosp = patientData[petKey].hospitalizaciones[hospIndex];
 
       hosp.dias.push({
         fechaLabel: formatFechaLargaHoy(),
-        usuario: usuario ? usuario.nombre : 'Dr. Sebastián Ríos',
-        pesoActual,
+        usuario: usuarioNombreSimActual(),
+        pesoActual: pesoActualParaNuevoDiaKardex(petKey),
         ultimaActualizacionHoras: 0,
         tratamientos: [],
-        signos: {
-          presion: Array(24).fill(''), temperatura: Array(24).fill(''), spo2: Array(24).fill(''),
-          glicemia: Array(24).fill(''), tiempoLlenadoCapilar: Array(24).fill(''),
-          frecuenciaCardiaca: Array(24).fill(''), frecuenciaRespiratoria: Array(24).fill(''),
-          palpacionAbdominal: Array(24).fill('')
-        }
+        signos: crearSignosVaciosKardex()
       });
 
       kardexExpandedDayIndex = hosp.dias.length - 1;
@@ -14807,9 +14939,69 @@
       showToast('Nuevo día agregado');
     }
 
+    // "A partir del día anterior": clona los tratamientos del último día
+    // registrado conservando periodicidad/hora inicial/vía, pero con la
+    // grilla horaria reiniciada (nada administrado todavía en el día
+    // nuevo) y recalculada según calcularHorasPorPeriodicidad — no se
+    // copian los chulos ya marcados del día anterior. Los tratamientos con
+    // Duración (días) numérica la decrementan en 1 y se omiten del día
+    // nuevo al llegar a 0 (su ciclo ya terminó); los que no tienen
+    // Duración definida (ej. Alimentación, Procedimiento, Fluidoterapia
+    // Manual) se conservan sin límite, igual que hoy se dejan indefinidos
+    // en el modal. Signos vitales siempre arrancan en blanco: son lecturas
+    // nuevas de cada día, no algo que tenga sentido arrastrar.
+    function agregarKardexDiaDesdeAnterior() {
+      closeAllRegistrarNuevoMenus();
+      const { petKey, hospIndex } = kardexContext;
+      const hosp = patientData[petKey].hospitalizaciones[hospIndex];
+      if (!hosp.dias.length) { agregarKardexDia(); return; }
+
+      const diaAnterior = hosp.dias[hosp.dias.length - 1];
+      const tratamientosNuevos = diaAnterior.tratamientos
+        .map(t => {
+          const duracionRestante = (t.duracionDias === null || t.duracionDias === undefined) ? null : t.duracionDias - 1;
+          if (duracionRestante !== null && duracionRestante <= 0) return null;
+          const horasRecalculadas = calcularHorasPorPeriodicidad(t.periodicidad, t.horaInicial);
+          return {
+            ...t,
+            duracionDias: duracionRestante,
+            horas: horasRecalculadas || Array(12).fill(false)
+          };
+        })
+        .filter(Boolean);
+
+      hosp.dias.push({
+        fechaLabel: formatFechaLargaHoy(),
+        usuario: usuarioNombreSimActual(),
+        pesoActual: pesoActualParaNuevoDiaKardex(petKey),
+        ultimaActualizacionHoras: 0,
+        tratamientos: tratamientosNuevos,
+        signos: crearSignosVaciosKardex()
+      });
+
+      kardexExpandedDayIndex = hosp.dias.length - 1;
+      renderKardexTrazabilidad();
+      persistKardexDias(petKey, hospIndex);
+      showToast('Nuevo día agregado a partir del día anterior');
+    }
+
+    // La grilla horaria trabaja en franjas de 2h (12 columnas, 2..24) en vez
+    // de una columna por hora — HORAS_BLOQUES_KARDEX es el largo canónico
+    // que deben respetar `t.horas`, `dia.signos[campo]` y
+    // `tratamientoHorasState`. horaBloqueLabel(hi) da la etiqueta corta de
+    // columna (hora de cierre de la franja); horaBloqueTooltip(hi) da el
+    // rango completo para el title="" de cada celda.
+    const HORAS_BLOQUES_KARDEX = 12;
+    function horaBloqueLabel(hi) { return String((hi + 1) * 2); }
+    function horaBloqueTooltip(hi) {
+      const inicio = String(hi * 2).padStart(2, '0');
+      const fin = String((hi + 1) * 2).padStart(2, '0');
+      return `${inicio}:00–${fin}:00`;
+    }
+
     function hourGridHeaderHTML() {
       let ths = '';
-      for (let h = 0; h < 24; h++) ths += `<th class="hour-th">${h}</th>`;
+      for (let h = 0; h < HORAS_BLOQUES_KARDEX; h++) ths += `<th class="hour-th">${horaBloqueLabel(h)}</th>`;
       return ths;
     }
 
@@ -14891,7 +15083,7 @@
         <td class="hour-cell">
           <div class="hour-dot editable ${administered ? 'administered' : ''}"
             onclick="toggleHoraAdministrada('${petKey}', ${hospIndex}, ${di}, ${ti}, ${hi})"
-            title="${String(hi).padStart(2, '0')}:00${administered ? ' — administrado' : ''}">
+            title="${horaBloqueTooltip(hi)}${administered ? ' — administrado' : ''}">
             ${administered ? '<i data-lucide="check" style="width:10px;height:10px;"></i>' : ''}
           </div>
         </td>
@@ -14927,7 +15119,7 @@
       const values = dia.signos[field];
       const cells = values.map((val, hi) => `
         <td class="hour-cell">
-          <div class="vital-value-cell editable" onclick="editarValorVital('${petKey}', ${hospIndex}, ${di}, '${field}', ${hi}, '${label}')" title="${String(hi).padStart(2, '0')}:00">
+          <div class="vital-value-cell editable" onclick="editarValorVital('${petKey}', ${hospIndex}, ${di}, '${field}', ${hi}, '${label}')" title="${horaBloqueTooltip(hi)}">
             ${val ? val : '<i data-lucide=\"pencil\" class=\"vital-pencil\" style=\"width:10px;height:10px;\"></i>'}
           </div>
         </td>
@@ -14946,7 +15138,7 @@
       const dia = patientData[petKey].hospitalizaciones[hospIndex].dias[di];
       const current = dia.signos[field][hi] || '';
       // TODO: ITERACIÓN FUTURA — reemplazar prompt() por un popover propio
-      const val = window.prompt(`${label} — ${String(hi).padStart(2, '0')}:00`, current);
+      const val = window.prompt(`${label} — ${horaBloqueTooltip(hi)}`, current);
       if (val === null) return;
       dia.signos[field][hi] = val.trim();
       renderKardexTrazabilidad();
@@ -14975,6 +15167,13 @@
 
     function closeAllRegistrarNuevoMenus() {
       document.querySelectorAll('.registrar-nuevo-menu.show').forEach(m => m.classList.remove('show'));
+    }
+
+    function toggleKardexNuevoDiaMenu() {
+      const menu = document.getElementById('kardex-nuevo-dia-menu');
+      const wasOpen = menu.classList.contains('show');
+      closeAllRegistrarNuevoMenus();
+      if (!wasOpen) menu.classList.add('show');
     }
 
     // ── MODAL: REGISTRAR/EDITAR TRATAMIENTO (4 variantes) ────────
@@ -15014,10 +15213,10 @@
 
     function renderTratamientoHoraGrid(horas) {
       const wrap = document.getElementById('tt-hora-grid');
-      wrap.innerHTML = Array.from({ length: 24 }, (_, h) => `
+      wrap.innerHTML = Array.from({ length: HORAS_BLOQUES_KARDEX }, (_, h) => `
         <div class="hora-grid-item">
-          <div class="hour-dot editable ${horas[h] ? 'administered' : ''}" onclick="toggleTtHoraGridCell(${h})" data-tt-hora="${h}"></div>
-          <span class="hora-grid-item-label">${h}</span>
+          <div class="hour-dot editable ${horas[h] ? 'administered' : ''}" onclick="toggleTtHoraGridCell(${h})" data-tt-hora="${h}" title="${horaBloqueTooltip(h)}"></div>
+          <span class="hora-grid-item-label">${horaBloqueLabel(h)}</span>
         </div>
       `).join('');
     }
@@ -15028,26 +15227,31 @@
       if (dot) dot.classList.toggle('administered', tratamientoHorasState[h]);
     }
 
-    // Calcula qué horas de la grilla de 24h corresponden a una Periodicidad +
-    // Hora inicial dadas. Compartida por los 4 tipos de tratamiento (Medicamento/
+    // Calcula qué franjas de la grilla de 2h (12 columnas, ver
+    // HORAS_BLOQUES_KARDEX) corresponden a una Periodicidad + Hora inicial
+    // dadas. Compartida por los 4 tipos de tratamiento (Medicamento/
     // Fluidoterapia/Procedimiento/Alimentación) porque los 4 reutilizan el mismo
     // modal `tratamiento-modal` — no hay 4 formularios distintos que sincronizar.
     // Devuelve null cuando no corresponde autorrellenar (Manual, o falta la hora
-    // inicial todavía) para que el llamador NO toque la grilla existente.
+    // inicial todavía) para que el llamador NO toque la grilla existente. Cada
+    // hora real calculada se ubica en su franja de 2h vía marcar() — dos horas
+    // que caigan en la misma franja (ej. C3H con horas 6 y 9 distintas, pero
+    // aquí sería 6→franja3, 9→franja4, no colisionan) simplemente marcan la
+    // misma franja una sola vez, sin error.
     function calcularHorasPorPeriodicidad(periodicidad, horaInicialStr) {
-      if (periodicidad === 'CONST') return Array(24).fill(true);
+      if (periodicidad === 'CONST') return Array(HORAS_BLOQUES_KARDEX).fill(true);
       if (periodicidad === 'Manual') return null;
       if (!horaInicialStr) return null;
 
       const horaInicial = parseInt(horaInicialStr.split(':')[0], 10);
       if (isNaN(horaInicial)) return null;
 
-      const horas = Array(24).fill(false);
-      const marcar = h => { horas[((h % 24) + 24) % 24] = true; };
+      const horas = Array(HORAS_BLOQUES_KARDEX).fill(false);
+      const marcar = h => { horas[Math.floor((((h % 24) + 24) % 24) / 2)] = true; };
 
       switch (periodicidad) {
-        // Ciclos multi-día (C2D/C3D/B2M): la grilla de 24h solo puede mostrar
-        // la hora del día en que aplica cada vez — la repetición entre días la
+        // Ciclos multi-día (C2D/C3D/B2M): la grilla solo puede mostrar la
+        // franja del día en que aplica cada vez — la repetición entre días la
         // maneja el campo Duración, ya existente.
         case 'SID': case 'UD': case 'C2D': case 'C3D': case 'B2M':
           marcar(horaInicial);
@@ -15101,6 +15305,9 @@
       const dia = patientData[kardexContext.petKey].hospitalizaciones[kardexContext.hospIndex].dias[diaIndex];
       const record = editingTratamientoContext ? dia.tratamientos[tratIndex] : null;
 
+      activeTratamientoPesoActual = dia.pesoActual || 0;
+      document.getElementById('tt-peso-actual').textContent = `Peso: ${activeTratamientoPesoActual} kg`;
+
       document.getElementById('tt-nombre').value = record ? record.nombre : '';
       document.getElementById('tt-presentacion-nombre').value = record ? (record.presentacionNombre || '') : '';
       document.getElementById('tt-presentacion-unidad').value = record ? (record.presentacionUnidad || 'mg') : 'mg';
@@ -15116,11 +15323,53 @@
       document.getElementById('tt-hora-inicial').value = record ? (record.horaInicial || '') : '';
       document.getElementById('tt-observaciones').value = record ? (record.observaciones || '') : '';
 
-      tratamientoHorasState = record ? [...record.horas] : Array(24).fill(false);
+      tratamientoHorasState = record ? [...record.horas] : Array(HORAS_BLOQUES_KARDEX).fill(false);
       renderTratamientoHoraGrid(tratamientoHorasState);
+      actualizarSugerenciasTratamiento();
 
       document.getElementById('tratamiento-modal').classList.add('show');
       lucide.createIcons();
+    }
+
+    // Recalcula "Dosis sugerida" (Dosis x peso × peso actual del día) y
+    // "Concentración sugerida" (Presentación en % × 10 = mg/mL, conversión
+    // estándar w/v) cada vez que cambian los campos de los que dependen.
+    // Nunca escribe directo en Dosis/Concentración — solo actualiza el
+    // texto de sugerencia; el usuario aplica con "Usar" (usarDosisSugerida/
+    // usarConcentracionSugerida) para no pisar un valor que ya haya escrito
+    // a mano.
+    function actualizarSugerenciasTratamiento() {
+      const dosisPeso = parseFloat(document.getElementById('tt-dosis-peso').value);
+      const dosisHint = document.getElementById('tt-dosis-sugerida');
+      if (dosisHint) {
+        if (!isNaN(dosisPeso) && activeTratamientoPesoActual) {
+          const sugerida = Math.round(dosisPeso * activeTratamientoPesoActual * 100) / 100;
+          dosisHint.innerHTML = `Dosis sugerida: ${sugerida} <a href="javascript:void(0)" onclick="usarDosisSugerida(${sugerida})">Usar</a>`;
+          dosisHint.style.display = '';
+        } else {
+          dosisHint.style.display = 'none';
+        }
+      }
+
+      const concentracionHint = document.getElementById('tt-concentracion-sugerida');
+      if (concentracionHint) {
+        const unidad = document.getElementById('tt-presentacion-unidad').value;
+        const presentacionVal = parseFloat(document.getElementById('tt-presentacion-mg').value);
+        if (unidad === '%' && !isNaN(presentacionVal)) {
+          const sugerida = Math.round(presentacionVal * 10 * 100) / 100;
+          concentracionHint.innerHTML = `Concentración sugerida: ${sugerida} mg/mL <a href="javascript:void(0)" onclick="usarConcentracionSugerida(${sugerida})">Usar</a>`;
+          concentracionHint.style.display = '';
+        } else {
+          concentracionHint.style.display = 'none';
+        }
+      }
+    }
+
+    function usarDosisSugerida(valor) {
+      document.getElementById('tt-dosis').value = valor;
+    }
+    function usarConcentracionSugerida(valor) {
+      document.getElementById('tt-concentracion').value = `${valor} mg/mL`;
     }
 
     function closeTratamientoModal() {
@@ -21345,7 +21594,12 @@
             <span class="pet-chip-tag" id="formula-pet-weight-chip">4.2 kg</span>
           </div>
         </div>
-        <button class="soap-modal-close" onclick="closeFormulaModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button type="button" class="btn-outline" style="padding:6px 12px;font-size:12px;" onclick="abrirCalculadoraDosis()">
+            <i data-lucide="calculator" style="width:13px;height:13px;"></i> Calculadora de dosis
+          </button>
+          <button class="soap-modal-close" onclick="closeFormulaModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+        </div>
       </div>
 
       <div class="soap-modal-body">
@@ -21371,6 +21625,47 @@
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeFormulaModal()">Cancelar</button>
         <button class="btn-primary" id="formula-save-btn" onclick="guardarFormula()">Guardar fórmula médica</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Calculadora de dosis (acceso rápido desde Fórmulas médicas) —
+       utilidad standalone superpuesta al modal de fórmula (mismo patrón
+       .modal-overlay/.modal-card, con z-index más alto para quedar encima).
+       No escribe directo en los campos de la fórmula (son texto libre:
+       Cantidad/Posología) — cada resultado se copia al portapapeles con su
+       botón "Copiar" para pegarlo donde corresponda. -->
+  <div class="modal-overlay" id="calculadora-dosis-modal" style="z-index:320;" onclick="handleCalculadoraDosisOverlayClick(event)">
+    <div class="modal-card" style="width:380px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">Calculadora de dosis</span>
+        <button class="modal-close" onclick="closeCalculadoraDosisModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div class="input-group" style="margin-bottom:14px;">
+        <label class="input-label" for="calc-dosis-peso-paciente">Peso del paciente (Kg)</label>
+        <input type="number" step="any" class="input-control" style="padding-left:12px;" id="calc-dosis-peso-paciente" oninput="recalcularCalculadoraDosis()">
+      </div>
+      <div class="input-group" style="margin-bottom:14px;">
+        <label class="input-label" for="calc-dosis-mgkg">Dosis x peso (mg/Kg)</label>
+        <input type="number" step="any" class="input-control" style="padding-left:12px;" id="calc-dosis-mgkg" oninput="recalcularCalculadoraDosis()">
+      </div>
+      <div class="input-group" style="margin-bottom:16px;">
+        <label class="input-label" for="calc-dosis-concentracion">Concentración (mg/mL)</label>
+        <input type="number" step="any" class="input-control" style="padding-left:12px;" id="calc-dosis-concentracion" oninput="recalcularCalculadoraDosis()">
+      </div>
+      <div class="calc-dosis-resultado-row">
+        <div>
+          <div class="calc-dosis-resultado-label">Dosis total</div>
+          <div class="calc-dosis-resultado-value" id="calc-dosis-total">—</div>
+        </div>
+        <button type="button" class="btn-outline" style="padding:6px 10px;font-size:12px;" onclick="copiarCalculadoraValor('calc-dosis-total')"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar</button>
+      </div>
+      <div class="calc-dosis-resultado-row">
+        <div>
+          <div class="calc-dosis-resultado-label">Volumen a administrar</div>
+          <div class="calc-dosis-resultado-value" id="calc-dosis-volumen">—</div>
+        </div>
+        <button type="button" class="btn-outline" style="padding:6px 10px;font-size:12px;" onclick="copiarCalculadoraValor('calc-dosis-volumen')"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar</button>
       </div>
     </div>
   </div>
@@ -22432,6 +22727,12 @@
         <button class="soap-modal-close" onclick="closeTratamientoModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
       </div>
       <div class="soap-modal-body">
+        <div class="kardex-weight-now-card" style="margin-bottom:14px;">
+          <div>
+            <div class="kardex-weight-now-value" id="tt-peso-actual">Peso: — kg</div>
+          </div>
+        </div>
+
         <div class="input-group">
           <label class="input-label" id="tt-nombre-label">Medicamento</label>
           <input type="text" class="input-control" style="padding-left:12px;" id="tt-nombre">
@@ -22444,11 +22745,11 @@
           </div>
           <div class="input-group" id="tt-presentacion-unidad-wrap" style="flex:1;min-width:120px;">
             <label class="input-label">Unidad</label>
-            <select class="soap-select-control" id="tt-presentacion-unidad"></select>
+            <select class="soap-select-control" id="tt-presentacion-unidad" onchange="actualizarSugerenciasTratamiento()"></select>
           </div>
           <div class="input-group" id="tt-presentacion-mg-wrap" style="flex:1;min-width:160px;">
             <label class="input-label">Presentación en miligramos</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="tt-presentacion-mg">
+            <input type="text" class="input-control" style="padding-left:12px;" id="tt-presentacion-mg" oninput="actualizarSugerenciasTratamiento()">
           </div>
         </div>
 
@@ -22456,10 +22757,11 @@
           <div class="input-group" id="tt-concentracion-wrap" style="flex:1;min-width:140px;">
             <label class="input-label">Concentración</label>
             <input type="text" class="input-control" style="padding-left:12px;" id="tt-concentracion">
+            <div class="tt-sugerencia-hint" id="tt-concentracion-sugerida" style="display:none;"></div>
           </div>
           <div class="input-group" id="tt-dosis-peso-wrap" style="flex:1;min-width:160px;">
             <label class="input-label" id="tt-dosis-peso-label">Dosis x peso (mg/Kg)</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="tt-dosis-peso">
+            <input type="text" class="input-control" style="padding-left:12px;" id="tt-dosis-peso" oninput="actualizarSugerenciasTratamiento()">
           </div>
           <div class="input-group" id="tt-via-wrap" style="flex:1;min-width:140px;">
             <label class="input-label">Vía</label>
@@ -22486,6 +22788,7 @@
           <div class="input-group" id="tt-dosis-wrap" style="flex:1;min-width:140px;">
             <label class="input-label" id="tt-dosis-label">Dosis</label>
             <input type="text" class="input-control" style="padding-left:12px;" id="tt-dosis">
+            <div class="tt-sugerencia-hint" id="tt-dosis-sugerida" style="display:none;"></div>
           </div>
           <div class="input-group" id="tt-dosis-textual-wrap" style="flex:1;min-width:160px;">
             <label class="input-label" id="tt-dosis-textual-label">Dosis textual <span style="font-weight:400;color:var(--text-2);">(opcional)</span></label>
