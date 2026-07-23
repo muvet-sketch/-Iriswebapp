@@ -6892,6 +6892,7 @@
       if (!p) { showToast('Propietario no encontrado'); return; }
       facturacionPropietarioId = propietarioId;
       document.getElementById('facturacion-modal-nombre').textContent = p.nombre;
+      toggleFacturacionClienteTributario(false);
       switchFacturacionTab('cuenta');
       document.getElementById('propietario-facturacion-modal').classList.add('show');
       lucide.createIcons();
@@ -6921,6 +6922,9 @@
       const saldoFavorEl = document.getElementById('facturacion-saldo-favor');
       if (saldoFavorEl) saldoFavorEl.textContent = formatCOP(0);
       const clienteId = getVentasClienteIdDePropietario(propietarioId);
+      const cliente = ventasClienteById(clienteId);
+      const nombreTributarioEl = document.getElementById('facturacion-cliente-tributario-nombre');
+      if (nombreTributarioEl) nombreTributarioEl.textContent = (cliente && cliente.nombre) || '—';
       const abiertas = VENTAS_FACTURAS.filter(f => f.clienteId === clienteId && f.estado === 'Pendiente');
       tbody.innerHTML = abiertas.length ? abiertas.map(f => `
           <tr onclick="abrirFacturaDesdeEstadoCuenta('${f.id}')">
@@ -6929,8 +6933,9 @@
             <td>${(f.items || []).map(it => it.producto).filter(Boolean).join(', ') || '—'}</td>
             <td>${formatCOP(f.total)}</td>
             <td><span class="status-badge status-badge-${f.estado.toLowerCase()}">${f.estado}</span></td>
+            <td style="text-align:right;" onclick="event.stopPropagation()">${renderRowActionButtons('factura', f.id, ['editar', 'imprimir', 'email'], [{ icon: 'lock', label: 'Cerrar cuenta', onclick: `abrirCerrarCuentaModalDesdeId('${f.id}')` }])}</td>
           </tr>`
-      ).join('') : `<tr><td colspan="5" style="color:var(--text-2);font-size:12.5px;">Sin cuentas abiertas</td></tr>`;
+      ).join('') : `<tr><td colspan="6" style="color:var(--text-2);font-size:12.5px;">Sin cuentas abiertas</td></tr>`;
       lucide.createIcons();
     }
 
@@ -6941,11 +6946,15 @@
     // Facturas y Cotizaciones de esta pestaña son las MISMAS que Ventas >
     // Documentos > Ventas/recibos/facturas y Cotizaciones (VENTAS_FACTURAS/
     // VENTAS_COTIZACIONES), filtradas por el cliente vinculado a este
-    // propietario — no un mock aparte. Las acciones reutilizan
-    // renderRowActionsMenu('factura'/'cotizacion', ...), el mismo menú "..."
-    // que ya abre openDocVentaModal (editar), genera el PDF real
-    // (imprimir) y elimina sobre el array real (ver rowActionEditar/
-    // rowActionImprimir/rowActionEliminar).
+    // propietario — no un mock aparte. Las acciones usan
+    // renderRowActionButtons('factura'/'cotizacion', ...) — botones de
+    // ícono siempre visibles en la fila (no el menú "..." colapsado que sí
+    // usa el resto de módulos), a pedido explícito — mismas funciones de
+    // siempre por debajo (rowActionEditar/rowActionImprimir/
+    // rowActionAprobar/rowActionEliminar). Mismo set de acciones que
+    // Ventas > Documentos: Imprimir/Ver/Enviar por correo para Facturas ya
+    // cerradas; Imprimir/Editar/Aprobar/Eliminar para Cotizaciones, que
+    // todavía son editables.
     function renderFacturasPropietarioTable(propietarioId) {
       const tbody = document.getElementById('facturacion-facturas-tbody');
       if (!tbody) return;
@@ -6958,7 +6967,7 @@
             <td>${(f.items || []).map(it => it.producto).filter(Boolean).join(', ') || '—'}</td>
             <td>${formatCOP(f.total)}</td>
             <td><span class="status-badge status-badge-${f.estado.toLowerCase()}">${f.estado}</span></td>
-            <td style="text-align:right;">${renderRowActionsMenu('factura', f.id, null, ['editar', 'imprimir', 'email', 'eliminar'])}</td>
+            <td style="text-align:right;">${renderRowActionButtons('factura', f.id, ['imprimir', 'ver', 'email'])}</td>
           </tr>`
       ).join('') : `<tr><td colspan="6" style="color:var(--text-2);font-size:12.5px;">Sin facturas registradas</td></tr>`;
       lucide.createIcons();
@@ -6976,7 +6985,7 @@
             <td>${(c.items || []).map(it => it.producto).filter(Boolean).join(', ') || '—'}</td>
             <td>${formatCOP(c.total)}</td>
             <td><span class="status-badge status-badge-${c.estado.toLowerCase()}">${c.estado}</span></td>
-            <td style="text-align:right;">${renderRowActionsMenu('cotizacion', c.id, null, ['ver', 'editar', 'imprimir', 'email', 'eliminar'])}</td>
+            <td style="text-align:right;">${renderRowActionButtons('cotizacion', c.id, ['imprimir', 'editar', 'aprobar', 'eliminar'])}</td>
           </tr>`
       ).join('') : `<tr><td colspan="6" style="color:var(--text-2);font-size:12.5px;">Sin cotizaciones registradas</td></tr>`;
       lucide.createIcons();
@@ -6990,6 +6999,69 @@
     function crearCotizacionPropietario() {
       if (!facturacionPropietarioId) return;
       openDocVentaModal('cotizacion', 'create', null, getVentasClienteIdDePropietario(facturacionPropietarioId));
+    }
+
+    // Panel "Información tributaria del cliente" de la pestaña Estado de
+    // cuenta (colapsado por defecto, "Editar" lo despliega) — visualiza y
+    // actualiza los mismos campos fiscales que exige la facturación
+    // electrónica (documento/tipo de organización/régimen/obligaciones/
+    // etc.), guardados directamente sobre el registro real de
+    // VENTAS_CLIENTES vinculado a este propietario (getVentasClienteIdDePropietario).
+    // Campos nuevos (tipoDocumento/tipoOrganizacion/razonSocial/pais/
+    // municipio/regimen/obligaciones/detallesTributarios): no existían
+    // antes en VENTAS_CLIENTES, se agregan al objeto recién al guardar por
+    // primera vez — por eso el populate siempre cae a un default sensato
+    // cuando el campo todavía no existe.
+    function poblarFacturacionClienteTributario() {
+      if (!facturacionPropietarioId) return;
+      const clienteId = getVentasClienteIdDePropietario(facturacionPropietarioId);
+      const cliente = ventasClienteById(clienteId);
+      if (!cliente) return;
+      document.getElementById('facturacion-cliente-tributario-nombre').textContent = cliente.nombre;
+      document.getElementById('fct-numero-documento').value = (cliente.cedula || '').replace(/^[A-Za-zÀ-ÿ.]+\s*/, '');
+      document.getElementById('fct-tipo-documento').value = cliente.tipoDocumento || 'Cédula de ciudadanía';
+      document.getElementById('fct-tipo-organizacion').value = cliente.tipoOrganizacion || 'Persona Natural';
+      document.getElementById('fct-razon-social').value = cliente.razonSocial || cliente.nombre || '';
+      document.getElementById('fct-telefono').value = cliente.telefono || '';
+      document.getElementById('fct-correo').value = cliente.email || '';
+      document.getElementById('fct-direccion').value = cliente.direccion || '';
+      document.getElementById('fct-pais').value = cliente.pais || 'Colombia';
+      document.getElementById('fct-municipio').value = cliente.municipio || '';
+      document.getElementById('fct-regimen').value = cliente.regimen || 'No responsable de IVA';
+      document.getElementById('fct-obligaciones').value = cliente.obligaciones || 'No aplica – Otros';
+      document.getElementById('fct-detalles-tributarios').value = cliente.detallesTributarios || 'No aplica';
+    }
+
+    function toggleFacturacionClienteTributario(open) {
+      const panel = document.getElementById('facturacion-cliente-tributario-panel');
+      const btn = document.getElementById('facturacion-cliente-tributario-toggle-btn');
+      const shouldOpen = typeof open === 'boolean' ? open : panel.style.display === 'none';
+      if (shouldOpen) poblarFacturacionClienteTributario();
+      panel.style.display = shouldOpen ? '' : 'none';
+      btn.textContent = shouldOpen ? 'Cerrar' : 'Editar';
+    }
+
+    function guardarFacturacionClienteTributario() {
+      if (!facturacionPropietarioId) return;
+      const clienteId = getVentasClienteIdDePropietario(facturacionPropietarioId);
+      const cliente = ventasClienteById(clienteId);
+      if (!cliente) return;
+      const numeroDocumento = document.getElementById('fct-numero-documento').value.trim();
+      const tipoDocumento = document.getElementById('fct-tipo-documento').value;
+      if (numeroDocumento) cliente.cedula = `${tipoDocumento === 'NIT' ? 'NIT' : 'C.C.'} ${numeroDocumento}`;
+      cliente.tipoDocumento = tipoDocumento;
+      cliente.tipoOrganizacion = document.getElementById('fct-tipo-organizacion').value;
+      cliente.razonSocial = document.getElementById('fct-razon-social').value.trim();
+      cliente.telefono = document.getElementById('fct-telefono').value.trim();
+      cliente.email = document.getElementById('fct-correo').value.trim();
+      cliente.direccion = document.getElementById('fct-direccion').value.trim();
+      cliente.pais = document.getElementById('fct-pais').value;
+      cliente.municipio = document.getElementById('fct-municipio').value.trim();
+      cliente.regimen = document.getElementById('fct-regimen').value;
+      cliente.obligaciones = document.getElementById('fct-obligaciones').value;
+      cliente.detallesTributarios = document.getElementById('fct-detalles-tributarios').value;
+      toggleFacturacionClienteTributario(false);
+      showToast('Información tributaria actualizada');
     }
 
     // ── MÓDULO: AGENDA (FullCalendar) ──────────────────────────────
@@ -10275,6 +10347,7 @@
       editar:   { label: 'Editar',              icon: 'pencil' },
       imprimir: { label: 'Imprimir',            icon: 'printer' },
       email:    { label: 'Enviar por email',    icon: 'mail' },
+      aprobar:  { label: 'Aprobar',              icon: 'check-circle-2' },
       eliminar: { label: 'Eliminar',            icon: 'trash-2', danger: true }
     };
 
@@ -10309,6 +10382,27 @@
           <div class="row-actions-menu" id="${menuId}">${items}${extraItems}</div>
         </div>
       `;
+    }
+
+    // Variante de renderRowActionsMenu con botones de ícono siempre
+    // visibles en la fila (sin colapsar en el menú "..."), a pedido
+    // explícito para Estado de cuenta/Facturas/Cotizaciones — reutiliza el
+    // mismo ROW_ACTION_DEFS y las mismas funciones rowAction*(), solo
+    // cambia el markup (botones en línea en vez de dropdown).
+    function renderRowActionButtons(moduleKey, recordId, actions, extraActions) {
+      extraActions = extraActions || [];
+      const items = actions.map(key => {
+        const def = ROW_ACTION_DEFS[key];
+        return `<button type="button" class="row-actions-btn" title="${def.label}" style="${def.danger ? 'color:var(--danger);' : ''}" onclick="event.stopPropagation(); rowAction${key.charAt(0).toUpperCase() + key.slice(1)}('${moduleKey}','${recordId}')">
+          <i data-lucide="${def.icon}" style="width:15px;height:15px;"></i>
+        </button>`;
+      }).join('');
+      const extraItems = extraActions.map(ea => `
+        <button type="button" class="row-actions-btn" title="${ea.label}" onclick="event.stopPropagation(); ${ea.onclick}">
+          <i data-lucide="${ea.icon}" style="width:15px;height:15px;"></i>
+        </button>
+      `).join('');
+      return `<div style="display:flex;gap:2px;justify-content:flex-end;">${items}${extraItems}</div>`;
     }
 
     function toggleRowMenu(e, menuId) {
@@ -10759,6 +10853,13 @@
         showToast('Impresión no disponible para este tipo de registro');
         return;
       }
+      if (moduleKey === 'factura') {
+        const factura = VENTAS_FACTURAS.find(f => f.id === recordId);
+        if (!factura) { showToast('No se encontró la factura para imprimir'); return; }
+        showToast('Generando PDF...');
+        generarPdfEstadoCuentaFactura(factura);
+        return;
+      }
       const data = getRegistroViewData(moduleKey, recordId);
       if (!data) {
         showToast('No se encontró el registro para imprimir');
@@ -10808,6 +10909,36 @@
         document.getElementById('delete-confirm-btn').textContent = 'Eliminar';
       }
       document.getElementById('delete-confirm-modal').classList.add('show');
+    }
+
+    // "Aprobar" de cotización: la mueve a estado 'Aceptada' (mismo array
+    // DOC_VENTA_ESTADOS.cotizacion que ya usa el select "Estado" del modal
+    // de edición) — es solo un atajo de un click sobre el mismo campo,
+    // persistido igual que guardarDocVenta (tabla ventas_cotizaciones).
+    async function rowActionAprobar(moduleKey, recordId) {
+      closeAllRowMenus();
+      if (moduleKey !== 'cotizacion') return;
+      const cotizacion = VENTAS_COTIZACIONES.find(c => c.id === recordId);
+      if (!cotizacion) return;
+      if (cotizacion.estado === 'Aceptada') { showToast('La cotización ya está aprobada'); return; }
+      if (window.supabase) {
+        try {
+          const { error } = await window.supabase.from('ventas_cotizaciones')
+            .update({ estado: 'Aceptada', updated_at: new Date().toISOString() })
+            .eq('id', recordId);
+          if (error) throw error;
+        } catch (err) {
+          console.error('[IRIS] Error aprobando cotización en Supabase:', err);
+          showToast('No se pudo aprobar la cotización — intenta de nuevo');
+          return;
+        }
+      }
+      cotizacion.estado = 'Aceptada';
+      renderCotizacionesTable();
+      refreshFacturacionPropietarioTablesIfOpen();
+      renderVentasDashboard();
+      renderDashboard();
+      showToast('Cotización aprobada');
     }
 
     function closeDeleteConfirmModal() {
@@ -17258,7 +17389,7 @@
           <td>${c.fecha}</td>
           <td>${formatCOP(c.total)}</td>
           <td><span class="status-badge status-badge-${c.estado.toLowerCase()}">${c.estado}</span></td>
-          <td style="text-align:right;">${renderRowActionsMenu('cotizacion', c.id, null, ['ver', 'editar', 'imprimir', 'email', 'eliminar'])}</td>
+          <td style="text-align:right;">${renderRowActionButtons('cotizacion', c.id, ['imprimir', 'editar', 'aprobar', 'eliminar'])}</td>
         </tr>
       `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No hay cotizaciones registradas</td></tr>`;
       lucide.createIcons();
@@ -17272,7 +17403,7 @@
           <td>${f.fecha}</td>
           <td>${formatCOP(f.total)}</td>
           <td><span class="status-badge status-badge-${f.estado.toLowerCase()}">${f.estado}</span></td>
-          <td style="text-align:right;">${renderRowActionsMenu('factura', f.id, null, ['ver', 'editar', 'imprimir', 'email', 'eliminar'])}</td>
+          <td style="text-align:right;">${renderRowActionButtons('factura', f.id, ['imprimir', 'ver', 'email'])}</td>
         </tr>
       `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No hay ventas/facturas registradas</td></tr>`;
       lucide.createIcons();
@@ -17470,6 +17601,8 @@
       document.getElementById('doc-venta-motivo-wrap').style.display = (tipo === 'notacredito') ? '' : 'none';
       document.getElementById('doc-venta-monto-wrap').style.display = (tipo === 'notacredito') ? '' : 'none';
       document.getElementById('doc-venta-items-wrap').style.display = (tipo === 'notacredito') ? 'none' : '';
+      document.getElementById('doc-venta-cliente-tributario-toggle-btn').style.display = (tipo === 'docsoporte' || tipo === 'notacredito') ? 'none' : '';
+      toggleDocVentaClienteTributario(false);
 
       const clienteSel = document.getElementById('doc-venta-cliente-select');
       clienteSel.innerHTML = VENTAS_CLIENTES.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
@@ -17521,6 +17654,75 @@
     }
     function handleDocVentaModalOverlayClick(e) {
       if (e.target === document.getElementById('doc-venta-modal')) closeDocVentaModal();
+    }
+
+    // Panel "Información tributaria del cliente" del propio modal de
+    // Cotización/Factura (junto al select Cliente, con su botón "Editar
+    // información tributaria") — mismo propósito y mismos campos que el
+    // panel homónimo de Facturación > Estado de cuenta
+    // (poblarFacturacionClienteTributario/guardarFacturacionClienteTributario),
+    // pero con ids propios (prefijo dvfct-, distinto de fct-) porque ambos
+    // paneles coexisten en el DOM a la vez (los dos modales están siempre
+    // presentes, solo se les alterna la clase 'show') y unos ids
+    // duplicados romperían getElementById. Este queda scoped al cliente
+    // seleccionado en #doc-venta-cliente-select, no a facturacionPropietarioId.
+    function poblarDocVentaClienteTributario() {
+      const clienteId = document.getElementById('doc-venta-cliente-select').value;
+      const cliente = ventasClienteById(clienteId);
+      if (!cliente) return;
+      document.getElementById('dvfct-numero-documento').value = (cliente.cedula || '').replace(/^[A-Za-zÀ-ÿ.]+\s*/, '');
+      document.getElementById('dvfct-tipo-documento').value = cliente.tipoDocumento || 'Cédula de ciudadanía';
+      document.getElementById('dvfct-tipo-organizacion').value = cliente.tipoOrganizacion || 'Persona Natural';
+      document.getElementById('dvfct-razon-social').value = cliente.razonSocial || cliente.nombre || '';
+      document.getElementById('dvfct-telefono').value = cliente.telefono || '';
+      document.getElementById('dvfct-correo').value = cliente.email || '';
+      document.getElementById('dvfct-direccion').value = cliente.direccion || '';
+      document.getElementById('dvfct-pais').value = cliente.pais || 'Colombia';
+      document.getElementById('dvfct-municipio').value = cliente.municipio || '';
+      document.getElementById('dvfct-regimen').value = cliente.regimen || 'No responsable de IVA';
+      document.getElementById('dvfct-obligaciones').value = cliente.obligaciones || 'No aplica – Otros';
+      document.getElementById('dvfct-detalles-tributarios').value = cliente.detallesTributarios || 'No aplica';
+    }
+
+    function toggleDocVentaClienteTributario(open) {
+      const panel = document.getElementById('doc-venta-cliente-tributario-panel');
+      const btn = document.getElementById('doc-venta-cliente-tributario-toggle-btn');
+      const shouldOpen = typeof open === 'boolean' ? open : panel.style.display === 'none';
+      if (shouldOpen) {
+        if (!document.getElementById('doc-venta-cliente-select').value) { showToast('Selecciona un cliente primero'); return; }
+        poblarDocVentaClienteTributario();
+      }
+      panel.style.display = shouldOpen ? '' : 'none';
+      btn.textContent = shouldOpen ? 'Cerrar información tributaria' : 'Editar información tributaria';
+    }
+
+    // Repuebla el panel si el usuario cambia de cliente mientras está
+    // abierto, para no dejar visibles los datos del cliente anterior.
+    function handleDocVentaClienteChange() {
+      const panel = document.getElementById('doc-venta-cliente-tributario-panel');
+      if (panel.style.display !== 'none') poblarDocVentaClienteTributario();
+    }
+
+    function guardarDocVentaClienteTributario() {
+      const clienteId = document.getElementById('doc-venta-cliente-select').value;
+      const cliente = ventasClienteById(clienteId);
+      if (!cliente) return;
+      const numeroDocumento = document.getElementById('dvfct-numero-documento').value.trim();
+      const tipoDocumento = document.getElementById('dvfct-tipo-documento').value;
+      if (numeroDocumento) cliente.cedula = `${tipoDocumento === 'NIT' ? 'NIT' : 'C.C.'} ${numeroDocumento}`;
+      cliente.tipoDocumento = tipoDocumento;
+      cliente.tipoOrganizacion = document.getElementById('dvfct-tipo-organizacion').value;
+      cliente.razonSocial = document.getElementById('dvfct-razon-social').value.trim();
+      cliente.telefono = document.getElementById('dvfct-telefono').value.trim();
+      cliente.email = document.getElementById('dvfct-correo').value.trim();
+      cliente.direccion = document.getElementById('dvfct-direccion').value.trim();
+      cliente.pais = document.getElementById('dvfct-pais').value;
+      cliente.municipio = document.getElementById('dvfct-municipio').value.trim();
+      cliente.regimen = document.getElementById('dvfct-regimen').value;
+      cliente.obligaciones = document.getElementById('dvfct-obligaciones').value;
+      cliente.detallesTributarios = document.getElementById('dvfct-detalles-tributarios').value;
+      toggleDocVentaClienteTributario(false);
+      showToast('Información tributaria actualizada');
     }
 
     async function guardarDocVenta() {
@@ -17626,9 +17828,7 @@
     // camino que rowActionImprimir).
     let cerrarCuentaFacturaId = null;
 
-    function abrirCerrarCuentaModal() {
-      if (!docVentaState || docVentaState.tipo !== 'factura' || !docVentaState.editId) return;
-      const factura = VENTAS_FACTURAS.find(f => f.id === docVentaState.editId);
+    function abrirCerrarCuentaModalParaFactura(factura) {
       if (!factura) return;
       cerrarCuentaFacturaId = factura.id;
       document.getElementById('cerrar-cuenta-numero').textContent = factura.numero;
@@ -17637,6 +17837,20 @@
       document.getElementById('cerrar-cuenta-valor-input').value = factura.total;
       document.getElementById('cerrar-cuenta-modal').classList.add('show');
       lucide.createIcons();
+    }
+
+    function abrirCerrarCuentaModal() {
+      if (!docVentaState || docVentaState.tipo !== 'factura' || !docVentaState.editId) return;
+      abrirCerrarCuentaModalParaFactura(VENTAS_FACTURAS.find(f => f.id === docVentaState.editId));
+    }
+
+    // Punto de entrada de "Cerrar cuenta" desde el menú "..." de Estado de
+    // cuenta (extraAction de renderRowActionsMenu) — mismo flujo que
+    // abrirCerrarCuentaModal pero sin depender de que el modal de edición
+    // de factura (doc-venta-modal) esté abierto primero.
+    function abrirCerrarCuentaModalDesdeId(facturaId) {
+      closeAllRowMenus();
+      abrirCerrarCuentaModalParaFactura(VENTAS_FACTURAS.find(f => f.id === facturaId));
     }
 
     function closeCerrarCuentaModal() {
@@ -17682,8 +17896,98 @@
       renderDashboard();
       showToast('Cuenta cerrada. Generando PDF...');
 
-      const data = getRegistroViewData('factura', factura.id);
-      if (data) generarPdfRegistroImpresion(data.title, data.html, factura.id);
+      generarPdfEstadoCuentaFactura(factura);
+    }
+
+    // PDF de "Estado de cuenta" de una factura — layout tabular fijo
+    // (Concepto/Valor unitario/Descuento/Cantidad/Monto + Subtotal/
+    // Impuestos/Total/Valor a pagar), distinto del PDF genérico por
+    // html2canvas que usa generarPdfRegistroImpresion para el resto de
+    // módulos: acá se dibuja directo con jsPDF, mismo patrón que
+    // exportarClientesPDF, porque el formato de tabla fiscal es fijo y no
+    // depende de ninguna vista HTML existente (docVentaViewContentHTML).
+    async function generarPdfEstadoCuentaFactura(factura) {
+      const cliente = ventasClienteById(factura.clienteId) || {};
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 40;
+      let y = await dibujarEncabezadoDocumentoIris(doc, `Estado de cuenta No. ${factura.numero}`);
+
+      const datosCliente = [
+        ['Cliente:', cliente.nombre || '—'],
+        ['Documento:', cliente.cedula || '—'],
+        cliente.direccion ? ['Dirección:', cliente.direccion] : null,
+        cliente.telefono ? ['Teléfono:', cliente.telefono] : null,
+        ['Fecha:', factura.fecha || '—']
+      ].filter(Boolean);
+      datosCliente.forEach(([label, value]) => {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(20, 20, 20);
+        doc.text(label, marginX, y);
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(60, 60, 60);
+        doc.text(String(value), marginX + 62, y, { maxWidth: pageWidth - marginX * 2 - 62 });
+        y += 14;
+      });
+      y += 8;
+
+      const headers = ['Concepto', 'Valor und.', 'Dto. und.', 'Cant.', 'Monto'];
+      const colWidths = [230, 80, 70, 50, 85];
+      const colX = [marginX];
+      colWidths.forEach((w, i) => { if (i > 0) colX.push(colX[i - 1] + colWidths[i - 1]); });
+
+      function drawHeaderRow() {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(20, 20, 20);
+        doc.text(headers[0], colX[0], y);
+        for (let i = 1; i < headers.length; i++) doc.text(headers[i], colX[i] + colWidths[i], y, { align: 'right' });
+        y += 6;
+        doc.setDrawColor(200, 200, 200);
+        doc.line(marginX, y, pageWidth - marginX, y);
+        y += 14;
+      }
+      drawHeaderRow();
+
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
+      let subtotal = 0;
+      (factura.items || []).forEach(it => {
+        if (y > pageHeight - 130) { doc.addPage(); y = 50; drawHeaderRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(60, 60, 60); }
+        const valorUnd = it.precioUnitario || 0;
+        const dtoUnd = Math.round(valorUnd * (it.descuentoPct || 0) / 100);
+        subtotal += valorUnd * (it.cantidad || 0);
+        doc.text(it.producto || '—', colX[0], y, { maxWidth: colWidths[0] - 6 });
+        doc.text(formatCOP(valorUnd), colX[1] + colWidths[1], y, { align: 'right' });
+        doc.text(formatCOP(dtoUnd), colX[2] + colWidths[2], y, { align: 'right' });
+        doc.text(String(it.cantidad || 0), colX[3] + colWidths[3], y, { align: 'right' });
+        doc.text(formatCOP(it.total), colX[4] + colWidths[4], y, { align: 'right' });
+        y += 16;
+      });
+
+      y += 8;
+      doc.setDrawColor(220, 220, 220);
+      doc.line(marginX, y, pageWidth - marginX, y);
+      y += 18;
+
+      const labelX = colX[4] - 6;
+      const valueX = colX[4] + colWidths[4];
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(80, 80, 80);
+      doc.text('Subtotal:', labelX, y, { align: 'right' });
+      doc.text(formatCOP(subtotal), valueX, y, { align: 'right' });
+      y += 15;
+      doc.text('Impuestos:', labelX, y, { align: 'right' });
+      doc.text(formatCOP(0), valueX, y, { align: 'right' });
+      y += 18;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+      doc.text('Total:', labelX, y, { align: 'right' });
+      doc.text(formatCOP(factura.total), valueX, y, { align: 'right' });
+      y += 30;
+
+      doc.setFillColor(244, 247, 246);
+      doc.rect(marginX, y - 17, pageWidth - marginX * 2, 26, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+      doc.text(`VALOR A PAGAR: ${formatCOP(factura.total)}`, pageWidth / 2, y, { align: 'center' });
+
+      doc.save(`estado-cuenta-${slugificarIrisPdf(factura.numero)}.pdf`);
+      showToast('PDF descargado');
     }
 
     function docVentaViewContentHTML(tipo, record) {
@@ -22068,8 +22372,11 @@
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
         <div class="input-group" id="doc-venta-cliente-wrap">
-          <label class="input-label" for="doc-venta-cliente-select">Cliente</label>
-          <select id="doc-venta-cliente-select" class="soap-select-control"></select>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <label class="input-label" for="doc-venta-cliente-select">Cliente</label>
+            <button type="button" class="btn-secondary" style="padding:2px 10px;font-size:11px;" id="doc-venta-cliente-tributario-toggle-btn" onclick="toggleDocVentaClienteTributario()">Editar información tributaria</button>
+          </div>
+          <select id="doc-venta-cliente-select" class="soap-select-control" onchange="handleDocVentaClienteChange()"></select>
         </div>
         <div class="input-group" id="doc-venta-proveedor-wrap" style="display:none;">
           <label class="input-label" for="doc-venta-proveedor-select">Proveedor</label>
@@ -22086,6 +22393,91 @@
         <div class="input-group" id="doc-venta-estado-wrap">
           <label class="input-label" for="doc-venta-estado-select">Estado</label>
           <select id="doc-venta-estado-select" class="soap-select-control"></select>
+        </div>
+      </div>
+
+      <div id="doc-venta-cliente-tributario-panel" style="display:none;border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--surface);margin-bottom:14px;">
+        <div class="med-block-grid">
+          <div class="input-group">
+            <label class="input-label" for="dvfct-numero-documento">Número de documento</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="dvfct-numero-documento">
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="dvfct-tipo-documento">Tipo de documento</label>
+            <select class="soap-select-control" id="dvfct-tipo-documento">
+              <option>Cédula de ciudadanía</option>
+              <option>Cédula de extranjería</option>
+              <option>NIT</option>
+              <option>Pasaporte</option>
+              <option>Tarjeta de identidad</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="dvfct-tipo-organizacion">Tipo de organización</label>
+            <select class="soap-select-control" id="dvfct-tipo-organizacion">
+              <option>Persona Natural</option>
+              <option>Persona Jurídica</option>
+            </select>
+          </div>
+        </div>
+        <div class="med-block-grid" style="margin-top:12px;">
+          <div class="input-group">
+            <label class="input-label" for="dvfct-razon-social">Razón social</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="dvfct-razon-social">
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="dvfct-telefono">Teléfono</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="dvfct-telefono">
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="dvfct-correo">Correo electrónico</label>
+            <input type="email" class="input-control" style="padding-left:12px;" id="dvfct-correo">
+          </div>
+        </div>
+        <div class="med-block-grid" style="margin-top:12px;">
+          <div class="input-group">
+            <label class="input-label" for="dvfct-direccion">Dirección</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="dvfct-direccion">
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="dvfct-pais">País</label>
+            <select class="soap-select-control" id="dvfct-pais"><option>Colombia</option></select>
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="dvfct-municipio">Municipio</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="dvfct-municipio">
+          </div>
+        </div>
+        <div class="med-block-grid" style="margin-top:12px;">
+          <div class="input-group">
+            <label class="input-label" for="dvfct-regimen">Régimen</label>
+            <select class="soap-select-control" id="dvfct-regimen">
+              <option>No responsable de IVA</option>
+              <option>Responsable de IVA</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="dvfct-obligaciones">Obligaciones</label>
+            <select class="soap-select-control" id="dvfct-obligaciones">
+              <option>No aplica – Otros</option>
+              <option>Gran contribuyente</option>
+              <option>Autorretenedor</option>
+              <option>Régimen simple de tributación</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="dvfct-detalles-tributarios">Detalles tributarios</label>
+            <select class="soap-select-control" id="dvfct-detalles-tributarios">
+              <option>No aplica</option>
+              <option>IVA</option>
+              <option>INC</option>
+              <option>IVA e INC</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+          <button type="button" class="btn-secondary" onclick="toggleDocVentaClienteTributario(false)">Cancelar</button>
+          <button type="button" class="btn-primary" onclick="guardarDocVentaClienteTributario()">Guardar información tributaria</button>
         </div>
       </div>
 
@@ -22870,12 +23262,105 @@
         </div>
 
         <div class="facturacion-tab-pane active" id="facturacion-tab-cuenta">
+          <div style="border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--surface);margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:11.5px;color:var(--text-2);">Información tributaria del cliente</div>
+                <div style="font-size:14px;font-weight:600;color:var(--text-1);" id="facturacion-cliente-tributario-nombre">—</div>
+              </div>
+              <button type="button" class="btn-secondary" style="padding:6px 12px;font-size:12px;" id="facturacion-cliente-tributario-toggle-btn" onclick="toggleFacturacionClienteTributario()">Editar</button>
+            </div>
+            <div id="facturacion-cliente-tributario-panel" style="display:none;margin-top:14px;">
+              <div class="med-block-grid">
+                <div class="input-group">
+                  <label class="input-label" for="fct-numero-documento">Número de documento</label>
+                  <input type="text" class="input-control" style="padding-left:12px;" id="fct-numero-documento">
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="fct-tipo-documento">Tipo de documento</label>
+                  <select class="soap-select-control" id="fct-tipo-documento">
+                    <option>Cédula de ciudadanía</option>
+                    <option>Cédula de extranjería</option>
+                    <option>NIT</option>
+                    <option>Pasaporte</option>
+                    <option>Tarjeta de identidad</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="fct-tipo-organizacion">Tipo de organización</label>
+                  <select class="soap-select-control" id="fct-tipo-organizacion">
+                    <option>Persona Natural</option>
+                    <option>Persona Jurídica</option>
+                  </select>
+                </div>
+              </div>
+              <div class="med-block-grid" style="margin-top:12px;">
+                <div class="input-group">
+                  <label class="input-label" for="fct-razon-social">Razón social</label>
+                  <input type="text" class="input-control" style="padding-left:12px;" id="fct-razon-social">
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="fct-telefono">Teléfono</label>
+                  <input type="text" class="input-control" style="padding-left:12px;" id="fct-telefono">
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="fct-correo">Correo electrónico</label>
+                  <input type="email" class="input-control" style="padding-left:12px;" id="fct-correo">
+                </div>
+              </div>
+              <div class="med-block-grid" style="margin-top:12px;">
+                <div class="input-group">
+                  <label class="input-label" for="fct-direccion">Dirección</label>
+                  <input type="text" class="input-control" style="padding-left:12px;" id="fct-direccion">
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="fct-pais">País</label>
+                  <select class="soap-select-control" id="fct-pais"><option>Colombia</option></select>
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="fct-municipio">Municipio</label>
+                  <input type="text" class="input-control" style="padding-left:12px;" id="fct-municipio">
+                </div>
+              </div>
+              <div class="med-block-grid" style="margin-top:12px;">
+                <div class="input-group">
+                  <label class="input-label" for="fct-regimen">Régimen</label>
+                  <select class="soap-select-control" id="fct-regimen">
+                    <option>No responsable de IVA</option>
+                    <option>Responsable de IVA</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="fct-obligaciones">Obligaciones</label>
+                  <select class="soap-select-control" id="fct-obligaciones">
+                    <option>No aplica – Otros</option>
+                    <option>Gran contribuyente</option>
+                    <option>Autorretenedor</option>
+                    <option>Régimen simple de tributación</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="fct-detalles-tributarios">Detalles tributarios</label>
+                  <select class="soap-select-control" id="fct-detalles-tributarios">
+                    <option>No aplica</option>
+                    <option>IVA</option>
+                    <option>INC</option>
+                    <option>IVA e INC</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+                <button type="button" class="btn-secondary" onclick="toggleFacturacionClienteTributario(false)">Cancelar</button>
+                <button type="button" class="btn-primary" onclick="guardarFacturacionClienteTributario()">Guardar</button>
+              </div>
+            </div>
+          </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
             <div style="font-size:13px;color:var(--text-2);">Saldo a favor: <strong style="color:var(--text-1);" id="facturacion-saldo-favor">$0</strong></div>
             <button class="btn-primary" style="padding:6px 12px;font-size:12px;" onclick="crearFacturaPropietario()"><i data-lucide="plus" style="width:13px;height:13px;"></i> Nueva cuenta</button>
           </div>
           <table class="results-table">
-            <thead><tr><th>Número</th><th>Fecha</th><th>Concepto</th><th>Valor</th><th>Estado</th></tr></thead>
+            <thead><tr><th>Número</th><th>Fecha</th><th>Concepto</th><th>Valor</th><th>Estado</th><th style="text-align:right;">Acciones</th></tr></thead>
             <tbody id="facturacion-cuentas-tbody"></tbody>
           </table>
         </div>
