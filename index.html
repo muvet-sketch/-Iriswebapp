@@ -17459,7 +17459,7 @@
           <td>${f.fecha}</td>
           <td>${formatCOP(f.total)}</td>
           <td><span class="status-badge status-badge-${f.estado.toLowerCase()}">${f.estado}</span></td>
-          <td style="text-align:right;">${renderRowActionButtons('factura', f.id, ['imprimir', 'ver', 'email'])}</td>
+          <td style="text-align:right;">${renderRowActionButtons('factura', f.id, ['imprimir', 'ver', 'email'], f.estado === 'Pendiente' ? [{ icon: 'lock', label: 'Cerrar cuenta', onclick: `abrirCerrarCuentaModalDesdeId('${f.id}')` }] : [])}</td>
         </tr>
       `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No hay ventas/facturas registradas</td></tr>`;
       lucide.createIcons();
@@ -17701,6 +17701,9 @@
       const cerrarCuentaBtn = document.getElementById('doc-venta-cerrar-cuenta-btn');
       cerrarCuentaBtn.style.display = (tipo === 'factura' && isEdit && record.estado === 'Pendiente') ? '' : 'none';
 
+      const guardarCerrarBtn = document.getElementById('doc-venta-guardar-cerrar-btn');
+      guardarCerrarBtn.style.display = (tipo === 'factura' && !isEdit) ? '' : 'none';
+
       document.getElementById('doc-venta-modal').classList.add('show');
       lucide.createIcons();
     }
@@ -17781,7 +17784,7 @@
       showToast('Información tributaria actualizada');
     }
 
-    async function guardarDocVenta() {
+    async function guardarDocVenta(cerrarCuentaDespues) {
       const { tipo, mode, editId } = docVentaState;
       const fecha = document.getElementById('doc-venta-fecha-input').value;
       if (!fecha) { showToast('La fecha es obligatoria'); return; }
@@ -17841,13 +17844,17 @@
 
       const btn = document.getElementById('doc-venta-guardar-btn');
       if (btn) btn.disabled = true;
+      const guardarCerrarBtn = document.getElementById('doc-venta-guardar-cerrar-btn');
+      if (guardarCerrarBtn) guardarCerrarBtn.disabled = true;
       try {
+        let facturaGuardada = null;
         if (mode === 'edit') {
           const { error } = await window.supabase.from(tabla)
             .update({ ...fila, updated_at: new Date().toISOString() })
             .eq('id', editId);
           if (error) throw error;
-          Object.assign(arr.find(x => x.id === editId), { clienteId, fecha, estado, items, total, observaciones });
+          facturaGuardada = arr.find(x => x.id === editId);
+          Object.assign(facturaGuardada, { clienteId, fecha, estado, items, total, observaciones });
         } else {
           const establecimientoId = currentSession.activeMembership.establecimientoId;
           const { data: userData } = await window.supabase.auth.getUser();
@@ -17859,18 +17866,24 @@
           const nuevo = { id: inserted.id, numero, clienteId, fecha, estado, items, total, observaciones };
           if (tipo === 'factura') nuevo.pago = null;
           arr.unshift(nuevo);
+          facturaGuardada = nuevo;
         }
         tipo === 'cotizacion' ? renderCotizacionesTable() : renderFacturasTable();
         refreshFacturacionPropietarioTablesIfOpen();
         renderVentasDashboard();
         renderDashboard();
         closeDocVentaModal();
-        showToast(mode === 'edit' ? 'Documento actualizado' : 'Documento registrado');
+        if (cerrarCuentaDespues && tipo === 'factura') {
+          abrirCerrarCuentaModalParaFactura(facturaGuardada);
+        } else {
+          showToast(mode === 'edit' ? 'Documento actualizado' : 'Documento registrado');
+        }
       } catch (err) {
         console.error('[IRIS] Error guardando el documento de ventas en Supabase:', err);
         showToast('No se pudo guardar el documento — intenta de nuevo');
       } finally {
         if (btn) btn.disabled = false;
+        if (guardarCerrarBtn) guardarCerrarBtn.disabled = false;
       }
     }
 
@@ -22776,6 +22789,7 @@
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn-primary" id="doc-venta-cerrar-cuenta-btn" style="display:none;margin-right:auto;" onclick="abrirCerrarCuentaModal()"><i data-lucide="lock" style="width:14px;height:14px;"></i> Cerrar cuenta</button>
+        <button class="btn-secondary" id="doc-venta-guardar-cerrar-btn" style="display:none;margin-right:auto;" onclick="guardarDocVenta(true)"><i data-lucide="lock" style="width:14px;height:14px;"></i> Guardar y cerrar cuenta</button>
         <button class="btn-secondary" onclick="closeDocVentaModal()">Cancelar</button>
         <button class="btn-primary" id="doc-venta-guardar-btn" onclick="guardarDocVenta()">Guardar</button>
       </div>
