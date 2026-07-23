@@ -355,16 +355,22 @@ grant execute on function public.approve_link_request(uuid) to authenticated;
 grant execute on function public.reject_link_request(uuid) to authenticated;
 
 -- ── TABLA: invites (enlaces de invitación generados por un admin) ──
+-- `email` ata el enlace a una persona concreta: accept_invite() exige
+-- que coincida con el correo de la sesión que acepta, para que nunca
+-- pueda pisar la membership de quien lo abra (ver nota en
+-- accept_invite más abajo — bug real ya sufrido en producción).
 create table if not exists public.invites (
   id                 uuid primary key default gen_random_uuid(),
   establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
   rol                text not null check (rol in ('admin','medico','auxiliar','ventas')),
+  email              text,
   created_by         uuid references auth.users (id) on delete set null,
   expires_at         timestamptz not null default (now() + interval '7 days'),
   used_by            uuid references auth.users (id) on delete set null,
   used_at            timestamptz,
   created_at         timestamptz not null default now()
 );
+alter table public.invites add column if not exists email text;
 
 create index if not exists invites_establecimiento_id_idx on public.invites (establecimiento_id);
 
@@ -392,7 +398,15 @@ create policy "invites_delete_admin"
 -- ── FUNCIÓN: accept_invite ──────────────────────────────────────
 -- Única vía por la que un cliente puede crear su propia membership
 -- con un rol específico — evita que alguien se auto-asigne 'admin'
--- insertando directo en memberships.
+-- insertando directo en memberships. Exige además que el correo de
+-- quien acepta coincida con invites.email: sin esto, el ON CONFLICT
+-- de más abajo (necesario para poder re-invitar a alguien con otro
+-- rol) sobreescribe silenciosamente CUALQUIER membership preexistente
+-- del usuario que acepte en ese establecimiento — incluida la del
+-- propio admin que generó el enlace, si lo abre en el mismo navegador
+-- donde ya tiene sesión (pasó en producción: el creador de la clínica
+-- terminó con rol 'medico' sin ninguna vía de vuelta a 'admin', dos
+-- veces, porque used_by resultó igual a created_by ambas veces).
 create or replace function public.accept_invite(p_token uuid)
 returns void
 language plpgsql
@@ -401,6 +415,7 @@ set search_path = public
 as $$
 declare
   v_invite record;
+  v_user_email text;
 begin
   select * into v_invite from public.invites where id = p_token;
   if not found then
@@ -411,6 +426,14 @@ begin
   end if;
   if v_invite.expires_at < now() then
     raise exception 'Esta invitación expiró';
+  end if;
+  if v_invite.email is null then
+    raise exception 'Este enlace de invitación es antiguo y ya no incluye un correo válido. Pide que te generen uno nuevo.';
+  end if;
+
+  select email into v_user_email from auth.users where id = auth.uid();
+  if v_user_email is null or lower(trim(v_user_email)) <> lower(trim(v_invite.email)) then
+    raise exception 'Esta invitación fue generada para %. Inicia sesión o crea una cuenta con ese correo para aceptarla.', v_invite.email;
   end if;
 
   insert into public.memberships (user_id, establecimiento_id, rol, estado)
@@ -425,6 +448,28 @@ end;
 $$;
 
 grant execute on function public.accept_invite(uuid) to authenticated;
+
+-- ── FUNCIÓN: get_invite_preview ──────────────────────────────────
+-- Lectura anónima (pre-login) de un enlace de invitación válido, solo
+-- para que la pantalla de login pueda pre-llenar el correo y explicar
+-- para qué rol/clínica es ANTES de que la persona inicie sesión o cree
+-- cuenta — así nunca se le pide "aceptar" con la sesión equivocada.
+create or replace function public.get_invite_preview(p_token uuid)
+returns table (email text, rol text, establecimiento_nombre text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select i.email, i.rol, e.nombre
+  from public.invites i
+  join public.establecimientos e on e.id = i.establecimiento_id
+  where i.id = p_token
+    and i.used_at is null
+    and i.expires_at > now();
+$$;
+
+grant execute on function public.get_invite_preview(uuid) to anon, authenticated;
 
 -- ── TABLA: verification_codes (verificación de email por código) ──
 -- RLS habilitado SIN policies: inalcanzable desde el cliente por
@@ -478,6 +523,39 @@ as $$
 $$;
 
 grant execute on function public.user_is_member_of(uuid) to authenticated;
+
+-- ── FUNCIÓN: list_establecimiento_members ────────────────────────
+-- Roster real de un establecimiento (memberships + su profiles) para
+-- Admin > Usuarios. profiles solo se puede leer con auth.uid() = id
+-- vía RLS normal (ver policy "profiles_select_own"), por eso hace
+-- falta security definer aquí, igual que en user_is_admin_of/
+-- user_is_member_of — sin esto, un admin solo vería su propia fila en
+-- la tabla de usuarios reales, nunca al resto del equipo.
+create or replace function public.list_establecimiento_members(p_establecimiento_id uuid)
+returns table (
+  membership_id uuid,
+  user_id uuid,
+  rol text,
+  estado text,
+  email text,
+  nombre text,
+  telefono text,
+  created_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select m.id, m.user_id, m.rol, m.estado, p.email, p.nombre, p.telefono, m.created_at
+  from public.memberships m
+  join public.profiles p on p.id = m.user_id
+  where m.establecimiento_id = p_establecimiento_id
+    and public.user_is_member_of(p_establecimiento_id)
+  order by m.created_at;
+$$;
+
+grant execute on function public.list_establecimiento_members(uuid) to authenticated;
 
 -- ── TABLA: propietarios ─────────────────────────────────────
 create table if not exists public.propietarios (

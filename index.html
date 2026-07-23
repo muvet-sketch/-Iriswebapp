@@ -11072,14 +11072,12 @@
         }
       } else if (moduleKey === 'usuario') {
         // Los usuarios nunca se eliminan de verdad — "Eliminar" desde el
-        // menú "..." desactiva el acceso (marcado lógico, igual que el
-        // toggle de la tabla).
+        // menú "..." desactiva el acceso. Reutiliza toggleUsuarioEstado()
+        // (mismo toggle de la tabla) en vez de tocar el array local a mano,
+        // porque esa función ya persiste el cambio en memberships.estado
+        // para usuarios reales (ver cargarUsuariosRealesDesdeSupabase).
         const user = USUARIOS_SISTEMA.find(u => String(u.id) === recordId);
-        if (user) {
-          user.estado = 'inactivo';
-          renderUsuariosTable();
-        }
-        showToast('Usuario desactivado');
+        if (user && user.estado === 'activo') toggleUsuarioEstado(user.id);
         return;
       } else if (moduleKey === 'resultado') {
         const [petKey, idxStr] = recordId.split(':');
@@ -15805,21 +15803,32 @@
       if (!currentSession || !currentSession.activeMembership) return;
       const rol = prompt('¿Para qué rol es el enlace? Escribe: medico, auxiliar, ventas o admin', 'medico');
       if (!rol || !ROLES[rol]) { if (rol !== null) showToast('Rol no válido'); return; }
-      const { url, error } = await crearInvitacionParaRol(rol);
+      const email = prompt('¿A qué correo va dirigida la invitación? Solo esa persona podrá aceptarla.', '');
+      if (!email || !esEmailValido(email)) { showToast('Ingresa un correo válido'); return; }
+      const { url, error } = await crearInvitacionParaRol(rol, email);
       if (error) { showToast('No se pudo generar el enlace: ' + error); return; }
       if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
       window.prompt('Enlace de invitación (copiado al portapapeles si el navegador lo permitió) — válido 7 días:', url);
     }
 
+    function esEmailValido(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+    }
+
     // Pieza compartida por generarEnlaceInvitacion() (Solicitudes de
     // vinculación) y generarInvitacionDesdeModal() (botón "Crear usuario" de
     // Admin > Usuarios) — ambos crean la misma fila real en `invites`, solo
-    // cambia de dónde sale el rol (prompt() vs. el <select> del modal).
-    async function crearInvitacionParaRol(rol) {
+    // cambia de dónde sale el rol (prompt() vs. el <select> del modal). El
+    // correo queda grabado en la invitación y accept_invite() (ver
+    // supabase/schema.sql) exige que coincida con la sesión que la acepta —
+    // sin esto, cualquier sesión activa en el navegador que abriera el link
+    // (incluida la del propio admin que lo generó) se apropiaba del rol.
+    async function crearInvitacionParaRol(rol, email) {
       if (!currentSession || !currentSession.activeMembership) return { error: 'No hay sesión activa' };
       const { data, error } = await window.supabase.from('invites').insert({
         establecimiento_id: currentSession.activeMembership.establecimientoId,
         rol,
+        email: email.trim().toLowerCase(),
         created_by: currentSession.user.id
       }).select().single();
       if (error) return { error: error.message };
@@ -15828,11 +15837,16 @@
 
     async function generarInvitacionDesdeModal() {
       const rol = document.getElementById('usuario-rol-select').value;
+      const email = document.getElementById('usuario-invite-email-input').value.trim();
+      if (!email || !esEmailValido(email)) {
+        showToast('Ingresa un correo válido para la persona invitada');
+        return;
+      }
       const btn = document.getElementById('usuario-guardar-btn');
       const original = btn.textContent;
       btn.disabled = true;
       btn.textContent = 'Generando...';
-      const { url, error } = await crearInvitacionParaRol(rol);
+      const { url, error } = await crearInvitacionParaRol(rol, email);
       btn.disabled = false;
       btn.textContent = original;
       if (error) { showToast('No se pudo generar el enlace: ' + error); return; }
@@ -16236,10 +16250,15 @@
       lucide.createIcons();
     }
 
-    function toggleUsuarioEstado(userId) {
+    async function toggleUsuarioEstado(userId) {
       const user = USUARIOS_SISTEMA.find(u => u.id === userId);
       if (!user) return;
-      user.estado = user.estado === 'activo' ? 'inactivo' : 'activo';
+      const nuevoEstado = user.estado === 'activo' ? 'inactivo' : 'activo';
+      if (user.membershipId) {
+        const { error } = await window.supabase.from('memberships').update({ estado: nuevoEstado }).eq('id', user.membershipId);
+        if (error) { showToast('No se pudo actualizar el acceso: ' + error.message); return; }
+      }
+      user.estado = nuevoEstado;
       renderUsuariosTable();
       showToast(user.estado === 'activo' ? `${user.nombre} activado` : `${user.nombre} desactivado`);
     }
@@ -16279,6 +16298,8 @@
 
       document.getElementById('usuario-form-fields-mock').style.display = isRealInvite ? 'none' : '';
       document.getElementById('usuario-invite-explainer').style.display = isRealInvite ? '' : 'none';
+      document.getElementById('usuario-invite-email-group').style.display = isRealInvite ? '' : 'none';
+      document.getElementById('usuario-invite-email-input').value = '';
       document.getElementById('usuario-invite-link-group').style.display = 'none';
       document.getElementById('usuario-invite-link-input').value = '';
       const saveBtn = document.getElementById('usuario-guardar-btn');
@@ -16372,6 +16393,16 @@
       document.getElementById('usuario-detalle-nombre').value = user.nombre;
       document.getElementById('usuario-detalle-email').value = user.email;
       document.getElementById('usuario-detalle-telefono').value = user.telefono;
+      // Usuario real (cargado desde list_establecimiento_members): nombre/
+      // email/teléfono son del propio perfil de esa persona -- RLS
+      // ("profiles_update_own") solo deja que cada quien edite el suyo, así
+      // que desde acá quedan de solo lectura; únicamente el rol es editable
+      // (persiste en memberships vía guardarUsuarioDetalle()).
+      const isRealMember = !!user.membershipId;
+      ['usuario-detalle-nombre', 'usuario-detalle-email', 'usuario-detalle-telefono'].forEach(fieldId => {
+        document.getElementById(fieldId).disabled = isRealMember;
+      });
+      document.getElementById('usuario-detalle-real-note').style.display = isRealMember ? '' : 'none';
       document.getElementById('usuario-detalle-rol-select').value = user.rol;
       document.getElementById('usuario-detalle-especialidad-select').value = user.especialidad || ESPECIALIDADES_MEDICAS[0];
       document.getElementById('usuario-detalle-especialidad-wrap').style.display = user.rol === 'medico' ? '' : 'none';
@@ -16428,18 +16459,31 @@
       usuarioDetalleWorkingPrivilegios[dominio] = checked;
     }
 
-    function guardarUsuarioDetalle() {
+    async function guardarUsuarioDetalle() {
       const user = USUARIOS_SISTEMA.find(u => u.id === editingUsuarioDetalleId);
       if (!user) return;
-      const nombre = document.getElementById('usuario-detalle-nombre').value.trim();
-      const email = document.getElementById('usuario-detalle-email').value.trim();
-      if (!nombre || !email) { showToast('Nombre y email son obligatorios'); return; }
+      const nuevoRol = document.getElementById('usuario-detalle-rol-select').value;
+      const nuevaEspecialidad = nuevoRol === 'medico' ? document.getElementById('usuario-detalle-especialidad-select').value : null;
 
-      user.nombre = nombre;
-      user.email = email;
-      user.telefono = document.getElementById('usuario-detalle-telefono').value.trim() || '—';
-      user.rol = document.getElementById('usuario-detalle-rol-select').value;
-      user.especialidad = user.rol === 'medico' ? document.getElementById('usuario-detalle-especialidad-select').value : null;
+      if (user.membershipId) {
+        // Usuario real -- nombre/email/teléfono quedaron de solo lectura
+        // (ver openUsuarioDetalleModal), solo se persiste el rol.
+        const saveBtn = document.querySelector('#usuario-detalle-modal .btn-primary');
+        if (saveBtn) saveBtn.disabled = true;
+        const { error } = await window.supabase.from('memberships').update({ rol: nuevoRol }).eq('id', user.membershipId);
+        if (saveBtn) saveBtn.disabled = false;
+        if (error) { showToast('No se pudo actualizar el rol: ' + error.message); return; }
+      } else {
+        const nombre = document.getElementById('usuario-detalle-nombre').value.trim();
+        const email = document.getElementById('usuario-detalle-email').value.trim();
+        if (!nombre || !email) { showToast('Nombre y email son obligatorios'); return; }
+        user.nombre = nombre;
+        user.email = email;
+        user.telefono = document.getElementById('usuario-detalle-telefono').value.trim() || '—';
+      }
+
+      user.rol = nuevoRol;
+      user.especialidad = nuevaEspecialidad;
       USUARIO_PRIVILEGIOS[user.id] = { ...usuarioDetalleWorkingPrivilegios };
 
       renderUsuariosTable();
@@ -20641,17 +20685,6 @@
     // roster vacío sin ni siquiera quien la creó.
     function seedUsuarioActualComoStaff(membership) {
       const estab = membership.establecimiento || {};
-      USUARIOS_SISTEMA.push({
-        id: 1,
-        nombre: currentSession.user.nombre || currentSession.user.email,
-        email: currentSession.user.email,
-        telefono: currentSession.user.telefono || '',
-        rol: membership.rol,
-        especialidad: null,
-        estado: 'activo'
-      });
-      USUARIO_PRIVILEGIOS[1] = getDefaultPrivilegiosParaRol(membership.rol);
-      usuarioIdCounter = 100;
       Object.assign(CLINIC_INFO, {
         nombre: estab.nombre || '',
         nit: estab.nit || '',
@@ -20659,6 +20692,42 @@
         correo: estab.correo_contacto || '',
         correoRecordatorios: estab.correo_contacto || ''
       });
+    }
+
+    // Roster real de Admin > Usuarios para un establecimiento no-demo: antes
+    // solo se sembraba (seedUsuarioActualComoStaff) al usuario que acababa de
+    // iniciar sesión, así que un admin nunca veía al resto de su equipo ni
+    // podía corregir el rol de nadie más. list_establecimiento_members (ver
+    // supabase/schema.sql) hace el join memberships+profiles con security
+    // definer porque profiles solo es legible por su propio dueño vía RLS.
+    // Los ids locales de USUARIOS_SISTEMA se mantienen numéricos (el resto
+    // del código ya asume eso en templates/onclick) — el id real de Supabase
+    // para persistir cambios (rol/estado) queda aparte, en `membershipId`.
+    async function cargarUsuariosRealesDesdeSupabase(estabId) {
+      if (!window.supabase || !estabId || !currentSession) return;
+      const { data, error } = await window.supabase.rpc('list_establecimiento_members', { p_establecimiento_id: estabId });
+      if (error) {
+        console.error('cargarUsuariosRealesDesdeSupabase(): no se pudo cargar el roster —', error);
+        return;
+      }
+      USUARIOS_SISTEMA.length = 0;
+      usuarioIdCounter = 0;
+      (data || []).forEach(row => {
+        const id = ++usuarioIdCounter;
+        USUARIOS_SISTEMA.push({
+          id,
+          nombre: row.nombre || row.email || 'Sin nombre',
+          email: row.email || '',
+          telefono: row.telefono || '—',
+          rol: row.rol,
+          especialidad: null,
+          estado: row.estado === 'activo' ? 'activo' : 'inactivo',
+          esUsuarioActual: row.user_id === currentSession.user.id,
+          membershipId: row.membership_id
+        });
+        USUARIO_PRIVILEGIOS[id] = getDefaultPrivilegiosParaRol(row.rol);
+      });
+      usuarioIdCounter = Math.max(usuarioIdCounter, 100);
     }
 
     // Roles/tabs distintos de "perfil" ocultos por completo cuando el
@@ -20787,6 +20856,28 @@
       history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
     }
     const pendingInviteToken = inviteTokenFromUrl || localStorage.getItem(INVITE_TOKEN_STORAGE_KEY) || null;
+    // Se llena una sola vez (ver bootstrapSession()) con el resultado de
+    // get_invite_preview(): null = todavía no consultado, false = token
+    // inválido/usado/vencido, objeto = {email, rol, establecimiento_nombre}.
+    // Sirve tanto para pre-llenar/explicar el login ANTES de tener sesión
+    // como para decidir, ya con sesión, si hay que forzar el cierre de
+    // sesión por no coincidir el correo (ver nota en accept_invite()).
+    let pendingInvitePreview = null;
+
+    // Muestra en la pantalla de login (screen-a) el contexto de una
+    // invitación pendiente — mismo elemento/patrón que ya usa
+    // handleLoginSubmit() para "Cuenta creada, revisa tu correo..."
+    // (color gris = informativo, no error).
+    function mostrarBannerInvitacion(preview) {
+      const emailEl = document.getElementById('email');
+      if (emailEl && !emailEl.value) emailEl.value = preview.email;
+      const authErrorEl = document.getElementById('login-error-msg');
+      if (!authErrorEl) return;
+      const rolLabel = (ROLES[preview.rol] && ROLES[preview.rol].label) || preview.rol;
+      authErrorEl.style.color = 'var(--text-2)';
+      authErrorEl.textContent = `Te invitaron como ${rolLabel} en ${preview.establecimiento_nombre}. Inicia sesión o crea tu cuenta con ${preview.email} para aceptar la invitación.`;
+      authErrorEl.style.display = 'block';
+    }
 
     // ── ORQUESTADOR DE SESIÓN ───────────────────────────────────────
     // Reemplaza el viejo interruptor puramente local (iris_session_active
@@ -20815,10 +20906,25 @@
           return;
         }
 
+        // Se resuelve una sola vez (pendingInvitePreview arranca en null) y
+        // se reusa en cada re-entrada a bootstrapSession() -- no hace falta
+        // esperar sesión: get_invite_preview() es ejecutable por `anon`
+        // justamente para poder guiar el login/registro de una persona
+        // invitada que todavía no tiene cuenta en este navegador.
+        if (pendingInviteToken && pendingInvitePreview === null) {
+          const { data: previewRows } = await window.supabase.rpc('get_invite_preview', { p_token: pendingInviteToken });
+          const rawPreview = (previewRows && previewRows[0]) || null;
+          // Enlaces generados antes de este fix no tienen correo -- se
+          // tratan igual que "inválido" (accept_invite() los rechaza de
+          // todos modos) para no intentar pre-llenar el login con null.
+          pendingInvitePreview = (rawPreview && rawPreview.email) ? rawPreview : false;
+        }
+
         const { data: { session } } = await window.supabase.auth.getSession();
         if (!session) {
           currentSession = null;
           localStorage.removeItem('iris_session_active');
+          if (pendingInvitePreview) mostrarBannerInvitacion(pendingInvitePreview);
           mostrarShellSegunSesion();
           return;
         }
@@ -20841,18 +20947,54 @@
           return;
         }
 
+        // Token presente pero inválido/usado/vencido (o sin correo, enlace
+        // viejo de antes de este fix) -> se trata como si no hubiera
+        // invitación pendiente, no como para bloquear el resto del flujo.
+        const inviteIsUsable = !!(pendingInviteToken && pendingInvitePreview);
+
         // 2) Sin rol asignado -> selección de rol (una invitación ya trae
         // el rol consigo y salta esta pantalla)
-        if (!profile.role && !pendingInviteToken) {
+        if (!profile.role && !inviteIsUsable) {
           irAAuthShell('screen-b');
           return;
         }
 
-        // 3) Invitación pendiente -> acepta (crea la membership con el rol
-        // fijado en la invitación) antes de seguir evaluando memberships
+        // 3) Invitación pendiente -> antes de aceptarla, el correo de la
+        // sesión activa DEBE coincidir con el de la invitación (ver
+        // accept_invite() en supabase/schema.sql). Si no coincide, no se
+        // acepta con la cuenta equivocada — se cierra esa sesión y se manda
+        // a login/registro con el correo correcto ya indicado. Así es como
+        // un admin que abre su propio enlace de invitación en el mismo
+        // navegador (o cualquier otra sesión que no sea la invitada) deja
+        // de terminar con su propia membership sobreescrita.
+        let inviteWasAccepted = false;
         if (pendingInviteToken) {
-          await window.supabase.rpc('accept_invite', { p_token: pendingInviteToken });
-          localStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
+          if (pendingInvitePreview === false) {
+            localStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
+            showToast('El enlace de invitación ya no es válido (usado o vencido).');
+          } else {
+            const invitedEmail = pendingInvitePreview.email.trim().toLowerCase();
+            const sessionEmail = (session.user.email || '').trim().toLowerCase();
+            if (invitedEmail !== sessionEmail) {
+              await window.supabase.auth.signOut();
+              currentSession = null;
+              localStorage.removeItem('iris_session_active');
+              irAAuthShell('screen-a');
+              mostrarBannerInvitacion(pendingInvitePreview);
+              return;
+            }
+            const { error: acceptError } = await window.supabase.rpc('accept_invite', { p_token: pendingInviteToken });
+            localStorage.removeItem(INVITE_TOKEN_STORAGE_KEY);
+            if (acceptError) {
+              irAAuthShell('screen-a');
+              const authErrorEl = document.getElementById('login-error-msg');
+              authErrorEl.style.color = '';
+              authErrorEl.textContent = 'No se pudo aceptar la invitación: ' + acceptError.message;
+              authErrorEl.style.display = 'block';
+              return;
+            }
+            inviteWasAccepted = true;
+          }
         }
 
         const memberList = (membershipRows || []).map(m => ({
@@ -20861,7 +21003,7 @@
 
         // 4) Admin sin ningún establecimiento -> único camino posible es
         // crear uno (Restricciones: creación de clínica solo Administrador)
-        if (profile.role === 'admin' && memberList.length === 0 && !pendingInviteToken) {
+        if (profile.role === 'admin' && memberList.length === 0 && !inviteIsUsable) {
           prepararScreenD(session.user.email, session.user.id);
           irAAuthShell('screen-d');
           return;
@@ -20870,7 +21012,7 @@
         // Si se acaba de aceptar una invitación, refresca memberships antes
         // de resolver cuál queda activa
         let finalMemberList = memberList;
-        if (pendingInviteToken) {
+        if (inviteWasAccepted) {
           const { data: freshRows } = await window.supabase.from('memberships')
             .select('*, establecimientos(*)').eq('user_id', session.user.id).eq('estado', 'activo');
           finalMemberList = (freshRows || []).map(m => ({
@@ -20919,12 +21061,20 @@
           if (estabIdParaMockData !== mockDataInitializedEstabId) {
             const seedDemo = !!(activeMembership && activeMembership.establecimiento && activeMembership.establecimiento.nit === DEMO_ESTABLISHMENT_NIT);
             resetMockDataForClinic(seedDemo);
-            if (activeMembership && !seedDemo) seedUsuarioActualComoStaff(activeMembership);
+            if (activeMembership && !seedDemo) {
+              seedUsuarioActualComoStaff(activeMembership);
+              // Reemplaza el viejo seed de un solo usuario (el logueado) por
+              // el roster real completo del establecimiento (memberships +
+              // profiles vía list_establecimiento_members) — si no, Admin >
+              // Usuarios nunca muestra a nadie más que a quien inició sesión,
+              // y no hay forma de ver/corregir el rol de otro miembro real.
+              await cargarUsuariosRealesDesdeSupabase(estabIdParaMockData);
+            }
             // propietarios/patientData ya no los siembra resetMockDataForClinic
             // (ver su nota) — se cargan de verdad desde Supabase aquí. Va
-            // DESPUÉS de seedUsuarioActualComoStaff (que solo toca
-            // USUARIOS_SISTEMA/CLINIC_INFO, sin relación) y antes de
-            // renderAllModulesData(), para que las tablas ya pinten con datos
+            // DESPUÉS de seedUsuarioActualComoStaff/cargarUsuariosRealesDesdeSupabase
+            // (que solo tocan USUARIOS_SISTEMA/CLINIC_INFO, sin relación) y antes
+            // de renderAllModulesData(), para que las tablas ya pinten con datos
             // reales en el primer render.
             if (estabIdParaMockData) await cargarDatosClinicaDesdeSupabase(estabIdParaMockData, seedDemo);
             mockDataInitializedEstabId = estabIdParaMockData;
@@ -23029,8 +23179,13 @@
       </div>
 
       <p class="page-subtitle" id="usuario-invite-explainer" style="display:none;margin:-6px 0 16px;font-size:12.5px;line-height:1.5;">
-        Se genera un enlace de invitación real. Compártelo con la persona: al abrirlo e iniciar sesión (o crear su cuenta), quedará vinculada a este establecimiento con el rol elegido.
+        Se genera un enlace de invitación real, atado a este correo. Solo esa persona podrá aceptarlo — iniciando sesión o creando su propia cuenta con ese mismo correo — y quedará vinculada a este establecimiento con el rol elegido, sin afectar tu propia cuenta.
       </p>
+
+      <div class="input-group" id="usuario-invite-email-group" style="display:none;margin-bottom:14px;">
+        <label class="input-label" for="usuario-invite-email-input">Email de la persona invitada</label>
+        <input type="email" id="usuario-invite-email-input" class="input-control" style="padding-left:12px;" placeholder="nombre@ejemplo.com">
+      </div>
 
       <div id="usuario-form-fields-mock">
         <div class="input-group" style="margin-bottom:14px;">
@@ -23099,6 +23254,10 @@
         <button type="button" class="prod-modal-tab-btn" data-udtab="rol" onclick="switchUsuarioDetalleTab('rol')">Rol y privilegios</button>
         <button type="button" class="prod-modal-tab-btn" data-udtab="preferencias" onclick="switchUsuarioDetalleTab('preferencias')">Preferencias</button>
       </div>
+
+      <p class="page-subtitle" id="usuario-detalle-real-note" style="display:none;margin:-6px 0 14px;font-size:12px;color:var(--text-2);line-height:1.5;">
+        Usuario real: su nombre, correo y teléfono los administra desde su propio perfil (cada quien solo puede editar el suyo) — no se pueden cambiar desde acá.
+      </p>
 
       <div class="prod-modal-tab-pane active" id="usuario-detalle-tab-info">
         <div class="input-group" style="margin-bottom:14px;">
