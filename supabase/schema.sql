@@ -1043,3 +1043,65 @@ create policy "firmas_delete_own_folder"
     bucket_id = 'firmas'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ── TABLA: productos (Inventario > Productos y servicios) ────
+-- Antes vivía solo en VENTAS_CATALOGO (array JS en memoria en index.html),
+-- por eso se perdía al refrescar la página tanto para altas manuales
+-- ("+Registrar") como para lo importado desde Excel. Acceso por CLÍNICA
+-- (establecimiento_id), mismo patrón que mascotas/examenes/hospitalizaciones.
+-- proveedor_id NO es una FK real: VENTAS_PROVEEDORES sigue siendo mock en
+-- memoria (fuera de alcance de este cambio), así que solo se guarda su id
+-- de texto, igual que ventas_facturas.cliente_id referencia VENTAS_CLIENTES.
+create table if not exists public.productos (
+  id                     uuid primary key default gen_random_uuid(),
+  establecimiento_id     uuid not null references public.establecimientos (id) on delete cascade,
+  tipo                   text not null check (tipo in ('producto','servicio','otro')),
+  nombre                 text not null,
+  categoria              text,
+  sku                    text,
+  barcode                text,
+  descripcion            text,
+  cuantificable          boolean not null default false,
+  excluido_lista_precio  boolean not null default false,
+  precio                 numeric not null default 0,
+  valor_base             numeric not null default 0,
+  costo                  numeric not null default 0,
+  impuesto               text,
+  estado                 text not null default 'activo' check (estado in ('activo','inactivo')),
+  unidad_medida          text,
+  stock                  numeric not null default 0,
+  stock_minimo           numeric not null default 0,
+  proveedor_id           text,
+  lote                   text,
+  vencimiento            date,
+  unidades_dia           numeric not null default 0,
+  duracion_minutos       integer,
+  created_by             uuid references auth.users (id) on delete set null,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
+);
+
+create index if not exists productos_establecimiento_id_idx on public.productos (establecimiento_id);
+
+alter table public.productos enable row level security;
+
+drop policy if exists "productos_select_member" on public.productos;
+create policy "productos_select_member"
+  on public.productos for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "productos_insert_member" on public.productos;
+create policy "productos_insert_member"
+  on public.productos for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "productos_update_member" on public.productos;
+create policy "productos_update_member"
+  on public.productos for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "productos_delete_member" on public.productos;
+create policy "productos_delete_member"
+  on public.productos for delete
+  using (public.user_is_member_of(establecimiento_id));

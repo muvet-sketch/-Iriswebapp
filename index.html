@@ -11170,9 +11170,7 @@
         VENTAS_MOVIMIENTOS.splice(VENTAS_MOVIMIENTOS.findIndex(d => d.id === Number(recordId)), 1);
         renderIngresosEgresosTable();
       } else if (moduleKey === 'producto') {
-        VENTAS_CATALOGO.splice(VENTAS_CATALOGO.findIndex(d => d.id === recordId), 1);
-        renderProductosServiciosTable();
-        renderCategoriasTable();
+        eliminarProductoReal(recordId);
       } else if (moduleKey === 'categoria') {
         const idx = VENTAS_CATEGORIAS.indexOf(recordId);
         if (idx > -1) VENTAS_CATEGORIAS.splice(idx, 1);
@@ -11230,6 +11228,20 @@
         if (error) throw error;
       } catch (err) {
         console.error('[IRIS] Error eliminando cotización en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+    async function eliminarProductoReal(recordId) {
+      const idx = VENTAS_CATALOGO.findIndex(d => d.id === recordId);
+      if (idx !== -1) VENTAS_CATALOGO.splice(idx, 1);
+      renderProductosServiciosTable();
+      renderCategoriasTable();
+      if (!window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('productos').delete().eq('id', recordId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando producto/servicio en Supabase:', err);
         showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
       }
     }
@@ -16242,7 +16254,7 @@
                 <span class="status-badge status-badge-${u.estado}">${u.estado === 'activo' ? 'Activo' : 'Inactivo'}</span>
               </label>
             </td>
-            <td style="text-align:right;">${renderRowActionsMenu('usuario', u.id)}</td>
+            <td style="text-align:right;">${renderRowActionsMenu('usuario', u.id, null, ['editar', 'eliminar'])}</td>
           </tr>
         `).join('');
       }
@@ -18915,9 +18927,17 @@
       document.getElementById('prod-categoria-select').value = limpio;
       poblarFiltroCategoriasInventario();
     }
-    function guardarProducto() {
+    // Persiste de verdad en Supabase (tabla `productos`, mismo patrón que
+    // guardarDocVenta() para ventas_facturas/ventas_cotizaciones) — antes
+    // solo tocaba VENTAS_CATALOGO en memoria, por eso se perdía al
+    // refrescar la página.
+    async function guardarProducto() {
       const nombre = document.getElementById('prod-nombre-input').value.trim();
       if (!nombre) { showToast('El nombre es obligatorio'); return; }
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
       const tipo = productoTipoActual;
       const cuantificable = document.getElementById('prod-cuantificable-toggle').checked;
       const data = {
@@ -18947,20 +18967,39 @@
       } else if (tipo === 'servicio') {
         Object.assign(data, { duracionMinutos: Number(document.getElementById('prod-duracion-input').value) || null });
       }
-      if (editingProductoId) {
-        Object.assign(VENTAS_CATALOGO.find(x => x.id === editingProductoId), data);
-      } else {
-        const nextId = generarNuevoIdProducto(tipo);
-        VENTAS_CATALOGO.push({ id: nextId, ...data });
-        if (productoModalPendingDocItem !== null) {
-          handleDocItemConceptoChange(productoModalPendingDocItem, nextId);
-          productoModalPendingDocItem = null;
+      const btn = document.getElementById('producto-guardar-btn');
+      if (btn) btn.disabled = true;
+      try {
+        if (editingProductoId) {
+          const { error } = await window.supabase.from('productos')
+            .update({ ...filaSupabaseDesdeProducto(data), updated_at: new Date().toISOString() })
+            .eq('id', editingProductoId);
+          if (error) throw error;
+          Object.assign(VENTAS_CATALOGO.find(x => x.id === editingProductoId), data);
+        } else {
+          const establecimientoId = currentSession.activeMembership.establecimientoId;
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+          const { data: inserted, error } = await window.supabase.from('productos')
+            .insert({ ...filaSupabaseDesdeProducto(data), establecimiento_id: establecimientoId, created_by: userId })
+            .select().single();
+          if (error) throw error;
+          VENTAS_CATALOGO.push({ id: inserted.id, ...data });
+          if (productoModalPendingDocItem !== null) {
+            handleDocItemConceptoChange(productoModalPendingDocItem, inserted.id);
+            productoModalPendingDocItem = null;
+          }
         }
+        renderProductosServiciosTable();
+        renderCategoriasTable();
+        closeProductoModal();
+        showToast(editingProductoId ? 'Producto/servicio actualizado' : 'Producto/servicio registrado');
+      } catch (err) {
+        console.error('[IRIS] Error guardando producto/servicio en Supabase:', err);
+        showToast('No se pudo guardar — intenta de nuevo');
+      } finally {
+        if (btn) btn.disabled = false;
       }
-      renderProductosServiciosTable();
-      renderCategoriasTable();
-      closeProductoModal();
-      showToast(editingProductoId ? 'Producto/servicio actualizado' : 'Producto/servicio registrado');
     }
     function productoViewContentHTML(p) {
       const base = `
@@ -19557,31 +19596,63 @@
       lucide.createIcons();
     }
 
-    function generarNuevoIdProducto(tipo) {
-      const prefix = tipo === 'producto' ? 'p' : (tipo === 'servicio' ? 's' : 'o');
-      const nums = VENTAS_CATALOGO.filter(x => x.id.startsWith(prefix)).map(x => Number(x.id.slice(1)) || 0);
-      return prefix + ((nums.length ? Math.max(...nums) : 0) + 1);
-    }
-
-    function confirmarImportacionExcel() {
+    // Persiste de verdad en Supabase (tabla `productos`) — antes solo
+    // tocaba VENTAS_CATALOGO en memoria, por eso lo importado se perdía al
+    // refrescar la página. Los ids ya no se generan localmente (esquema
+    // p1/s1/o1): los que se crean toman el uuid que devuelve Supabase.
+    async function confirmarImportacionExcel() {
       if (!importarExcelParsed || !importarExcelParsed.items.length) return;
-      let creados = 0, actualizados = 0;
-      importarExcelParsed.items.forEach(it => {
-        if (it.categoria && !VENTAS_CATEGORIAS.includes(it.categoria)) VENTAS_CATEGORIAS.push(it.categoria);
-        const existente = it.sku ? VENTAS_CATALOGO.find(p => p.sku && p.sku === it.sku) : null;
-        if (existente) {
-          Object.assign(existente, it);
-          actualizados++;
-        } else {
-          VENTAS_CATALOGO.push({ id: generarNuevoIdProducto(it.tipo), ...it });
-          creados++;
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede importar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const btn = document.getElementById('importar-excel-confirm-btn');
+      if (btn) btn.disabled = true;
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        const paraActualizar = [];
+        const paraCrear = [];
+        const nuevasCategorias = [];
+        importarExcelParsed.items.forEach(it => {
+          if (it.categoria && !VENTAS_CATEGORIAS.includes(it.categoria) && !nuevasCategorias.includes(it.categoria)) {
+            nuevasCategorias.push(it.categoria);
+          }
+          const existente = it.sku ? VENTAS_CATALOGO.find(p => p.sku && p.sku === it.sku) : null;
+          if (existente) paraActualizar.push({ existente, it });
+          else paraCrear.push(it);
+        });
+
+        await Promise.all(paraActualizar.map(({ existente, it }) =>
+          window.supabase.from('productos')
+            .update({ ...filaSupabaseDesdeProducto(it), updated_at: new Date().toISOString() })
+            .eq('id', existente.id)
+            .then(({ error }) => { if (error) throw error; })
+        ));
+        paraActualizar.forEach(({ existente, it }) => Object.assign(existente, it));
+
+        if (paraCrear.length) {
+          const { data: inserted, error } = await window.supabase.from('productos')
+            .insert(paraCrear.map(it => ({ ...filaSupabaseDesdeProducto(it), establecimiento_id: establecimientoId, created_by: userId })))
+            .select();
+          if (error) throw error;
+          inserted.forEach((r, i) => VENTAS_CATALOGO.push({ id: r.id, ...paraCrear[i] }));
         }
-      });
-      poblarFiltroCategoriasInventario();
-      renderProductosServiciosTable();
-      renderCategoriasTable();
-      closeImportarExcelModal();
-      showToast(`Importación completa: ${creados} nuevo${creados === 1 ? '' : 's'}, ${actualizados} actualizado${actualizados === 1 ? '' : 's'}`);
+
+        VENTAS_CATEGORIAS.push(...nuevasCategorias);
+        poblarFiltroCategoriasInventario();
+        renderProductosServiciosTable();
+        renderCategoriasTable();
+        closeImportarExcelModal();
+        showToast(`Importación completa: ${paraCrear.length} nuevo${paraCrear.length === 1 ? '' : 's'}, ${paraActualizar.length} actualizado${paraActualizar.length === 1 ? '' : 's'}`);
+      } catch (err) {
+        console.error('[IRIS] Error importando productos/servicios en Supabase:', err);
+        showToast('No se pudo completar la importación — intenta de nuevo');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     }
 
     function exportarInventarioExcel() { showToast('Exportación disponible próximamente'); }
@@ -20299,11 +20370,12 @@
       VENTAS_CLIENTES.length = 0;
       if (seed) VENTAS_CLIENTES.push(...seed.VENTAS_CLIENTES);
 
-      // VENTAS_FACTURAS/VENTAS_COTIZACIONES ya NO se resetean/siembran acá
-      // (mismo criterio que propietarios/patientData, ver nota junto a
-      // cargarDatosClinicaDesdeSupabase()): se cargan de verdad desde las
-      // tablas ventas_facturas/ventas_cotizaciones, filtradas por
-      // establecimiento_id, en esa función — aparte, después de esta.
+      // VENTAS_FACTURAS/VENTAS_COTIZACIONES/VENTAS_CATALOGO ya NO se
+      // resetean/siembran acá (mismo criterio que propietarios/patientData,
+      // ver nota junto a cargarDatosClinicaDesdeSupabase()): se cargan de
+      // verdad desde las tablas ventas_facturas/ventas_cotizaciones/
+      // productos, filtradas por establecimiento_id, en esa función —
+      // aparte, después de esta.
 
       VENTAS_NOTAS_CREDITO.length = 0;
       if (seed) VENTAS_NOTAS_CREDITO.push(...seed.VENTAS_NOTAS_CREDITO);
@@ -20314,8 +20386,10 @@
       VENTAS_MOVIMIENTOS.length = 0;
       if (seed) VENTAS_MOVIMIENTOS.push(...seed.VENTAS_MOVIMIENTOS);
 
-      VENTAS_CATALOGO.length = 0;
-      if (seed) VENTAS_CATALOGO.push(...seed.VENTAS_CATALOGO);
+      // VENTAS_CATALOGO ya NO se resetea/siembra acá (mismo criterio que
+      // VENTAS_FACTURAS/VENTAS_COTIZACIONES, ver nota junto a
+      // cargarDatosClinicaDesdeSupabase()): se carga de verdad desde la
+      // tabla `productos`, filtrada por establecimiento_id, en esa función.
 
       VENTAS_CATEGORIAS.length = 0;
       if (seed) VENTAS_CATEGORIAS.push(...seed.VENTAS_CATEGORIAS);
@@ -20472,6 +20546,30 @@
         observaciones: r.observaciones || ''
       };
     }
+    function construirProductoDesdeFila(r) {
+      return {
+        id: r.id, tipo: r.tipo, nombre: r.nombre, categoria: r.categoria || '',
+        sku: r.sku || '', barcode: r.barcode || '', descripcion: r.descripcion || '',
+        cuantificable: !!r.cuantificable, excluidoListaPrecio: !!r.excluido_lista_precio,
+        precio: Number(r.precio) || 0, valorBase: Number(r.valor_base) || 0, costo: Number(r.costo) || 0,
+        impuesto: r.impuesto || 'Gravado', estado: r.estado,
+        unidadMedida: r.unidad_medida || 'Unidad', stock: Number(r.stock) || 0, stockMinimo: Number(r.stock_minimo) || 0,
+        proveedorId: r.proveedor_id || null, lote: r.lote || null, vencimiento: r.vencimiento || null,
+        unidadesDia: Number(r.unidades_dia) || 0, duracionMinutos: r.duracion_minutos != null ? r.duracion_minutos : null
+      };
+    }
+    function filaSupabaseDesdeProducto(p) {
+      return {
+        tipo: p.tipo, nombre: p.nombre, categoria: p.categoria || null,
+        sku: p.sku || null, barcode: p.barcode || null, descripcion: p.descripcion || null,
+        cuantificable: !!p.cuantificable, excluido_lista_precio: !!p.excluidoListaPrecio,
+        precio: p.precio || 0, valor_base: p.valorBase || 0, costo: p.costo || 0,
+        impuesto: p.impuesto || null, estado: p.estado || 'activo',
+        unidad_medida: p.unidadMedida || null, stock: p.stock || 0, stock_minimo: p.stockMinimo || 0,
+        proveedor_id: p.proveedorId || null, lote: p.lote || null, vencimiento: p.vencimiento || null,
+        unidades_dia: p.unidadesDia || 0, duracion_minutos: p.duracionMinutos != null ? p.duracionMinutos : null
+      };
+    }
 
     // Clínica recién creada (o clínica demo la primerísima vez): siembra en
     // Supabase el contenido de DEMO_SEED.propietarios/patientData/documentos
@@ -20573,6 +20671,17 @@
           const { error: cotizacionErr } = await window.supabase.from('ventas_cotizaciones').insert(cotizacionInsertRows);
           if (cotizacionErr) throw cotizacionErr;
         }
+
+        // Catálogo de productos y servicios (Inventario): tampoco depende de
+        // propietarios/mascotas, se siembra en paralelo igual que
+        // facturas/cotizaciones arriba.
+        const productoInsertRows = DEMO_SEED.VENTAS_CATALOGO.map(p => ({
+          establecimiento_id: establecimientoId, created_by: userId, ...filaSupabaseDesdeProducto(p)
+        }));
+        if (productoInsertRows.length) {
+          const { error: productoErr } = await window.supabase.from('productos').insert(productoInsertRows);
+          if (productoErr) throw productoErr;
+        }
       } catch (err) {
         console.error('[IRIS] No se pudo sembrar la clínica demo en Supabase:', err);
       }
@@ -20585,7 +20694,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -20594,7 +20703,8 @@
           window.supabase.from('formulas_medicas').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('ventas_facturas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('ventas_cotizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
-          window.supabase.from('hospitalizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
+          window.supabase.from('hospitalizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
+          window.supabase.from('productos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -20605,19 +20715,20 @@
         if (facturaRes.error) throw facturaRes.error;
         if (cotizacionRes.error) throw cotizacionRes.error;
         if (hospRes.error) throw hospRes.error;
+        if (productoRes.error) throw productoRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
           facturaRows: facturaRes.data || [], cotizacionRows: cotizacionRes.data || [],
-          hospRows: hospRes.data || []
+          hospRows: hospRes.data || [], productoRows: productoRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -20678,6 +20789,9 @@
 
       VENTAS_COTIZACIONES.length = 0;
       cotizacionRows.forEach(r => VENTAS_COTIZACIONES.push(construirCotizacionDesdeFila(r)));
+
+      VENTAS_CATALOGO.length = 0;
+      productoRows.forEach(r => VENTAS_CATALOGO.push(construirProductoDesdeFila(r)));
     }
 
     // Clínica nueva: el único "usuario del sistema" visible en Admin >
@@ -22925,7 +23039,7 @@
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
         <button class="btn-secondary" onclick="closeProductoModal()">Cancelar</button>
-        <button class="btn-primary" onclick="guardarProducto()">Guardar</button>
+        <button class="btn-primary" id="producto-guardar-btn" onclick="guardarProducto()">Guardar</button>
       </div>
     </div>
   </div>
