@@ -6425,7 +6425,7 @@
                 tratamientos: [
                   {
                     tipo: 'medicamento', nombre: 'Metoclopramida', presentacionNombre: 'Ampolla',
-                    presentacionUnidad: 'mg', presentacionMg: '10', concentracion: '5mg/mL',
+                    presentacionUnidad: 'mg', presentacionMg: '10', concentracion: '5', concentracionUnidad: 'mg/mL',
                     dosisPorPeso: '0.2', dosis: '0.5', dosisTextual: '0.5 mL IV', via: 'IV',
                     periodicidad: 'TID', horaInicial: '08:00', duracionDias: 3,
                     observaciones: 'Administrar lento.', horas: [false,false,false,false,true,false,false,false,true,false,false,false]
@@ -11688,6 +11688,8 @@
       document.getElementById('calc-dosis-peso-paciente').value = data ? (parseFloat(data.weight) || '') : '';
       document.getElementById('calc-dosis-mgkg').value = '';
       document.getElementById('calc-dosis-concentracion').value = '';
+      document.getElementById('calc-dosis-concentracion-unidad').innerHTML = CONCENTRACION_UNIDADES.map(u => `<option value="${u}">${u}</option>`).join('');
+      document.getElementById('calc-dosis-concentracion-unidad').value = 'mg/mL';
       recalcularCalculadoraDosis();
       document.getElementById('calculadora-dosis-modal').classList.add('show');
       lucide.createIcons();
@@ -11704,6 +11706,7 @@
       const peso = parseFloat(document.getElementById('calc-dosis-peso-paciente').value);
       const mgKg = parseFloat(document.getElementById('calc-dosis-mgkg').value);
       const concentracion = parseFloat(document.getElementById('calc-dosis-concentracion').value);
+      const unidadConcentracion = document.getElementById('calc-dosis-concentracion-unidad').value;
 
       const dosisTotalEl = document.getElementById('calc-dosis-total');
       const volumenEl = document.getElementById('calc-dosis-volumen');
@@ -11713,8 +11716,17 @@
         dosisTotalEl.textContent = `${dosisTotal} mg`;
 
         if (!isNaN(concentracion) && concentracion > 0) {
-          const volumen = Math.round((dosisTotal / concentracion) * 100) / 100;
-          volumenEl.textContent = `${volumen} mL`;
+          // % es w/v (ej. 5% = 50 mg/mL) — misma conversión que ya usa
+          // "Concentración sugerida" en el Kardex. mg/mL y UI/mL se usan
+          // directo como divisor; mg y µg (concentración expresada como
+          // masa por unidad, sin volumen) también, quedando el resultado
+          // como "unidades a administrar" en vez de mL — el usuario lee
+          // la unidad elegida para interpretar el resultado.
+          const divisor = unidadConcentracion === '%' ? concentracion * 10 : concentracion;
+          const volumen = Math.round((dosisTotal / divisor) * 100) / 100;
+          const esUnidadDeVolumen = unidadConcentracion !== 'mg' && unidadConcentracion !== 'µg';
+          volumenEl.textContent = esUnidadDeVolumen ? `${volumen} mL` : `${volumen} unidades`;
+          document.getElementById('calc-dosis-volumen-label').textContent = esUnidadDeVolumen ? 'Volumen a administrar' : 'Unidades a administrar';
         } else {
           volumenEl.textContent = '—';
         }
@@ -14455,6 +14467,11 @@
     const VIAS_ADMINISTRACION = ['Oral', 'IV', 'IM', 'SC', 'Tópica', 'Oftálmica', 'Ótica', 'Rectal', 'Inhalada'];
     const PERIODICIDADES_TRATAMIENTO = ['B2M', 'C3D', 'C2D', 'UD', 'SID', 'BID', 'TID', 'QID', 'C4H', 'C3H', 'C2H', 'CONST', 'Manual'];
     const PRESENTACION_UNIDADES = ['µg', 'mg', 'mg/mL', 'UI/mL', '%', 'N/A'];
+    // Unidades seleccionables para el recuadro de Concentración — mismo
+    // selector reutilizado en el modal de tratamiento del Kardex
+    // (tt-concentracion-unidad) y en la Calculadora de dosis
+    // (calc-dosis-concentracion-unidad).
+    const CONCENTRACION_UNIDADES = ['mg', 'mg/mL', '%', 'UI/mL', 'µg'];
     // Enum unificado de tipo de seguimiento — usado tanto por los registros
     // creados desde el Kardex (Hospitalización) como por los creados
     // manualmente desde el módulo central Seguimientos.
@@ -15105,7 +15122,7 @@
             <div class="tt-nombre-sub">${nombreSub}</div>
           </td>
           <td>${t.dosisPorPeso || '—'}</td>
-          <td>${t.concentracion || '—'}</td>
+          <td>${t.concentracion ? `${t.concentracion} ${t.concentracionUnidad || ''}`.trim() : '—'}</td>
           <td>${t.dosisTextual || t.dosis || '—'}</td>
           <td>${t.via || '—'}</td>
           ${dots}
@@ -15203,6 +15220,7 @@
 
       document.getElementById('tt-via').innerHTML = VIAS_ADMINISTRACION.map(v => `<option value="${v}">${v}</option>`).join('');
       document.getElementById('tt-presentacion-unidad').innerHTML = PRESENTACION_UNIDADES.map(u => `<option value="${u}">${u}</option>`).join('');
+      document.getElementById('tt-concentracion-unidad').innerHTML = CONCENTRACION_UNIDADES.map(u => `<option value="${u}">${u}</option>`).join('');
       document.getElementById('tt-periodicidad').innerHTML = PERIODICIDADES_TRATAMIENTO.map(p => `<option value="${p}">${p}</option>`).join('');
       if (tipo === 'fluidoterapia') document.getElementById('tt-periodicidad').value = 'Manual';
 
@@ -15313,6 +15331,7 @@
       document.getElementById('tt-presentacion-unidad').value = record ? (record.presentacionUnidad || 'mg') : 'mg';
       document.getElementById('tt-presentacion-mg').value = record ? (record.presentacionMg || '') : '';
       document.getElementById('tt-concentracion').value = record ? (record.concentracion || '') : '';
+      document.getElementById('tt-concentracion-unidad').value = record ? (record.concentracionUnidad || 'mg/mL') : 'mg/mL';
       document.getElementById('tt-dosis-peso').value = record ? (record.dosisPorPeso || '') : '';
       document.getElementById('tt-via').value = record ? (record.via || VIAS_ADMINISTRACION[0]) : VIAS_ADMINISTRACION[0];
       document.getElementById('tt-periodicidad').value = record ? (record.periodicidad || 'SID') : (tipo === 'fluidoterapia' ? 'Manual' : 'SID');
@@ -15369,7 +15388,8 @@
       document.getElementById('tt-dosis').value = valor;
     }
     function usarConcentracionSugerida(valor) {
-      document.getElementById('tt-concentracion').value = `${valor} mg/mL`;
+      document.getElementById('tt-concentracion').value = valor;
+      document.getElementById('tt-concentracion-unidad').value = 'mg/mL';
     }
 
     function closeTratamientoModal() {
@@ -15393,6 +15413,7 @@
         presentacionMg: document.getElementById('tt-presentacion-mg').value.trim(),
         tipoFluido: tipo === 'fluidoterapia' ? nombre : undefined,
         concentracion: document.getElementById('tt-concentracion').value.trim(),
+        concentracionUnidad: document.getElementById('tt-concentracion-unidad').value,
         dosisPorPeso: document.getElementById('tt-dosis-peso').value.trim(),
         via: document.getElementById('tt-via').value,
         periodicidad: document.getElementById('tt-periodicidad').value,
@@ -21650,8 +21671,11 @@
         <input type="number" step="any" class="input-control" style="padding-left:12px;" id="calc-dosis-mgkg" oninput="recalcularCalculadoraDosis()">
       </div>
       <div class="input-group" style="margin-bottom:16px;">
-        <label class="input-label" for="calc-dosis-concentracion">Concentración (mg/mL)</label>
-        <input type="number" step="any" class="input-control" style="padding-left:12px;" id="calc-dosis-concentracion" oninput="recalcularCalculadoraDosis()">
+        <label class="input-label" for="calc-dosis-concentracion">Concentración</label>
+        <div style="display:flex;gap:6px;">
+          <input type="number" step="any" class="input-control" style="padding-left:12px;flex:1;" id="calc-dosis-concentracion" oninput="recalcularCalculadoraDosis()">
+          <select class="soap-select-control" id="calc-dosis-concentracion-unidad" style="flex:0 0 92px;" onchange="recalcularCalculadoraDosis()"></select>
+        </div>
       </div>
       <div class="calc-dosis-resultado-row">
         <div>
@@ -21662,7 +21686,7 @@
       </div>
       <div class="calc-dosis-resultado-row">
         <div>
-          <div class="calc-dosis-resultado-label">Volumen a administrar</div>
+          <div class="calc-dosis-resultado-label" id="calc-dosis-volumen-label">Volumen a administrar</div>
           <div class="calc-dosis-resultado-value" id="calc-dosis-volumen">—</div>
         </div>
         <button type="button" class="btn-outline" style="padding:6px 10px;font-size:12px;" onclick="copiarCalculadoraValor('calc-dosis-volumen')"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar</button>
@@ -22754,9 +22778,12 @@
         </div>
 
         <div style="display:flex;flex-wrap:wrap;gap:16px;">
-          <div class="input-group" id="tt-concentracion-wrap" style="flex:1;min-width:140px;">
+          <div class="input-group" id="tt-concentracion-wrap" style="flex:1;min-width:180px;">
             <label class="input-label">Concentración</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="tt-concentracion">
+            <div style="display:flex;gap:6px;">
+              <input type="text" class="input-control" style="padding-left:12px;flex:1;" id="tt-concentracion">
+              <select class="soap-select-control" id="tt-concentracion-unidad" style="flex:0 0 92px;"></select>
+            </div>
             <div class="tt-sugerencia-hint" id="tt-concentracion-sugerida" style="display:none;"></div>
           </div>
           <div class="input-group" id="tt-dosis-peso-wrap" style="flex:1;min-width:160px;">
