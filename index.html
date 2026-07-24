@@ -5597,27 +5597,82 @@
           </div>
         </div>
         <div class="admin-subview" id="ventas-view-ingresos-egresos">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title"><i data-lucide="arrow-left-right" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Ingresos y Egresos</span>
-              <button type="button" class="btn-primary" style="padding:8px 16px;font-size:13px;" onclick="openMovimientoModal('create')">
-                <i data-lucide="plus" style="width:14px;height:14px;"></i> Registrar movimiento
-              </button>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:16px;">
-              <div class="input-group"><label class="input-label" for="mov-filtro-desde">Desde</label><input type="date" id="mov-filtro-desde" class="input-control" style="padding-left:12px;"></div>
-              <div class="input-group"><label class="input-label" for="mov-filtro-hasta">Hasta</label><input type="date" id="mov-filtro-hasta" class="input-control" style="padding-left:12px;"></div>
-              <div class="input-group">
-                <label class="input-label" for="mov-filtro-tipo">Tipo</label>
-                <select id="mov-filtro-tipo" class="soap-select-control"><option value="">Todos</option><option value="Ingreso">Ingreso</option><option value="Egreso">Egreso</option></select>
+          <div class="admin-subview-tabs">
+            <button type="button" class="admin-subview-tab-btn active" data-ingegr-view="movimientos" onclick="switchIngresosEgresosView('movimientos')">Movimientos</button>
+            <button type="button" class="admin-subview-tab-btn" data-ingegr-view="cierre" onclick="switchIngresosEgresosView('cierre')">Cierre de caja</button>
+          </div>
+
+          <div class="admin-subview active" id="ingegr-view-movimientos">
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title"><i data-lucide="arrow-left-right" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Ingresos y Egresos</span>
+                <button type="button" class="btn-primary" style="padding:8px 16px;font-size:13px;" onclick="openMovimientoModal('create')">
+                  <i data-lucide="plus" style="width:14px;height:14px;"></i> Registrar movimiento
+                </button>
               </div>
-              <button type="button" class="btn-secondary" onclick="aplicarFiltroMovimientos()">Filtrar</button>
-              <button type="button" class="btn-secondary" onclick="limpiarFiltroMovimientos()">Limpiar</button>
+              <div class="ventas-filter-bar" style="margin-bottom:16px;">
+                <div class="ventas-filter-row">
+                  <div class="input-group">
+                    <label class="input-label">Rango de fecha</label>
+                    <div class="ventas-filter-presets">
+                      <button type="button" class="ventas-preset-btn" data-preset="hoy" onclick="aplicarPresetFechaMovimientos('hoy', this)">Hoy</button>
+                      <button type="button" class="ventas-preset-btn" data-preset="semana" onclick="aplicarPresetFechaMovimientos('semana', this)">Esta semana</button>
+                      <button type="button" class="ventas-preset-btn active" data-preset="mes" onclick="aplicarPresetFechaMovimientos('mes', this)">Este mes</button>
+                      <button type="button" class="ventas-preset-btn" data-preset="personalizado" onclick="aplicarPresetFechaMovimientos('personalizado', this)">Rango personalizado</button>
+                    </div>
+                  </div>
+                  <div class="input-group"><label class="input-label" for="mov-filtro-desde">Desde</label><input type="date" id="mov-filtro-desde" class="input-control" style="padding-left:12px;" onchange="marcarPresetPersonalizadoMovimientos()"></div>
+                  <div class="input-group"><label class="input-label" for="mov-filtro-hasta">Hasta</label><input type="date" id="mov-filtro-hasta" class="input-control" style="padding-left:12px;" onchange="marcarPresetPersonalizadoMovimientos()"></div>
+                  <div class="input-group">
+                    <label class="input-label" for="mov-filtro-tipo">Tipo</label>
+                    <select id="mov-filtro-tipo" class="soap-select-control"><option value="">Todos</option><option value="Ingreso">Ingreso</option><option value="Egreso">Egreso</option></select>
+                  </div>
+                  <button type="button" class="btn-secondary" onclick="aplicarFiltroMovimientos()">Filtrar</button>
+                  <button type="button" class="btn-secondary" onclick="limpiarFiltroMovimientos()">Limpiar</button>
+                </div>
+              </div>
+              <table class="results-table">
+                <thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Concepto</th><th>Monto</th><th>Método de pago</th><th style="text-align:right;">Acciones</th></tr></thead>
+                <tbody id="movimientos-table-body"></tbody>
+              </table>
             </div>
-            <table class="results-table">
-              <thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Concepto</th><th>Monto</th><th>Método de pago</th><th style="text-align:right;">Acciones</th></tr></thead>
-              <tbody id="movimientos-table-body"></tbody>
-            </table>
+          </div>
+
+          <div class="admin-subview" id="ingegr-view-cierre">
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title"><i data-lucide="calculator" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Cierre de día (arqueo de caja)</span>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:16px;">
+                <div class="input-group" style="max-width:200px;">
+                  <label class="input-label" for="cierre-caja-fecha">Fecha a cerrar</label>
+                  <input type="date" id="cierre-caja-fecha" class="input-control" style="padding-left:12px;" onchange="onCambiarFechaCierreCaja()">
+                </div>
+                <span id="cierre-caja-estado-badge"></span>
+              </div>
+
+              <div class="ventas-kpi-grid" id="cierre-caja-kpi-grid" style="margin-bottom:18px;"></div>
+
+              <table class="results-table">
+                <thead><tr><th>Tipo</th><th>Forma de pago</th><th>Valor sistema</th><th>Valor contado</th><th>Diferencia</th></tr></thead>
+                <tbody id="cierre-caja-table-body"></tbody>
+              </table>
+
+              <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+                <button type="button" class="btn-secondary" id="cierre-caja-pendiente-btn" onclick="guardarCierreCajaPendiente()">Dejar pendiente</button>
+                <button type="button" class="btn-primary" id="cierre-caja-cerrar-btn" onclick="intentarCerrarCaja()" disabled>
+                  <i data-lucide="lock" style="width:14px;height:14px;"></i> Cerrar día
+                </button>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:20px;">
+              <div class="card-header"><span class="card-title"><i data-lucide="history" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Historial de cierres</span></div>
+              <table class="results-table">
+                <thead><tr><th>Fecha</th><th>Estado</th><th>Ingresos</th><th>Egresos</th><th>Neto</th><th>Cerrado por</th><th style="text-align:right;">Acciones</th></tr></thead>
+                <tbody id="cierre-caja-historial-body"></tbody>
+              </table>
+            </div>
           </div>
         </div>
         <div class="admin-subview" id="ventas-view-proveedores">
@@ -11183,6 +11238,8 @@
         VENTAS_PROVEEDORES.splice(VENTAS_PROVEEDORES.findIndex(d => d.id === recordId), 1);
         renderProveedoresTable();
       } else if (moduleKey === 'movimiento') {
+        const mov = VENTAS_MOVIMIENTOS.find(d => d.id === Number(recordId));
+        if (mov && diaCerrado(mov.fecha)) { showToast(`El cierre de caja del ${mov.fecha} ya está cerrado — no se puede eliminar`); return; }
         VENTAS_MOVIMIENTOS.splice(VENTAS_MOVIMIENTOS.findIndex(d => d.id === Number(recordId)), 1);
         renderIngresosEgresosTable();
       } else if (moduleKey === 'producto') {
@@ -16496,7 +16553,13 @@
       tabContents.forEach(c => c.classList.remove('active'));
       document.querySelector('.nav-tabs-bar .tab-btn[data-tab="ventas"]').classList.add('active');
       document.getElementById('tab-ventas').classList.add('active');
-      document.querySelectorAll('#tab-ventas .admin-subview').forEach(pane => {
+      // Combinador de hijo directo (no ".admin-subview" a secas): Ingresos y
+      // Egresos ahora anida sus propias .admin-subview internas (Movimientos/
+      // Cierre de caja, ver switchIngresosEgresosView) y un selector sin '>'
+      // las alcanzaría también, apagándolas cada vez que se navega a
+      // cualquier vista de Ventas — mismo criterio que
+      // "#tab-agenda > .admin-pane > .admin-subview" en switchAgendaView.
+      document.querySelectorAll('#tab-ventas > .admin-pane > .admin-subview').forEach(pane => {
         pane.classList.toggle('active', pane.id === `ventas-view-${viewKey}`);
       });
     }
@@ -17109,6 +17172,23 @@
       { fecha: '2026-05-22', tipo: 'Egreso',  categoria: 'Nómina',             concepto: 'Pago quincena personal auxiliar',        monto: 1800000, metodoPago: 'Transferencia' },
       { fecha: '2026-05-12', tipo: 'Egreso',  categoria: 'Arriendo',           concepto: 'Pago arriendo local — mayo',             monto: 2500000, metodoPago: 'Transferencia' }
     ].map(m => ({ id: ventasMovimientoIdCounter++, ...m }));
+
+    // Cierres de caja (arqueos) — uno por fecha. `filas` guarda el
+    // desglose Tipo+Forma de pago con el valor de sistema (suma de
+    // VENTAS_MOVIMIENTOS de esa fecha) y el valor contado manualmente,
+    // ver "MÓDULO: VENTAS — CIERRE DE CAJA" más abajo para el flujo
+    // completo. Dos ejemplos mock: un día ya cerrado (valores cuadrados)
+    // y un día dejado pendiente (contado sin diligenciar todavía).
+    const VENTAS_ARQUEOS = [
+      { fecha: '2026-07-04', estado: 'Cerrado',
+        filas: [ { tipo: 'Egreso', metodoPago: 'Transferencia', sistemaValor: 2500000, contado: 2500000 } ],
+        sistemaIngresos: 0, sistemaEgresos: 2500000, contadoIngresos: 0, contadoEgresos: 2500000,
+        cerradoPor: 'Dr. Sebastián Ríos', cerradoEn: '2026-07-04T19:05:00' },
+      { fecha: '2026-06-25', estado: 'Pendiente',
+        filas: [ { tipo: 'Egreso', metodoPago: 'Transferencia', sistemaValor: 1800000, contado: null } ],
+        sistemaIngresos: 0, sistemaEgresos: 1800000, contadoIngresos: 0, contadoEgresos: 0,
+        cerradoPor: null, cerradoEn: null }
+    ];
 
     // ── MÓDULO: VENTAS — AGREGACIONES DEL DASHBOARD ──────────────
     // Todas las cifras del dashboard se calculan a partir de los arrays
@@ -18138,6 +18218,16 @@
           arr.unshift(nuevo);
           facturaGuardada = nuevo;
         }
+        // Resguardo: si la factura queda Pagada sin haber pasado por el
+        // flujo dedicado "Cerrar cuenta" (ej. se cambió el select Estado a
+        // mano y se guardó con el botón normal), igual se genera el
+        // ingreso — si no, Ingresos y Egresos quedaría desincronizado de
+        // Facturación. crearMovimientoDesdeFactura ya es idempotente por
+        // facturaId, así que si sí vino de "Cerrar cuenta" esto no duplica.
+        if (tipo === 'factura' && facturaGuardada.estado === 'Pagada') {
+          if (!facturaGuardada.pago) facturaGuardada.pago = { metodo: 'Efectivo', valor: facturaGuardada.total, fecha: facturaGuardada.fecha };
+          crearMovimientoDesdeFactura(facturaGuardada);
+        }
         tipo === 'cotizacion' ? renderCotizacionesTable() : renderFacturasTable();
         refreshFacturacionPropietarioTablesIfOpen();
         renderVentasDashboard();
@@ -18226,6 +18316,7 @@
 
       factura.estado = 'Pagada';
       factura.pago = pago;
+      crearMovimientoDesdeFactura(factura);
 
       closeCerrarCuentaModal();
       closeDocVentaModal();
@@ -18360,7 +18451,50 @@
     }
 
     // ── MÓDULO: VENTAS — INGRESOS Y EGRESOS ──────────────────────
+    function switchIngresosEgresosView(viewKey) {
+      document.querySelectorAll('#ventas-view-ingresos-egresos .admin-subview-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-ingegr-view') === viewKey);
+      });
+      document.querySelectorAll('#ventas-view-ingresos-egresos > .admin-subview').forEach(pane => {
+        pane.classList.toggle('active', pane.id === `ingegr-view-${viewKey}`);
+      });
+      if (viewKey === 'cierre') abrirCierreCajaEnFecha(document.getElementById('cierre-caja-fecha').value || VENTAS_HOY);
+    }
+
+    // Un día con arqueo 'Cerrado' queda protegido: no se pueden crear,
+    // editar ni eliminar movimientos manuales fechados ese día (mismo
+    // criterio que Documentos Firmado — ver CLAUDE.md). Los movimientos
+    // generados automáticamente por un pago de factura (crearMovimientoDesdeFactura)
+    // sí se siguen registrando aunque el día ya esté cerrado, porque
+    // representan un cobro real que ya ocurrió y no puede perderse — solo
+    // quedará reflejado como diferencia si alguien vuelve a auditar ese
+    // cierre, igual que en una caja física.
+    function diaCerrado(fecha) {
+      return VENTAS_ARQUEOS.some(a => a.fecha === fecha && a.estado === 'Cerrado');
+    }
+
     let movimientosFiltro = { desde: null, hasta: null, tipo: '' };
+
+    function aplicarPresetFechaMovimientos(preset, btnEl) {
+      document.querySelectorAll('#ingegr-view-movimientos .ventas-preset-btn').forEach(b => b.classList.remove('active'));
+      if (btnEl) btnEl.classList.add('active');
+      if (preset !== 'personalizado') {
+        const hoy = new Date(VENTAS_HOY);
+        let desde = VENTAS_HOY;
+        if (preset === 'semana') { const d = new Date(hoy); d.setDate(d.getDate() - 6); desde = d.toISOString().slice(0, 10); }
+        else if (preset === 'mes') { const d = new Date(hoy); d.setDate(d.getDate() - 29); desde = d.toISOString().slice(0, 10); }
+        document.getElementById('mov-filtro-desde').value = desde;
+        document.getElementById('mov-filtro-hasta').value = VENTAS_HOY;
+      }
+      aplicarFiltroMovimientos();
+    }
+    // Si el usuario toca Desde/Hasta a mano, el rango deja de corresponder
+    // a ninguno de los presets fijos — marca "Rango personalizado" como
+    // activo para que el botón resaltado no mienta sobre qué se está viendo.
+    function marcarPresetPersonalizadoMovimientos() {
+      document.querySelectorAll('#ingegr-view-movimientos .ventas-preset-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('#ingegr-view-movimientos .ventas-preset-btn[data-preset="personalizado"]').classList.add('active');
+    }
 
     function aplicarFiltroMovimientos() {
       movimientosFiltro = {
@@ -18384,10 +18518,10 @@
         .sort((a, b) => b.fecha.localeCompare(a.fecha));
       document.getElementById('movimientos-table-body').innerHTML = rows.length ? rows.map(m => `
         <tr>
-          <td>${m.fecha}</td>
+          <td>${m.fecha}${diaCerrado(m.fecha) ? ' <i data-lucide="lock" style="width:12px;height:12px;vertical-align:-1px;color:var(--text-2);" title="Día cerrado"></i>' : ''}</td>
           <td><span class="status-badge ${m.tipo === 'Ingreso' ? 'status-badge-activo' : 'status-badge-pendiente'}">${m.tipo}</span></td>
           <td>${m.categoria}</td>
-          <td>${m.concepto}</td>
+          <td>${m.concepto}${m.facturaId ? ` <span class="status-badge status-badge-inactivo" style="font-size:10.5px;">Factura ${m.facturaNumero}</span>` : ''}</td>
           <td>${formatCOP(m.monto)}</td>
           <td>${m.metodoPago}</td>
           <td style="text-align:right;">${renderRowActionsMenu('movimiento', m.id, null, ['ver', 'editar', 'eliminar'])}</td>
@@ -18401,6 +18535,7 @@
       const isEdit = mode === 'edit';
       editingMovimientoId = isEdit ? Number(id) : null;
       const m = isEdit ? VENTAS_MOVIMIENTOS.find(x => x.id === editingMovimientoId) : null;
+      if (m && diaCerrado(m.fecha)) { showToast(`El cierre de caja del ${m.fecha} ya está cerrado — no se puede modificar`); return; }
       document.getElementById('movimiento-modal-title').textContent = isEdit ? 'Editar movimiento' : 'Registrar movimiento';
       document.getElementById('movimiento-tipo-select').value = m ? m.tipo : 'Ingreso';
       document.getElementById('movimiento-fecha-input').value = m ? m.fecha : VENTAS_HOY;
@@ -18426,6 +18561,7 @@
       const monto = Number(document.getElementById('movimiento-monto-input').value) || 0;
       const metodoPago = document.getElementById('movimiento-metodo-select').value;
       if (!fecha || !categoria || !concepto || monto <= 0) { showToast('Completa todos los campos obligatorios'); return; }
+      if (diaCerrado(fecha)) { showToast(`El cierre de caja del ${fecha} ya está cerrado — no se pueden registrar movimientos en esa fecha`); return; }
       if (editingMovimientoId) {
         Object.assign(VENTAS_MOVIMIENTOS.find(m => m.id === editingMovimientoId), { tipo, fecha, categoria, concepto, monto, metodoPago });
       } else {
@@ -18443,7 +18579,188 @@
         <div class="info-label">Concepto</div><div class="info-value">${m.concepto}</div>
         <div class="info-label">Monto</div><div class="info-value">${formatCOP(m.monto)}</div>
         <div class="info-label">Método de pago</div><div class="info-value">${m.metodoPago}</div>
+        ${m.facturaId ? `<div class="info-label">Origen</div><div class="info-value">Generado automáticamente al cerrar la cuenta de la factura ${m.facturaNumero}</div>` : ''}
       `;
+    }
+
+    // Conexión con Facturación: cuando una factura queda Pagada (ver
+    // confirmarCerrarCuenta y el resguardo en guardarDocVenta) se refleja
+    // acá como un Ingreso, para que Ingresos y Egresos / Cierre de caja
+    // sean el reflejo real de lo cobrado por Ventas, sin doble digitación.
+    // 'Saldo a favor' no mueve caja real (es un cruce contra crédito del
+    // cliente) así que no genera movimiento. Idempotente por factura vía
+    // el campo facturaId, para que reintentos/ediciones no dupliquen.
+    function mapMetodoPagoFacturaAMovimiento(metodo) {
+      if (metodo === 'Tarjeta débito/crédito') return 'Tarjeta';
+      if (metodo === 'Transferencia/Consignación') return 'Transferencia';
+      return metodo; // 'Efectivo', 'Otro'
+    }
+    function crearMovimientoDesdeFactura(factura) {
+      if (!factura || !factura.pago || factura.pago.metodo === 'Saldo a favor') return;
+      if (VENTAS_MOVIMIENTOS.some(m => m.facturaId === factura.id)) return;
+      const cliente = ventasClienteById(factura.clienteId);
+      VENTAS_MOVIMIENTOS.unshift({
+        id: ventasMovimientoIdCounter++,
+        fecha: factura.pago.fecha,
+        tipo: 'Ingreso',
+        categoria: 'Venta - Facturación',
+        concepto: `Factura ${factura.numero}${cliente ? ' — ' + cliente.nombre : ''}`,
+        monto: factura.pago.valor,
+        metodoPago: mapMetodoPagoFacturaAMovimiento(factura.pago.metodo),
+        facturaId: factura.id,
+        facturaNumero: factura.numero
+      });
+      renderIngresosEgresosTable();
+    }
+
+    // ── MÓDULO: VENTAS — CIERRE DE CAJA (ARQUEO) ──────────────────
+    // Agrupa VENTAS_MOVIMIENTOS de una fecha por Tipo+Forma de pago
+    // (criterio pedido: "se agrupen por tipo, forma de pago; sumando
+    // individualmente ingresos y egresos"). El cierre solo se habilita
+    // cuando TODAS las filas tienen un valor contado y ese valor coincide
+    // exactamente con el valor de sistema; si no cuadra, el día se puede
+    // guardar como Pendiente (guardarCierreCajaPendiente) y retomarse
+    // después sin perder lo ya contado.
+    let cierreCajaState = { fecha: VENTAS_HOY, filas: [] };
+
+    function agruparMovimientosParaArqueo(fecha) {
+      const map = new Map();
+      VENTAS_MOVIMIENTOS.filter(m => m.fecha === fecha).forEach(m => {
+        const key = `${m.tipo}|${m.metodoPago}`;
+        map.set(key, (map.get(key) || 0) + m.monto);
+      });
+      return Array.from(map.entries())
+        .map(([key, sistemaValor]) => { const [tipo, metodoPago] = key.split('|'); return { tipo, metodoPago, sistemaValor }; })
+        .sort((a, b) => a.tipo !== b.tipo ? (a.tipo === 'Ingreso' ? -1 : 1) : a.metodoPago.localeCompare(b.metodoPago));
+    }
+
+    function abrirCierreCajaEnFecha(fecha) {
+      document.getElementById('cierre-caja-fecha').value = fecha;
+      const existente = VENTAS_ARQUEOS.find(a => a.fecha === fecha);
+      const filasSistema = agruparMovimientosParaArqueo(fecha);
+      cierreCajaState = {
+        fecha,
+        filas: filasSistema.map(f => {
+          const guardada = existente && existente.filas.find(g => g.tipo === f.tipo && g.metodoPago === f.metodoPago);
+          return { ...f, contado: guardada && guardada.contado != null ? guardada.contado : null };
+        })
+      };
+      renderCierreCajaTable();
+      renderCierreCajaHistorial();
+    }
+
+    function onCambiarFechaCierreCaja() {
+      abrirCierreCajaEnFecha(document.getElementById('cierre-caja-fecha').value || VENTAS_HOY);
+    }
+
+    function formatCOPDiff(n) {
+      if (!n) return formatCOP(0);
+      return (n > 0 ? '+' : '−') + formatCOP(Math.abs(n));
+    }
+
+    function calcularResumenCierreCaja() {
+      const filas = cierreCajaState.filas;
+      const sumar = (tipo, campo) => filas.filter(f => f.tipo === tipo).reduce((s, f) => s + (campo === 'sistema' ? f.sistemaValor : (f.contado || 0)), 0);
+      const sistemaIngresos = sumar('Ingreso', 'sistema'), sistemaEgresos = sumar('Egreso', 'sistema');
+      const contadoIngresos = sumar('Ingreso', 'contado'), contadoEgresos = sumar('Egreso', 'contado');
+      const todosContados = filas.length > 0 && filas.every(f => f.contado != null);
+      const cuadra = todosContados && filas.every(f => f.contado === f.sistemaValor);
+      return { sistemaIngresos, sistemaEgresos, sistemaNeto: sistemaIngresos - sistemaEgresos, contadoIngresos, contadoEgresos, contadoNeto: contadoIngresos - contadoEgresos, todosContados, cuadra };
+    }
+
+    function renderCierreCajaTable() {
+      const filas = cierreCajaState.filas;
+      const cerrado = diaCerrado(cierreCajaState.fecha);
+      document.getElementById('cierre-caja-table-body').innerHTML = filas.length ? filas.map((f, i) => {
+        const diff = f.contado == null ? null : (f.contado - f.sistemaValor);
+        return `
+        <tr>
+          <td><span class="status-badge ${f.tipo === 'Ingreso' ? 'status-badge-activo' : 'status-badge-pendiente'}">${f.tipo}</span></td>
+          <td>${f.metodoPago}</td>
+          <td>${formatCOP(f.sistemaValor)}</td>
+          <td><input type="number" class="input-control" style="padding-left:12px;max-width:160px;" id="cierre-contado-${i}" value="${f.contado == null ? '' : f.contado}" ${cerrado ? 'disabled' : ''} oninput="actualizarContadoCierreCaja(${i}, this.value)" placeholder="0"></td>
+          <td id="cierre-diff-${i}" style="font-weight:600;color:${diff == null ? 'var(--text-2)' : (diff === 0 ? 'var(--success)' : 'var(--danger)')};">${diff == null ? '—' : formatCOPDiff(diff)}</td>
+        </tr>`;
+      }).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-2);">No hay movimientos registrados para esta fecha</td></tr>`;
+      renderCierreCajaResumen();
+    }
+
+    function actualizarContadoCierreCaja(i, value) {
+      const fila = cierreCajaState.filas[i];
+      fila.contado = value === '' ? null : Number(value);
+      const diff = fila.contado == null ? null : (fila.contado - fila.sistemaValor);
+      const diffEl = document.getElementById(`cierre-diff-${i}`);
+      diffEl.textContent = diff == null ? '—' : formatCOPDiff(diff);
+      diffEl.style.color = diff == null ? 'var(--text-2)' : (diff === 0 ? 'var(--success)' : 'var(--danger)');
+      renderCierreCajaResumen();
+    }
+
+    function renderCierreCajaResumen() {
+      const r = calcularResumenCierreCaja();
+      const cerrado = diaCerrado(cierreCajaState.fecha);
+      document.getElementById('cierre-caja-kpi-grid').innerHTML = `
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Ingresos sistema</div><div class="ventas-kpi-value">${formatCOP(r.sistemaIngresos)}</div></div>
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Egresos sistema</div><div class="ventas-kpi-value">${formatCOP(r.sistemaEgresos)}</div></div>
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Neto sistema</div><div class="ventas-kpi-value">${formatCOP(r.sistemaNeto)}</div></div>
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Neto contado</div><div class="ventas-kpi-value">${r.todosContados ? formatCOP(r.contadoNeto) : '—'}</div></div>
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Diferencia total</div><div class="ventas-kpi-value" style="color:${!r.todosContados ? 'var(--text-2)' : (r.cuadra ? 'var(--success)' : 'var(--danger)')};">${r.todosContados ? formatCOPDiff(r.contadoNeto - r.sistemaNeto) : '—'}</div></div>
+      `;
+      const badge = document.getElementById('cierre-caja-estado-badge');
+      const existente = VENTAS_ARQUEOS.find(a => a.fecha === cierreCajaState.fecha);
+      badge.innerHTML = cerrado
+        ? `<span class="status-badge status-badge-activo"><i data-lucide="lock" style="width:11px;height:11px;vertical-align:-1px;"></i> Día cerrado${existente && existente.cerradoPor ? ' por ' + existente.cerradoPor : ''}</span>`
+        : (existente ? `<span class="status-badge status-badge-pendiente">Cierre pendiente</span>` : '');
+      document.getElementById('cierre-caja-cerrar-btn').disabled = cerrado || !r.cuadra;
+      document.getElementById('cierre-caja-pendiente-btn').disabled = cerrado;
+      lucide.createIcons();
+    }
+
+    function guardarArqueo(estado) {
+      const r = calcularResumenCierreCaja();
+      const usuario = USUARIOS_SISTEMA.find(u => u.id === getCurrentSimUserId());
+      const registro = {
+        fecha: cierreCajaState.fecha,
+        estado,
+        filas: cierreCajaState.filas.map(f => ({ ...f })),
+        sistemaIngresos: r.sistemaIngresos, sistemaEgresos: r.sistemaEgresos,
+        contadoIngresos: r.contadoIngresos, contadoEgresos: r.contadoEgresos,
+        cerradoPor: estado === 'Cerrado' ? (usuario ? usuario.nombre : 'Usuario') : null,
+        cerradoEn: estado === 'Cerrado' ? new Date().toISOString() : null
+      };
+      const existente = VENTAS_ARQUEOS.find(a => a.fecha === cierreCajaState.fecha);
+      if (existente) Object.assign(existente, registro); else VENTAS_ARQUEOS.unshift(registro);
+      renderCierreCajaResumen();
+      renderCierreCajaHistorial();
+      renderIngresosEgresosTable();
+      showToast(estado === 'Cerrado' ? `Día ${cierreCajaState.fecha} cerrado correctamente` : 'Cierre guardado como pendiente');
+    }
+
+    function guardarCierreCajaPendiente() {
+      if (!cierreCajaState.filas.length) { showToast('No hay movimientos registrados para esta fecha'); return; }
+      guardarArqueo('Pendiente');
+    }
+
+    function intentarCerrarCaja() {
+      const filas = cierreCajaState.filas;
+      if (!filas.length) { showToast('No hay movimientos registrados para esta fecha'); return; }
+      if (filas.some(f => f.contado == null)) { showToast('Completa el valor contado de todas las filas antes de cerrar'); return; }
+      if (filas.some(f => f.contado !== f.sistemaValor)) { showToast('Los valores contados no cuadran con el sistema — corrige las diferencias o deja el día pendiente'); return; }
+      guardarArqueo('Cerrado');
+    }
+
+    function renderCierreCajaHistorial() {
+      const rows = VENTAS_ARQUEOS.slice().sort((a, b) => b.fecha.localeCompare(a.fecha));
+      document.getElementById('cierre-caja-historial-body').innerHTML = rows.length ? rows.map(a => `
+        <tr>
+          <td>${a.fecha}</td>
+          <td><span class="status-badge ${a.estado === 'Cerrado' ? 'status-badge-activo' : 'status-badge-pendiente'}">${a.estado}</span></td>
+          <td>${formatCOP(a.sistemaIngresos)}</td>
+          <td>${formatCOP(a.sistemaEgresos)}</td>
+          <td>${formatCOP(a.sistemaIngresos - a.sistemaEgresos)}</td>
+          <td>${a.cerradoPor || '—'}</td>
+          <td style="text-align:right;"><button type="button" class="btn-secondary" style="padding:6px 12px;font-size:12.5px;" onclick="abrirCierreCajaEnFecha('${a.fecha}')">${a.estado === 'Cerrado' ? 'Ver' : 'Continuar'}</button></td>
+        </tr>
+      `).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--text-2);">Todavía no hay cierres guardados</td></tr>`;
     }
 
     // ── MÓDULO: VENTAS — PROVEEDORES ──────────────────────────────
@@ -20538,7 +20855,8 @@
       renderFacturasTable();
       renderNotasCreditoTable();
       renderDocSoporteTable();
-      renderIngresosEgresosTable();
+      aplicarPresetFechaMovimientos('mes', document.querySelector('#ingegr-view-movimientos .ventas-preset-btn[data-preset="mes"]'));
+      renderCierreCajaHistorial();
       renderProveedoresTable();
       renderClientesTable();
 
@@ -23191,7 +23509,7 @@
       <div class="input-group" style="margin-bottom:20px;">
         <label class="input-label" for="movimiento-metodo-select">Método de pago</label>
         <select id="movimiento-metodo-select" class="soap-select-control">
-          <option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Débito automático</option>
+          <option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Débito automático</option><option>Otro</option>
         </select>
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;">
