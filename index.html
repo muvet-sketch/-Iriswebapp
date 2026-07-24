@@ -5660,7 +5660,7 @@
 
               <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
                 <button type="button" class="btn-secondary" id="cierre-caja-pendiente-btn" onclick="guardarCierreCajaPendiente()">Dejar pendiente</button>
-                <button type="button" class="btn-primary" id="cierre-caja-cerrar-btn" onclick="intentarCerrarCaja()" disabled>
+                <button type="button" class="btn-primary" id="cierre-caja-cerrar-btn" onclick="intentarCerrarCaja()">
                   <i data-lucide="lock" style="width:14px;height:14px;"></i> Cerrar día
                 </button>
               </div>
@@ -11239,7 +11239,7 @@
         renderProveedoresTable();
       } else if (moduleKey === 'movimiento') {
         const mov = VENTAS_MOVIMIENTOS.find(d => d.id === Number(recordId));
-        if (mov && diaCerrado(mov.fecha)) { showToast(`El cierre de caja del ${mov.fecha} ya está cerrado — no se puede eliminar`); return; }
+        if (mov && cierreBloqueado(mov.fecha)) { showToast(`El cierre de caja del ${mov.fecha} ya pasó las 24 horas para modificarse — no se puede eliminar`); return; }
         VENTAS_MOVIMIENTOS.splice(VENTAS_MOVIMIENTOS.findIndex(d => d.id === Number(recordId)), 1);
         renderIngresosEgresosTable();
       } else if (moduleKey === 'producto') {
@@ -18462,15 +18462,32 @@
     }
 
     // Un día con arqueo 'Cerrado' queda protegido: no se pueden crear,
-    // editar ni eliminar movimientos manuales fechados ese día (mismo
-    // criterio que Documentos Firmado — ver CLAUDE.md). Los movimientos
-    // generados automáticamente por un pago de factura (crearMovimientoDesdeFactura)
-    // sí se siguen registrando aunque el día ya esté cerrado, porque
-    // representan un cobro real que ya ocurrió y no puede perderse — solo
-    // quedará reflejado como diferencia si alguien vuelve a auditar ese
-    // cierre, igual que en una caja física.
+    // editar ni eliminar movimientos manuales fechados ese día UNA VEZ
+    // pasada la ventana de 24h (ver cierreBloqueado más abajo — dentro de
+    // esa ventana sí se permite corregir, mismo criterio que Documentos
+    // Firmado pero con plazo de gracia en vez de bloqueo inmediato). Los
+    // movimientos generados automáticamente por un pago de factura
+    // (crearMovimientoDesdeFactura) sí se siguen registrando aunque el
+    // día ya esté bloqueado, porque representan un cobro real que ya
+    // ocurrió y no puede perderse — solo quedará reflejado como
+    // diferencia si alguien vuelve a auditar ese cierre, igual que en una
+    // caja física.
     function diaCerrado(fecha) {
       return VENTAS_ARQUEOS.some(a => a.fecha === fecha && a.estado === 'Cerrado');
+    }
+
+    // Ventana de 24h para modificar un cierre ya hecho (contado editable,
+    // re-cerrar con valores corregidos, editar/crear/eliminar movimientos
+    // de esa fecha). Se cuenta desde el PRIMER cerradoEn (guardarArqueo
+    // preserva ese valor si el cierre ya estaba Cerrado, para que re-cerrar
+    // dentro de la ventana no reinicie el conteo). Pasadas las 24h, el
+    // cierre queda bloqueado de forma permanente — mismo criterio de
+    // "no se puede volver atrás" que un Documento Firmado.
+    const CIERRE_VENTANA_MODIFICACION_MS = 24 * 60 * 60 * 1000;
+    function cierreBloqueado(fecha) {
+      const a = VENTAS_ARQUEOS.find(x => x.fecha === fecha && x.estado === 'Cerrado');
+      if (!a || !a.cerradoEn) return false;
+      return (Date.now() - new Date(a.cerradoEn).getTime()) >= CIERRE_VENTANA_MODIFICACION_MS;
     }
 
     let movimientosFiltro = { desde: null, hasta: null, tipo: '' };
@@ -18535,7 +18552,7 @@
       const isEdit = mode === 'edit';
       editingMovimientoId = isEdit ? Number(id) : null;
       const m = isEdit ? VENTAS_MOVIMIENTOS.find(x => x.id === editingMovimientoId) : null;
-      if (m && diaCerrado(m.fecha)) { showToast(`El cierre de caja del ${m.fecha} ya está cerrado — no se puede modificar`); return; }
+      if (m && cierreBloqueado(m.fecha)) { showToast(`El cierre de caja del ${m.fecha} ya pasó las 24 horas para modificarse — no se puede modificar`); return; }
       document.getElementById('movimiento-modal-title').textContent = isEdit ? 'Editar movimiento' : 'Registrar movimiento';
       document.getElementById('movimiento-tipo-select').value = m ? m.tipo : 'Ingreso';
       document.getElementById('movimiento-fecha-input').value = m ? m.fecha : VENTAS_HOY;
@@ -18561,7 +18578,7 @@
       const monto = Number(document.getElementById('movimiento-monto-input').value) || 0;
       const metodoPago = document.getElementById('movimiento-metodo-select').value;
       if (!fecha || !categoria || !concepto || monto <= 0) { showToast('Completa todos los campos obligatorios'); return; }
-      if (diaCerrado(fecha)) { showToast(`El cierre de caja del ${fecha} ya está cerrado — no se pueden registrar movimientos en esa fecha`); return; }
+      if (cierreBloqueado(fecha)) { showToast(`El cierre de caja del ${fecha} ya pasó las 24 horas para modificarse — no se pueden registrar movimientos en esa fecha`); return; }
       if (editingMovimientoId) {
         Object.assign(VENTAS_MOVIMIENTOS.find(m => m.id === editingMovimientoId), { tipo, fecha, categoria, concepto, monto, metodoPago });
       } else {
@@ -18616,11 +18633,18 @@
     // ── MÓDULO: VENTAS — CIERRE DE CAJA (ARQUEO) ──────────────────
     // Agrupa VENTAS_MOVIMIENTOS de una fecha por Tipo+Forma de pago
     // (criterio pedido: "se agrupen por tipo, forma de pago; sumando
-    // individualmente ingresos y egresos"). El cierre solo se habilita
+    // individualmente ingresos y egresos"). El cierre solo se completa
     // cuando TODAS las filas tienen un valor contado y ese valor coincide
     // exactamente con el valor de sistema; si no cuadra, el día se puede
     // guardar como Pendiente (guardarCierreCajaPendiente) y retomarse
-    // después sin perder lo ya contado.
+    // después sin perder lo ya contado. El botón "Cerrar día" NO se
+    // deshabilita de forma preventiva por esta razón (a diferencia del
+    // bloqueo por ventana de 24h, ver cierreBloqueado más abajo) — se
+    // deja SIEMPRE clickeable mientras el día no esté bloqueado, y es
+    // intentarCerrarCaja() quien valida y hace showToast() con el motivo
+    // exacto por el que no cerró (sin filas / falta contado / no cuadra).
+    // Si se agrega otro flujo de "acción con condiciones" similar, seguir
+    // este criterio en vez de deshabilitar el botón sin explicación.
     let cierreCajaState = { fecha: VENTAS_HOY, filas: [] };
 
     function agruparMovimientosParaArqueo(fecha) {
@@ -18670,7 +18694,7 @@
 
     function renderCierreCajaTable() {
       const filas = cierreCajaState.filas;
-      const cerrado = diaCerrado(cierreCajaState.fecha);
+      const bloqueado = cierreBloqueado(cierreCajaState.fecha);
       document.getElementById('cierre-caja-table-body').innerHTML = filas.length ? filas.map((f, i) => {
         const diff = f.contado == null ? null : (f.contado - f.sistemaValor);
         return `
@@ -18678,7 +18702,7 @@
           <td><span class="status-badge ${f.tipo === 'Ingreso' ? 'status-badge-activo' : 'status-badge-pendiente'}">${f.tipo}</span></td>
           <td>${f.metodoPago}</td>
           <td>${formatCOP(f.sistemaValor)}</td>
-          <td><input type="number" class="input-control" style="padding-left:12px;max-width:160px;" id="cierre-contado-${i}" value="${f.contado == null ? '' : f.contado}" ${cerrado ? 'disabled' : ''} oninput="actualizarContadoCierreCaja(${i}, this.value)" placeholder="0"></td>
+          <td><input type="number" class="input-control" style="padding-left:12px;max-width:160px;" id="cierre-contado-${i}" value="${f.contado == null ? '' : f.contado}" ${bloqueado ? 'disabled' : ''} oninput="actualizarContadoCierreCaja(${i}, this.value)" placeholder="0"></td>
           <td id="cierre-diff-${i}" style="font-weight:600;color:${diff == null ? 'var(--text-2)' : (diff === 0 ? 'var(--success)' : 'var(--danger)')};">${diff == null ? '—' : formatCOPDiff(diff)}</td>
         </tr>`;
       }).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-2);">No hay movimientos registrados para esta fecha</td></tr>`;
@@ -18698,6 +18722,7 @@
     function renderCierreCajaResumen() {
       const r = calcularResumenCierreCaja();
       const cerrado = diaCerrado(cierreCajaState.fecha);
+      const bloqueado = cierreBloqueado(cierreCajaState.fecha);
       document.getElementById('cierre-caja-kpi-grid').innerHTML = `
         <div class="ventas-kpi-card"><div class="ventas-kpi-label">Ingresos sistema</div><div class="ventas-kpi-value">${formatCOP(r.sistemaIngresos)}</div></div>
         <div class="ventas-kpi-card"><div class="ventas-kpi-label">Egresos sistema</div><div class="ventas-kpi-value">${formatCOP(r.sistemaEgresos)}</div></div>
@@ -18707,27 +18732,38 @@
       `;
       const badge = document.getElementById('cierre-caja-estado-badge');
       const existente = VENTAS_ARQUEOS.find(a => a.fecha === cierreCajaState.fecha);
-      badge.innerHTML = cerrado
-        ? `<span class="status-badge status-badge-activo"><i data-lucide="lock" style="width:11px;height:11px;vertical-align:-1px;"></i> Día cerrado${existente && existente.cerradoPor ? ' por ' + existente.cerradoPor : ''}</span>`
-        : (existente ? `<span class="status-badge status-badge-pendiente">Cierre pendiente</span>` : '');
-      document.getElementById('cierre-caja-cerrar-btn').disabled = cerrado || !r.cuadra;
-      document.getElementById('cierre-caja-pendiente-btn').disabled = cerrado;
+      if (bloqueado) {
+        badge.innerHTML = `<span class="status-badge status-badge-activo"><i data-lucide="lock" style="width:11px;height:11px;vertical-align:-1px;"></i> Día cerrado${existente && existente.cerradoPor ? ' por ' + existente.cerradoPor : ''} — ya no admite modificaciones (+24h)</span>`;
+      } else if (cerrado) {
+        const limite = new Date(new Date(existente.cerradoEn).getTime() + CIERRE_VENTANA_MODIFICACION_MS);
+        const limiteStr = limite.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        badge.innerHTML = `<span class="status-badge status-badge-activo"><i data-lucide="lock" style="width:11px;height:11px;vertical-align:-1px;"></i> Día cerrado${existente.cerradoPor ? ' por ' + existente.cerradoPor : ''} — modificable hasta ${limiteStr}</span>`;
+      } else {
+        badge.innerHTML = existente ? `<span class="status-badge status-badge-pendiente">Cierre pendiente</span>` : '';
+      }
+      document.getElementById('cierre-caja-cerrar-btn').disabled = bloqueado;
+      document.getElementById('cierre-caja-pendiente-btn').disabled = bloqueado;
       lucide.createIcons();
     }
 
     function guardarArqueo(estado) {
       const r = calcularResumenCierreCaja();
       const usuario = USUARIOS_SISTEMA.find(u => u.id === getCurrentSimUserId());
+      const existente = VENTAS_ARQUEOS.find(a => a.fecha === cierreCajaState.fecha);
+      // Si el día ya estaba Cerrado y se está re-guardando dentro de la
+      // ventana de 24h (corrigiendo el contado), el cerradoPor/cerradoEn
+      // original se preserva — si no, cada corrección reiniciaría el
+      // conteo de las 24h y el cierre nunca quedaría bloqueado de verdad.
+      const yaEstabaCerrado = existente && existente.estado === 'Cerrado' && existente.cerradoEn;
       const registro = {
         fecha: cierreCajaState.fecha,
         estado,
         filas: cierreCajaState.filas.map(f => ({ ...f })),
         sistemaIngresos: r.sistemaIngresos, sistemaEgresos: r.sistemaEgresos,
         contadoIngresos: r.contadoIngresos, contadoEgresos: r.contadoEgresos,
-        cerradoPor: estado === 'Cerrado' ? (usuario ? usuario.nombre : 'Usuario') : null,
-        cerradoEn: estado === 'Cerrado' ? new Date().toISOString() : null
+        cerradoPor: estado === 'Cerrado' ? (yaEstabaCerrado ? existente.cerradoPor : (usuario ? usuario.nombre : 'Usuario')) : null,
+        cerradoEn: estado === 'Cerrado' ? (yaEstabaCerrado ? existente.cerradoEn : new Date().toISOString()) : null
       };
-      const existente = VENTAS_ARQUEOS.find(a => a.fecha === cierreCajaState.fecha);
       if (existente) Object.assign(existente, registro); else VENTAS_ARQUEOS.unshift(registro);
       renderCierreCajaResumen();
       renderCierreCajaHistorial();
@@ -18736,15 +18772,17 @@
     }
 
     function guardarCierreCajaPendiente() {
+      if (cierreBloqueado(cierreCajaState.fecha)) { showToast(`El cierre de caja del ${cierreCajaState.fecha} ya pasó las 24 horas para modificarse`); return; }
       if (!cierreCajaState.filas.length) { showToast('No hay movimientos registrados para esta fecha'); return; }
       guardarArqueo('Pendiente');
     }
 
     function intentarCerrarCaja() {
+      if (cierreBloqueado(cierreCajaState.fecha)) { showToast(`El cierre de caja del ${cierreCajaState.fecha} ya pasó las 24 horas para modificarse — no se puede volver a cerrar`); return; }
       const filas = cierreCajaState.filas;
-      if (!filas.length) { showToast('No hay movimientos registrados para esta fecha'); return; }
-      if (filas.some(f => f.contado == null)) { showToast('Completa el valor contado de todas las filas antes de cerrar'); return; }
-      if (filas.some(f => f.contado !== f.sistemaValor)) { showToast('Los valores contados no cuadran con el sistema — corrige las diferencias o deja el día pendiente'); return; }
+      if (!filas.length) { showToast('No pudo cerrarse el día: no hay movimientos registrados para esta fecha'); return; }
+      if (filas.some(f => f.contado == null)) { showToast('No pudo cerrarse el día: falta completar el valor contado de una o más filas'); return; }
+      if (filas.some(f => f.contado !== f.sistemaValor)) { showToast('No pudo cerrarse el día: los valores contados no cuadran con el sistema — corrige las diferencias o deja el día pendiente'); return; }
       guardarArqueo('Cerrado');
     }
 
