@@ -5642,6 +5642,9 @@
             <div class="card">
               <div class="card-header">
                 <span class="card-title"><i data-lucide="calculator" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Cierre de día (arqueo de caja)</span>
+                <button type="button" class="btn-primary" style="padding:8px 16px;font-size:13px;" onclick="openMovimientoModal('create', null, cierreCajaState.fecha)">
+                  <i data-lucide="plus" style="width:14px;height:14px;"></i> Registrar movimiento
+                </button>
               </div>
               <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-bottom:16px;">
                 <div class="input-group" style="max-width:200px;">
@@ -10603,9 +10606,13 @@
         if (!record) return null;
         return { title: record.numero, html: docVentaViewContentHTML(moduleKey, record) };
       } else if (moduleKey === 'movimiento') {
-        const m = VENTAS_MOVIMIENTOS.find(x => x.id === Number(recordId));
+        const m = VENTAS_MOVIMIENTOS.find(x => x.id === recordId);
         if (!m) return null;
         return { title: m.concepto, html: movimientoViewContentHTML(m) };
+      } else if (moduleKey === 'arqueo') {
+        const a = VENTAS_ARQUEOS.find(x => x.fecha === recordId);
+        if (!a) return null;
+        return { title: `Cierre de caja — ${a.fecha}`, html: arqueoViewContentHTML(a) };
       } else if (moduleKey === 'proveedor') {
         const p = VENTAS_PROVEEDORES.find(x => x.id === recordId);
         if (!p) return null;
@@ -11238,10 +11245,9 @@
         VENTAS_PROVEEDORES.splice(VENTAS_PROVEEDORES.findIndex(d => d.id === recordId), 1);
         renderProveedoresTable();
       } else if (moduleKey === 'movimiento') {
-        const mov = VENTAS_MOVIMIENTOS.find(d => d.id === Number(recordId));
+        const mov = VENTAS_MOVIMIENTOS.find(d => d.id === recordId);
         if (mov && cierreBloqueado(mov.fecha)) { showToast(`El cierre de caja del ${mov.fecha} ya pasó las 24 horas para modificarse — no se puede eliminar`); return; }
-        VENTAS_MOVIMIENTOS.splice(VENTAS_MOVIMIENTOS.findIndex(d => d.id === Number(recordId)), 1);
-        renderIngresosEgresosTable();
+        eliminarMovimientoReal(recordId);
       } else if (moduleKey === 'producto') {
         eliminarProductoReal(recordId);
       } else if (moduleKey === 'categoria') {
@@ -11315,6 +11321,20 @@
         if (error) throw error;
       } catch (err) {
         console.error('[IRIS] Error eliminando producto/servicio en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+    async function eliminarMovimientoReal(recordId) {
+      const idx = VENTAS_MOVIMIENTOS.findIndex(d => d.id === recordId);
+      if (idx !== -1) VENTAS_MOVIMIENTOS.splice(idx, 1);
+      renderIngresosEgresosTable();
+      if (document.getElementById('ingegr-view-cierre').classList.contains('active')) abrirCierreCajaEnFecha(cierreCajaState.fecha);
+      if (!window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('movimientos').delete().eq('id', recordId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando movimiento en Supabase:', err);
         showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
       }
     }
@@ -18226,7 +18246,7 @@
         // facturaId, así que si sí vino de "Cerrar cuenta" esto no duplica.
         if (tipo === 'factura' && facturaGuardada.estado === 'Pagada') {
           if (!facturaGuardada.pago) facturaGuardada.pago = { metodo: 'Efectivo', valor: facturaGuardada.total, fecha: facturaGuardada.fecha };
-          crearMovimientoDesdeFactura(facturaGuardada);
+          await crearMovimientoDesdeFactura(facturaGuardada);
         }
         tipo === 'cotizacion' ? renderCotizacionesTable() : renderFacturasTable();
         refreshFacturacionPropietarioTablesIfOpen();
@@ -18316,7 +18336,7 @@
 
       factura.estado = 'Pagada';
       factura.pago = pago;
-      crearMovimientoDesdeFactura(factura);
+      await crearMovimientoDesdeFactura(factura);
 
       closeCerrarCuentaModal();
       closeDocVentaModal();
@@ -18548,14 +18568,18 @@
     }
 
     let editingMovimientoId = null;
-    function openMovimientoModal(mode, id) {
+    // `prefillFecha` (opcional): usado desde el botón "Registrar movimiento"
+    // de Cierre de caja para precargar la fecha que se está cerrando, en
+    // vez de VENTAS_HOY — así se puede registrar un movimiento faltante de
+    // ese día sin tener que ir hasta Movimientos y volver a cambiar la fecha.
+    function openMovimientoModal(mode, id, prefillFecha) {
       const isEdit = mode === 'edit';
-      editingMovimientoId = isEdit ? Number(id) : null;
+      editingMovimientoId = isEdit ? id : null;
       const m = isEdit ? VENTAS_MOVIMIENTOS.find(x => x.id === editingMovimientoId) : null;
       if (m && cierreBloqueado(m.fecha)) { showToast(`El cierre de caja del ${m.fecha} ya pasó las 24 horas para modificarse — no se puede modificar`); return; }
       document.getElementById('movimiento-modal-title').textContent = isEdit ? 'Editar movimiento' : 'Registrar movimiento';
       document.getElementById('movimiento-tipo-select').value = m ? m.tipo : 'Ingreso';
-      document.getElementById('movimiento-fecha-input').value = m ? m.fecha : VENTAS_HOY;
+      document.getElementById('movimiento-fecha-input').value = m ? m.fecha : (prefillFecha || VENTAS_HOY);
       document.getElementById('movimiento-categoria-input').value = m ? m.categoria : '';
       document.getElementById('movimiento-concepto-input').value = m ? m.concepto : '';
       document.getElementById('movimiento-monto-input').value = m ? m.monto : '';
@@ -18570,7 +18594,7 @@
     function handleMovimientoModalOverlayClick(e) {
       if (e.target === document.getElementById('movimiento-modal')) closeMovimientoModal();
     }
-    function guardarMovimiento() {
+    async function guardarMovimiento() {
       const tipo = document.getElementById('movimiento-tipo-select').value;
       const fecha = document.getElementById('movimiento-fecha-input').value;
       const categoria = document.getElementById('movimiento-categoria-input').value.trim();
@@ -18579,14 +18603,37 @@
       const metodoPago = document.getElementById('movimiento-metodo-select').value;
       if (!fecha || !categoria || !concepto || monto <= 0) { showToast('Completa todos los campos obligatorios'); return; }
       if (cierreBloqueado(fecha)) { showToast(`El cierre de caja del ${fecha} ya pasó las 24 horas para modificarse — no se pueden registrar movimientos en esa fecha`); return; }
-      if (editingMovimientoId) {
-        Object.assign(VENTAS_MOVIMIENTOS.find(m => m.id === editingMovimientoId), { tipo, fecha, categoria, concepto, monto, metodoPago });
-      } else {
-        VENTAS_MOVIMIENTOS.unshift({ id: ventasMovimientoIdCounter++, tipo, fecha, categoria, concepto, monto, metodoPago });
+      const data = { tipo, fecha, categoria, concepto, monto, metodoPago };
+      const wasEdit = !!editingMovimientoId;
+      const btn = document.getElementById('movimiento-guardar-btn');
+      if (btn) btn.disabled = true;
+      try {
+        if (editingMovimientoId) {
+          const { error } = await window.supabase.from('movimientos')
+            .update({ ...filaSupabaseDesdeMovimiento(data), updated_at: new Date().toISOString() })
+            .eq('id', editingMovimientoId);
+          if (error) throw error;
+          Object.assign(VENTAS_MOVIMIENTOS.find(m => m.id === editingMovimientoId), data);
+        } else {
+          const establecimientoId = currentSession.activeMembership.establecimientoId;
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+          const { data: inserted, error } = await window.supabase.from('movimientos')
+            .insert({ ...filaSupabaseDesdeMovimiento(data), establecimiento_id: establecimientoId, created_by: userId })
+            .select().single();
+          if (error) throw error;
+          VENTAS_MOVIMIENTOS.unshift({ id: inserted.id, ...data });
+        }
+        renderIngresosEgresosTable();
+        if (document.getElementById('ingegr-view-cierre').classList.contains('active')) abrirCierreCajaEnFecha(cierreCajaState.fecha);
+        closeMovimientoModal();
+        showToast(wasEdit ? 'Movimiento actualizado' : 'Movimiento registrado');
+      } catch (err) {
+        console.error('[IRIS] Error guardando movimiento en Supabase:', err);
+        showToast('No se pudo guardar el movimiento — intenta de nuevo');
+      } finally {
+        if (btn) btn.disabled = false;
       }
-      renderIngresosEgresosTable();
-      closeMovimientoModal();
-      showToast(editingMovimientoId ? 'Movimiento actualizado' : 'Movimiento registrado');
     }
     function movimientoViewContentHTML(m) {
       return `
@@ -18597,6 +18644,51 @@
         <div class="info-label">Monto</div><div class="info-value">${formatCOP(m.monto)}</div>
         <div class="info-label">Método de pago</div><div class="info-value">${m.metodoPago}</div>
         ${m.facturaId ? `<div class="info-label">Origen</div><div class="info-value">Generado automáticamente al cerrar la cuenta de la factura ${m.facturaNumero}</div>` : ''}
+      `;
+    }
+
+    // Colilla/tirilla imprimible del cierre de caja (acción "Imprimir" del
+    // historial, ver renderCierreCajaHistorial): a diferencia de
+    // movimientoViewContentHTML (un solo registro), acá se incluye TANTO el
+    // desglose agrupado por Tipo+Forma de pago (lo que ya se ve en la
+    // pantalla de Cierre de caja) COMO el detalle completo de cada
+    // movimiento individual de esa fecha — pedido explícito de que la
+    // colilla traiga "todos los registros correspondientes", no solo el
+    // resumen. Reutiliza getRegistroViewData/generarPdfRegistroImpresion
+    // (mismo camino genérico que el resto de módulos vía rowActionImprimir),
+    // sin necesitar un PDF a mano como el de Estado de cuenta de Facturas.
+    function arqueoViewContentHTML(a) {
+      const movs = VENTAS_MOVIMIENTOS.filter(m => m.fecha === a.fecha);
+      const filasHTML = a.filas.length ? a.filas.map(f => `
+        <tr>
+          <td>${f.tipo}</td><td>${f.metodoPago}</td>
+          <td style="text-align:right;">${formatCOP(f.sistemaValor)}</td>
+          <td style="text-align:right;">${f.contado == null ? '—' : formatCOP(f.contado)}</td>
+        </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--text-2);">Sin filas</td></tr>`;
+      const movsHTML = movs.length ? movs.map(m => `
+        <tr>
+          <td>${m.tipo}</td><td>${m.categoria}</td><td>${m.concepto}</td>
+          <td>${m.metodoPago}</td>
+          <td style="text-align:right;">${formatCOP(m.monto)}</td>
+        </tr>`).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-2);">Sin movimientos registrados</td></tr>`;
+      return `
+        <div class="info-label">Fecha</div><div class="info-value">${a.fecha}</div>
+        <div class="info-label">Estado</div><div class="info-value">${a.estado}</div>
+        ${a.cerradoPor ? `<div class="info-label">Cerrado por</div><div class="info-value">${a.cerradoPor}</div>` : ''}
+        ${a.cerradoEn ? `<div class="info-label">Cerrado en</div><div class="info-value">${new Date(a.cerradoEn).toLocaleString('es-CO')}</div>` : ''}
+        <div class="info-label">Ingresos (sistema)</div><div class="info-value">${formatCOP(a.sistemaIngresos)}</div>
+        <div class="info-label">Egresos (sistema)</div><div class="info-value">${formatCOP(a.sistemaEgresos)}</div>
+        <div class="info-label">Neto (sistema)</div><div class="info-value" style="font-weight:700;">${formatCOP(a.sistemaIngresos - a.sistemaEgresos)}</div>
+        <div class="info-label" style="margin-top:6px;">Desglose por tipo y forma de pago</div>
+        <table class="results-table" style="margin-bottom:14px;">
+          <thead><tr><th>Tipo</th><th>Forma de pago</th><th style="text-align:right;">Sistema</th><th style="text-align:right;">Contado</th></tr></thead>
+          <tbody>${filasHTML}</tbody>
+        </table>
+        <div class="info-label">Detalle de movimientos del día</div>
+        <table class="results-table">
+          <thead><tr><th>Tipo</th><th>Categoría</th><th>Concepto</th><th>Método</th><th style="text-align:right;">Monto</th></tr></thead>
+          <tbody>${movsHTML}</tbody>
+        </table>
       `;
     }
 
@@ -18612,12 +18704,11 @@
       if (metodo === 'Transferencia/Consignación') return 'Transferencia';
       return metodo; // 'Efectivo', 'Otro'
     }
-    function crearMovimientoDesdeFactura(factura) {
+    async function crearMovimientoDesdeFactura(factura) {
       if (!factura || !factura.pago || factura.pago.metodo === 'Saldo a favor') return;
       if (VENTAS_MOVIMIENTOS.some(m => m.facturaId === factura.id)) return;
       const cliente = ventasClienteById(factura.clienteId);
-      VENTAS_MOVIMIENTOS.unshift({
-        id: ventasMovimientoIdCounter++,
+      const data = {
         fecha: factura.pago.fecha,
         tipo: 'Ingreso',
         categoria: 'Venta - Facturación',
@@ -18626,7 +18717,21 @@
         metodoPago: mapMetodoPagoFacturaAMovimiento(factura.pago.metodo),
         facturaId: factura.id,
         facturaNumero: factura.numero
-      });
+      };
+      try {
+        const establecimientoId = currentSession.activeMembership.establecimientoId;
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const { data: inserted, error } = await window.supabase.from('movimientos')
+          .insert({ ...filaSupabaseDesdeMovimiento(data), establecimiento_id: establecimientoId, created_by: userId })
+          .select().single();
+        if (error) throw error;
+        VENTAS_MOVIMIENTOS.unshift({ id: inserted.id, ...data });
+      } catch (err) {
+        console.error('[IRIS] Error registrando el movimiento automático de la factura en Supabase:', err);
+        showToast('La factura se pagó pero no se pudo registrar el movimiento de caja automáticamente');
+        return;
+      }
       renderIngresosEgresosTable();
     }
 
@@ -18746,7 +18851,7 @@
       lucide.createIcons();
     }
 
-    function guardarArqueo(estado) {
+    async function guardarArqueo(estado) {
       const r = calcularResumenCierreCaja();
       const usuario = USUARIOS_SISTEMA.find(u => u.id === getCurrentSimUserId());
       const existente = VENTAS_ARQUEOS.find(a => a.fecha === cierreCajaState.fecha);
@@ -18755,7 +18860,7 @@
       // original se preserva — si no, cada corrección reiniciaría el
       // conteo de las 24h y el cierre nunca quedaría bloqueado de verdad.
       const yaEstabaCerrado = existente && existente.estado === 'Cerrado' && existente.cerradoEn;
-      const registro = {
+      const data = {
         fecha: cierreCajaState.fecha,
         estado,
         filas: cierreCajaState.filas.map(f => ({ ...f })),
@@ -18764,11 +18869,31 @@
         cerradoPor: estado === 'Cerrado' ? (yaEstabaCerrado ? existente.cerradoPor : (usuario ? usuario.nombre : 'Usuario')) : null,
         cerradoEn: estado === 'Cerrado' ? (yaEstabaCerrado ? existente.cerradoEn : new Date().toISOString()) : null
       };
-      if (existente) Object.assign(existente, registro); else VENTAS_ARQUEOS.unshift(registro);
-      renderCierreCajaResumen();
-      renderCierreCajaHistorial();
-      renderIngresosEgresosTable();
-      showToast(estado === 'Cerrado' ? `Día ${cierreCajaState.fecha} cerrado correctamente` : 'Cierre guardado como pendiente');
+      try {
+        if (existente) {
+          const { error } = await window.supabase.from('arqueos')
+            .update({ ...filaSupabaseDesdeArqueo(data), updated_at: new Date().toISOString() })
+            .eq('id', existente.id);
+          if (error) throw error;
+          Object.assign(existente, data);
+        } else {
+          const establecimientoId = currentSession.activeMembership.establecimientoId;
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+          const { data: inserted, error } = await window.supabase.from('arqueos')
+            .insert({ ...filaSupabaseDesdeArqueo(data), establecimiento_id: establecimientoId, created_by: userId })
+            .select().single();
+          if (error) throw error;
+          VENTAS_ARQUEOS.unshift({ id: inserted.id, ...data });
+        }
+        renderCierreCajaResumen();
+        renderCierreCajaHistorial();
+        renderIngresosEgresosTable();
+        showToast(estado === 'Cerrado' ? `Día ${cierreCajaState.fecha} cerrado correctamente` : 'Cierre guardado como pendiente');
+      } catch (err) {
+        console.error('[IRIS] Error guardando el cierre de caja en Supabase:', err);
+        showToast('No se pudo guardar el cierre — intenta de nuevo');
+      }
     }
 
     function guardarCierreCajaPendiente() {
@@ -18796,9 +18921,15 @@
           <td>${formatCOP(a.sistemaEgresos)}</td>
           <td>${formatCOP(a.sistemaIngresos - a.sistemaEgresos)}</td>
           <td>${a.cerradoPor || '—'}</td>
-          <td style="text-align:right;"><button type="button" class="btn-secondary" style="padding:6px 12px;font-size:12.5px;" onclick="abrirCierreCajaEnFecha('${a.fecha}')">${a.estado === 'Cerrado' ? 'Ver' : 'Continuar'}</button></td>
+          <td style="text-align:right;">
+            <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+              <button type="button" class="btn-secondary" style="padding:6px 12px;font-size:12.5px;" onclick="abrirCierreCajaEnFecha('${a.fecha}')">${a.estado === 'Cerrado' ? 'Ver' : 'Continuar'}</button>
+              ${renderRowActionButtons('arqueo', a.fecha, ['imprimir'])}
+            </div>
+          </td>
         </tr>
       `).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--text-2);">Todavía no hay cierres guardados</td></tr>`;
+      lucide.createIcons();
     }
 
     // ── MÓDULO: VENTAS — PROVEEDORES ──────────────────────────────
@@ -20936,17 +21067,18 @@
       hospitalizacionTiposCustom, hospitalizacionSeq,
       PLANTILLAS_DOCUMENTOS, CLINIC_INFO, VARIABLES_CATALOGOS,
       VENTAS_CLIENTES, VENTAS_FACTURAS, VENTAS_COTIZACIONES,
-      VENTAS_NOTAS_CREDITO, VENTAS_DOC_SOPORTE, VENTAS_MOVIMIENTOS,
+      VENTAS_NOTAS_CREDITO, VENTAS_DOC_SOPORTE, VENTAS_MOVIMIENTOS, VENTAS_ARQUEOS,
       VENTAS_CATALOGO, VENTAS_CATEGORIAS, VENTAS_PROVEEDORES
     });
 
     // NOTA — esta función YA NO toca `patientData`/`propietarios`/
-    // `nextPropietarioSeq`/`VENTAS_FACTURAS`/`VENTAS_COTIZACIONES`: esos
-    // cinco ahora se cargan de verdad desde Supabase (tablas propietarios/
-    // mascotas/documentos/ventas_facturas/ventas_cotizaciones) vía
-    // cargarDatosClinicaDesdeSupabase(), llamada aparte desde
-    // bootstrapSession(). Todo lo demás en esta función sigue siendo mock
-    // (fuera del alcance de la fase 1 de persistencia real).
+    // `nextPropietarioSeq`/`VENTAS_FACTURAS`/`VENTAS_COTIZACIONES`/
+    // `VENTAS_CATALOGO`/`VENTAS_MOVIMIENTOS`/`VENTAS_ARQUEOS`: esos ocho
+    // ahora se cargan de verdad desde Supabase (tablas propietarios/
+    // mascotas/documentos/ventas_facturas/ventas_cotizaciones/productos/
+    // movimientos/arqueos) vía cargarDatosClinicaDesdeSupabase(), llamada
+    // aparte desde bootstrapSession(). Todo lo demás en esta función sigue
+    // siendo mock (fuera del alcance de la fase 1 de persistencia real).
     function resetMockDataForClinic(seedDemo) {
       const seed = seedDemo ? structuredClone(DEMO_SEED) : null;
 
@@ -21022,8 +21154,12 @@
       VENTAS_DOC_SOPORTE.length = 0;
       if (seed) VENTAS_DOC_SOPORTE.push(...seed.VENTAS_DOC_SOPORTE);
 
-      VENTAS_MOVIMIENTOS.length = 0;
-      if (seed) VENTAS_MOVIMIENTOS.push(...seed.VENTAS_MOVIMIENTOS);
+      // VENTAS_MOVIMIENTOS/VENTAS_ARQUEOS (Ingresos y Egresos / Cierre de
+      // caja) ya NO se resetean/siembran acá (mismo criterio que
+      // VENTAS_FACTURAS/VENTAS_COTIZACIONES/VENTAS_CATALOGO, ver nota junto
+      // a cargarDatosClinicaDesdeSupabase()): se cargan de verdad desde las
+      // tablas `movimientos`/`arqueos`, filtradas por establecimiento_id,
+      // en esa función.
 
       // VENTAS_CATALOGO ya NO se resetea/siembra acá (mismo criterio que
       // VENTAS_FACTURAS/VENTAS_COTIZACIONES, ver nota junto a
@@ -21209,6 +21345,40 @@
         unidades_dia: p.unidadesDia || 0, duracion_minutos: p.duracionMinutos != null ? p.duracionMinutos : null
       };
     }
+    function construirMovimientoDesdeFila(r) {
+      return {
+        id: r.id, fecha: r.fecha, tipo: r.tipo, categoria: r.categoria, concepto: r.concepto,
+        monto: Number(r.monto) || 0, metodoPago: r.metodo_pago,
+        facturaId: r.factura_id || null, facturaNumero: r.factura_numero || null
+      };
+    }
+    function filaSupabaseDesdeMovimiento(m) {
+      return {
+        fecha: m.fecha, tipo: m.tipo, categoria: m.categoria, concepto: m.concepto,
+        monto: m.monto || 0, metodo_pago: m.metodoPago,
+        factura_id: m.facturaId || null, factura_numero: m.facturaNumero || null
+      };
+    }
+    // `filas` (desglose Tipo+Forma de pago del arqueo) se guarda tal cual en
+    // la columna jsonb, en camelCase — mismo criterio que `items` de
+    // ventas_facturas/ventas_cotizaciones (JSON opaco, sin mapear cada campo
+    // interno a snake_case).
+    function construirArqueoDesdeFila(r) {
+      return {
+        id: r.id, fecha: r.fecha, estado: r.estado, filas: Array.isArray(r.filas) ? r.filas : [],
+        sistemaIngresos: Number(r.sistema_ingresos) || 0, sistemaEgresos: Number(r.sistema_egresos) || 0,
+        contadoIngresos: Number(r.contado_ingresos) || 0, contadoEgresos: Number(r.contado_egresos) || 0,
+        cerradoPor: r.cerrado_por || null, cerradoEn: r.cerrado_en || null
+      };
+    }
+    function filaSupabaseDesdeArqueo(a) {
+      return {
+        fecha: a.fecha, estado: a.estado, filas: a.filas,
+        sistema_ingresos: a.sistemaIngresos || 0, sistema_egresos: a.sistemaEgresos || 0,
+        contado_ingresos: a.contadoIngresos || 0, contado_egresos: a.contadoEgresos || 0,
+        cerrado_por: a.cerradoPor || null, cerrado_en: a.cerradoEn || null
+      };
+    }
 
     // Clínica recién creada (o clínica demo la primerísima vez): siembra en
     // Supabase el contenido de DEMO_SEED.propietarios/patientData/documentos
@@ -21321,6 +21491,25 @@
           const { error: productoErr } = await window.supabase.from('productos').insert(productoInsertRows);
           if (productoErr) throw productoErr;
         }
+
+        // Ingresos y Egresos (movimientos) y Cierre de caja (arqueos):
+        // tampoco dependen de propietarios/mascotas, mismo criterio que
+        // facturas/cotizaciones/productos arriba.
+        const movimientoInsertRows = DEMO_SEED.VENTAS_MOVIMIENTOS.map(m => ({
+          establecimiento_id: establecimientoId, created_by: userId, ...filaSupabaseDesdeMovimiento(m)
+        }));
+        if (movimientoInsertRows.length) {
+          const { error: movimientoErr } = await window.supabase.from('movimientos').insert(movimientoInsertRows);
+          if (movimientoErr) throw movimientoErr;
+        }
+
+        const arqueoInsertRows = DEMO_SEED.VENTAS_ARQUEOS.map(a => ({
+          establecimiento_id: establecimientoId, created_by: userId, ...filaSupabaseDesdeArqueo(a)
+        }));
+        if (arqueoInsertRows.length) {
+          const { error: arqueoErr } = await window.supabase.from('arqueos').insert(arqueoInsertRows);
+          if (arqueoErr) throw arqueoErr;
+        }
       } catch (err) {
         console.error('[IRIS] No se pudo sembrar la clínica demo en Supabase:', err);
       }
@@ -21333,7 +21522,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -21343,7 +21532,9 @@
           window.supabase.from('ventas_facturas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('ventas_cotizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('hospitalizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
-          window.supabase.from('productos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false })
+          window.supabase.from('productos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
+          window.supabase.from('movimientos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('arqueos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -21355,19 +21546,22 @@
         if (cotizacionRes.error) throw cotizacionRes.error;
         if (hospRes.error) throw hospRes.error;
         if (productoRes.error) throw productoRes.error;
+        if (movimientoRes.error) throw movimientoRes.error;
+        if (arqueoRes.error) throw arqueoRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
           facturaRows: facturaRes.data || [], cotizacionRows: cotizacionRes.data || [],
-          hospRows: hospRes.data || [], productoRows: productoRes.data || []
+          hospRows: hospRes.data || [], productoRows: productoRes.data || [],
+          movimientoRows: movimientoRes.data || [], arqueoRows: arqueoRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -21431,6 +21625,12 @@
 
       VENTAS_CATALOGO.length = 0;
       productoRows.forEach(r => VENTAS_CATALOGO.push(construirProductoDesdeFila(r)));
+
+      VENTAS_MOVIMIENTOS.length = 0;
+      movimientoRows.forEach(r => VENTAS_MOVIMIENTOS.push(construirMovimientoDesdeFila(r)));
+
+      VENTAS_ARQUEOS.length = 0;
+      arqueoRows.forEach(r => VENTAS_ARQUEOS.push(construirArqueoDesdeFila(r)));
     }
 
     // Clínica nueva: el único "usuario del sistema" visible en Admin >
@@ -23552,7 +23752,7 @@
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn-secondary" onclick="closeMovimientoModal()">Cancelar</button>
-        <button class="btn-primary" onclick="guardarMovimiento()">Guardar</button>
+        <button class="btn-primary" id="movimiento-guardar-btn" onclick="guardarMovimiento()">Guardar</button>
       </div>
     </div>
   </div>

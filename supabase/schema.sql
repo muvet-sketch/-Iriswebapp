@@ -1105,3 +1105,99 @@ drop policy if exists "productos_delete_member" on public.productos;
 create policy "productos_delete_member"
   on public.productos for delete
   using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: movimientos (Ventas > Ingresos y Egresos) ────────────
+-- NOTA: la FK factura_id -> ventas_facturas asume que esa tabla ya
+-- existe en la base de datos real (creada directamente ahí, fuera de
+-- este archivo — ventas_facturas/ventas_cotizaciones todavía no están
+-- documentadas en este schema.sql). Si corres este archivo contra una
+-- base nueva desde cero, crea antes esa tabla o quita la FK.
+create table if not exists public.movimientos (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  fecha              date not null,
+  tipo               text not null check (tipo in ('Ingreso','Egreso')),
+  categoria          text not null,
+  concepto           text not null,
+  monto              numeric not null default 0,
+  metodo_pago        text not null,
+  factura_id         uuid references public.ventas_facturas (id) on delete set null,
+  factura_numero     text,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create index if not exists movimientos_establecimiento_id_idx on public.movimientos (establecimiento_id);
+
+alter table public.movimientos enable row level security;
+
+drop policy if exists "movimientos_select_member" on public.movimientos;
+create policy "movimientos_select_member"
+  on public.movimientos for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "movimientos_insert_member" on public.movimientos;
+create policy "movimientos_insert_member"
+  on public.movimientos for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "movimientos_update_member" on public.movimientos;
+create policy "movimientos_update_member"
+  on public.movimientos for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "movimientos_delete_member" on public.movimientos;
+create policy "movimientos_delete_member"
+  on public.movimientos for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: arqueos (Ventas > Ingresos y Egresos > Cierre de caja) ─
+-- Un registro por fecha (unique establecimiento_id+fecha) — ver
+-- cierreBloqueado()/CIERRE_VENTANA_MODIFICACION_MS en index.html para
+-- la ventana de 24h de modificación tras cerrar. `filas` guarda el
+-- desglose Tipo+Forma de pago en JSON opaco (camelCase), igual que
+-- `items` de ventas_facturas/ventas_cotizaciones.
+create table if not exists public.arqueos (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  fecha              date not null,
+  estado             text not null check (estado in ('Cerrado','Pendiente')),
+  filas              jsonb not null default '[]'::jsonb,
+  sistema_ingresos   numeric not null default 0,
+  sistema_egresos    numeric not null default 0,
+  contado_ingresos   numeric not null default 0,
+  contado_egresos    numeric not null default 0,
+  cerrado_por        text,
+  cerrado_en         timestamptz,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  unique (establecimiento_id, fecha)
+);
+
+create index if not exists arqueos_establecimiento_id_idx on public.arqueos (establecimiento_id);
+
+alter table public.arqueos enable row level security;
+
+drop policy if exists "arqueos_select_member" on public.arqueos;
+create policy "arqueos_select_member"
+  on public.arqueos for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "arqueos_insert_member" on public.arqueos;
+create policy "arqueos_insert_member"
+  on public.arqueos for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "arqueos_update_member" on public.arqueos;
+create policy "arqueos_update_member"
+  on public.arqueos for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "arqueos_delete_member" on public.arqueos;
+create policy "arqueos_delete_member"
+  on public.arqueos for delete
+  using (public.user_is_member_of(establecimiento_id));
