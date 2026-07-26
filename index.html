@@ -4078,7 +4078,7 @@
         <div class="admin-subview" id="agenda-view-disponibilidad">
           <div class="card" style="margin-top:16px;">
             <div class="card-header">
-              <span class="card-title"><i data-lucide="calendar-clock" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Disponibilidad por médico</span>
+              <span class="card-title"><i data-lucide="calendar-clock" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Disponibilidad por encargado</span>
               <button type="button" class="btn-primary" style="padding:8px 14px;font-size:13px;" onclick="guardarDisponibilidadMedicos()">Guardar disponibilidad</button>
             </div>
             <div class="agenda-legend" style="margin-top:0;">
@@ -7329,7 +7329,21 @@
     // el mock de hoy — admin/auxiliar/ventas verán su lista vacía, lo cual
     // es el comportamiento esperado, no un bug).
     const CURRENT_SIM_USER_ID_BY_ROLE = { admin: 1, medico: CURRENT_MEDICO_SIM_ID, auxiliar: 3, ventas: 4 };
-    function getCurrentSimUserId() { return CURRENT_SIM_USER_ID_BY_ROLE[currentSimRole] ?? null; }
+    // Los ids de arriba solo existen en el roster de DEMO. Con una clínica
+    // real, cargarUsuariosRealesDesdeSupabase() reconstruye USUARIOS_SISTEMA
+    // con ids 1..N asignados en el orden que devuelve el RPC y marca al
+    // usuario logueado con `esUsuarioActual` — ese es el único id confiable.
+    // Sin esto, "Agenda personal" y el bloqueo de Encargado apuntaban a un
+    // id fijo (1/2/3/4) que en una clínica real es otra persona o no existe.
+    function getUsuarioActualSistema() {
+      return USUARIOS_SISTEMA.find(u => u.esUsuarioActual) || null;
+    }
+    function getCurrentSimUserId() {
+      const real = getUsuarioActualSistema();
+      if (real) return real.id;
+      const mockId = CURRENT_SIM_USER_ID_BY_ROLE[currentSimRole];
+      return USUARIOS_SISTEMA.some(u => u.id === mockId) ? mockId : null;
+    }
 
     // ── AUTH SHELL ⇄ APP SHELL (Parte 3) ──────────────────────────
     // Decide qué mitad del documento se muestra según iris_session_active.
@@ -8233,8 +8247,8 @@
 
     // ── MÓDULO: AGENDA (FullCalendar) — lógica ─────────────────────
     // Privilegios: Administrador gestiona todo; Médico Veterinario solo
-    // crea/edita/elimina eventos donde encargadoId === CURRENT_MEDICO_SIM_ID
-    // (ver su definición junto a USUARIOS_SISTEMA); Auxiliar es de solo
+    // crea/edita/elimina eventos donde encargadoId === getMedicoAgendaSimId()
+    // (ver su definición más abajo); Auxiliar es de solo
     // lectura (ve el calendario, no puede crear/editar); Ventas no ve el
     // tab (ver TAB_ROLE_RESTRICTIONS). El filtro "Todos los usuarios /
     // médico" del toolbar es independiente de estos privilegios — solo
@@ -8242,23 +8256,62 @@
     function puedeGestionarAgenda() {
       return currentSimRole === 'admin' || currentSimRole === 'medico';
     }
+    // Identidad del "médico logueado" para la Agenda: en una clínica real es
+    // el propio usuario de la sesión (ver getUsuarioActualSistema); en el
+    // roster de demo se cae al id fijo del mock, y si ni ese existe, al
+    // primer candidato del roster. Devuelve null solo si no hay nadie.
+    function getMedicoAgendaSimId() {
+      const real = getUsuarioActualSistema();
+      if (real) return real.id;
+      if (USUARIOS_SISTEMA.some(u => u.id === CURRENT_MEDICO_SIM_ID)) return CURRENT_MEDICO_SIM_ID;
+      const primero = getEncargadosAgendaCandidatos()[0];
+      return primero ? primero.id : null;
+    }
+
     function puedeEditarEventoAgenda(evento) {
       if (currentSimRole === 'admin') return true;
-      if (currentSimRole === 'medico') return evento.encargadoId === CURRENT_MEDICO_SIM_ID;
+      if (currentSimRole === 'medico') return evento.encargadoId === getMedicoAgendaSimId();
       return false;
     }
 
+    // Candidatos a "Encargado / médico" de un evento: antes era solo
+    // rol === 'medico', lo que dejaba el select COMPLETAMENTE VACÍO (nada
+    // que seleccionar, imposible crear un evento) en una clínica real donde
+    // todavía no hay ningún miembro con ese rol — el caso normal de una
+    // clínica recién creada, donde el/los administrador(es) son quienes
+    // atienden. Se incluyen también los administradores activos, con el rol
+    // entre paréntesis para que se distingan; los médicos van primero.
+    function getEncargadosAgendaCandidatos() {
+      const activos = USUARIOS_SISTEMA.filter(u => u.estado === 'activo' && (u.rol === 'medico' || u.rol === 'admin'));
+      return activos.sort((a, b) => (a.rol === b.rol) ? 0 : (a.rol === 'medico' ? -1 : 1));
+    }
+
+    function labelEncargadoAgenda(u) {
+      return u.rol === 'medico' ? u.nombre : `${u.nombre} (${(ROLES[u.rol] || {}).label || u.rol})`;
+    }
+
     function poblarFiltroAgendaEncargados() {
-      const medicos = USUARIOS_SISTEMA.filter(u => u.estado === 'activo' && u.rol === 'medico');
       const sel = document.getElementById('agenda-filtro-encargado');
       sel.innerHTML = '<option value="todos">Todos los usuarios</option>' +
-        medicos.map(u => `<option value="${u.id}">${u.nombre}</option>`).join('');
+        getEncargadosAgendaCandidatos().map(u => `<option value="${u.id}">${labelEncargadoAgenda(u)}</option>`).join('');
     }
 
     function poblarSelectEncargadosAgenda(selectedId) {
-      const medicos = USUARIOS_SISTEMA.filter(u => u.estado === 'activo' && u.rol === 'medico');
+      const candidatos = getEncargadosAgendaCandidatos();
       const sel = document.getElementById('ag-encargado');
-      sel.innerHTML = medicos.map(u => `<option value="${u.id}" ${selectedId && Number(selectedId) === u.id ? 'selected' : ''}>${u.nombre}</option>`).join('');
+      // Un evento ya guardado puede apuntar a alguien que después se
+      // desactivó o cambió de rol: se agrega igual como opción para que
+      // editar el evento no lo reasigne en silencio a otra persona.
+      const selNum = selectedId ? Number(selectedId) : null;
+      if (selNum && !candidatos.some(u => u.id === selNum)) {
+        const previo = USUARIOS_SISTEMA.find(u => u.id === selNum);
+        if (previo) candidatos.unshift(previo);
+      }
+      if (!candidatos.length) {
+        sel.innerHTML = '<option value="">Sin usuarios disponibles — invita a un médico en Admin &gt; Usuarios</option>';
+        return;
+      }
+      sel.innerHTML = candidatos.map(u => `<option value="${u.id}" ${selNum === u.id ? 'selected' : ''}>${labelEncargadoAgenda(u)}</option>`).join('');
     }
 
     function onCambiarFiltroAgenda() {
@@ -8397,10 +8450,15 @@
       handleAgendaSoloEspacioChange();
       handleAgendaSinHoraChange();
 
-      // Encargado: Médico Veterinario solo puede crear a su propio nombre
-      poblarSelectEncargadosAgenda(evento ? evento.encargadoId : (currentSimRole === 'medico' ? CURRENT_MEDICO_SIM_ID : null));
-      const lockEncargadoAMedicoActual = !readonly && currentSimRole === 'medico' && mode === 'create';
-      if (lockEncargadoAMedicoActual) document.getElementById('ag-encargado').value = String(CURRENT_MEDICO_SIM_ID);
+      // Encargado: Médico Veterinario solo puede crear a su propio nombre.
+      // El bloqueo solo aplica si ese médico existe de verdad en el roster
+      // (getMedicoAgendaSimId) — si no, el select quedaba deshabilitado y
+      // apuntando a un id inexistente, es decir imposible de usar.
+      const medicoActualId = currentSimRole === 'medico' ? getMedicoAgendaSimId() : null;
+      poblarSelectEncargadosAgenda(evento ? evento.encargadoId : medicoActualId);
+      const lockEncargadoAMedicoActual = !readonly && mode === 'create' && medicoActualId != null &&
+        getEncargadosAgendaCandidatos().some(u => u.id === medicoActualId);
+      if (lockEncargadoAMedicoActual) document.getElementById('ag-encargado').value = String(medicoActualId);
 
       setAgendaModalCamposDisabled(readonly);
       document.getElementById('ag-encargado').disabled = readonly || lockEncargadoAMedicoActual;
@@ -8502,7 +8560,11 @@
       const propietarioValue = document.getElementById('ag-propietario-ss-slot').querySelector('[data-ss-field]').value;
       const petKey = document.getElementById('ag-mascota').value;
 
-      if (!fechaInicio || !encargadoId || !titulo) {
+      if (!encargadoId) {
+        showToast('No hay ningún encargado disponible — invita a un médico desde Admin > Usuarios');
+        return;
+      }
+      if (!fechaInicio || !titulo) {
         showToast('Completa los campos obligatorios');
         return;
       }
@@ -8756,8 +8818,11 @@
     }
 
     // ── Disponibilidad / Programador — bloques de 30 min por médico ────
+    // Misma lista que el select de Encargado del modal: si alguien puede ser
+    // encargado de un evento, tiene que tener columna acá, si no el aviso de
+    // "no disponible / bloqueado" nunca aplicaría para esa persona.
     function getMedicosActivos() {
-      return USUARIOS_SISTEMA.filter(u => u.estado === 'activo' && u.rol === 'medico');
+      return getEncargadosAgendaCandidatos();
     }
 
     function getDisponibilidadSlots() {
@@ -8795,7 +8860,7 @@
       const slots = getDisponibilidadSlots();
       const table = document.getElementById('disponibilidad-grid-table');
       table.innerHTML = `
-        <thead><tr><th>Hora</th>${medicos.map(m => `<th>${m.nombre}</th>`).join('')}</tr></thead>
+        <thead><tr><th>Hora</th>${medicos.map(m => `<th>${labelEncargadoAgenda(m)}</th>`).join('')}</tr></thead>
         <tbody>
           ${slots.map(slot => `
             <tr>

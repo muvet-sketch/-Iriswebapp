@@ -267,11 +267,13 @@ usuario simulado actual vía `CURRENT_SIM_USER_ID_BY_ROLE`/
 `getCurrentSimUserId()` — extensión del mismo criterio que
 `CURRENT_MEDICO_SIM_ID`; toggle Mes/Semana/Día/Lista, Lista por
 defecto agrupada por día), **Disponibilidad / Programador** (grilla
-propia de bloques de 30 min por médico en `DISPONIBILIDAD_MEDICOS`,
+propia de bloques de 30 min por encargado en `DISPONIBILIDAD_MEDICOS`,
 click cicla Disponible/No disponible/Bloqueado vía
 `toggleDisponibilidadCell()` — sin plugin de recursos de FullCalendar;
 `chequearDisponibilidadAgendaModal()` solo advierte, no bloquea, al
-crear un evento en un horario marcado) y **Eventos** (`EVENTOS_SEGUIMIENTO`,
+crear un evento en un horario marcado; sus columnas salen de la misma
+lista que el select de Encargado del modal, ver abajo) y **Eventos**
+(`EVENTOS_SEGUIMIENTO`,
 generados automáticamente por `crearEventoSeguimiento()` desde
 Vacunaciones/Desparasitaciones/Seguimientos al guardar con fecha de
 próximo control diligenciada — create-only, mismo criterio que el
@@ -279,7 +281,31 @@ timeline; acción "Agendar" reabre `#agenda-evento-modal` precargado y
 vincula el ítem al evento creado). `guardarEventoAgenda()` también
 calcula `recordatorio24hISO` (mock, Tarea 3) y abre `#agenda-notif-modal`
 listando destinatarios simulados (tutor/clínica/médico) — sin envío
-real. Inventario > Productos y servicios: el botón "+ Registrar" (antes
+real.
+
+**Encargado / médico de un evento (`#ag-encargado`) — identidad real vs.
+mock:** el select se llena con `getEncargadosAgendaCandidatos()`, que son
+los usuarios ACTIVOS con rol `medico` **o `admin`** (médicos primero, los
+admin con el rol entre paréntesis vía `labelEncargadoAgenda()`). Antes era
+solo `rol === 'medico'` y eso dejaba el select literalmente vacío —
+imposible crear ningún evento — en una clínica real recién creada donde
+todavía no hay ningún miembro con ese rol (el caso normal: quien crea la
+clínica queda como `admin` y las invitaciones a médicos pueden seguir sin
+aceptarse). Si el roster igual queda vacío, el select muestra una opción
+placeholder y `guardarEventoAgenda()` avisa con un toast propio en vez del
+genérico "Completa los campos obligatorios". La misma lista alimenta el
+filtro del toolbar y las columnas de Disponibilidad. Relacionado: la
+identidad del usuario logueado dentro de `USUARIOS_SISTEMA` sale de
+`getUsuarioActualSistema()` (flag `esUsuarioActual`, que pone
+`cargarUsuariosRealesDesdeSupabase()`), y `getCurrentSimUserId()` /
+`getMedicoAgendaSimId()` la prefieren antes de caer a los ids fijos del
+mock (`CURRENT_SIM_USER_ID_BY_ROLE` / `CURRENT_MEDICO_SIM_ID = 2`). Esos
+ids fijos SOLO son válidos en el roster de demo: con datos reales los ids
+son 1..N en el orden que devuelve `list_establecimiento_members`, así que
+cualquier código nuevo que necesite "el usuario actual" debe usar esas
+funciones y nunca las constantes directamente.
+
+Inventario > Productos y servicios: el botón "+ Registrar" (antes
 "Nuevo producto/servicio") abre el mismo `#producto-modal`, ahora con
 tabs internas General/Precio (`.prod-modal-tabs`, clon de
 `.kardex-tabs` adaptado a modal — mismo patrón reutilizado en
