@@ -163,6 +163,35 @@ cierra el script") en vez del literal `</script>`.
     (`openEditMascotaModal(petKey)` / `guardarMascotaEdit()`) y
     refresca tanto la ficha de Historia como el header del Kardex si
     corresponde al mismo paciente.
+  - Edad de la mascota: el formulario (crear/editar) NUNCA guarda un
+    texto libre de edad. El campo "Edad" es un select de 3 modos (En
+    años / En meses / Fecha de nacimiento exacta,
+    `#<prefix>-edad-tipo` con `onChangeEdadTipo(prefix)` alternando
+    entre `#<prefix>-edad-cantidad` y `#<prefix>-edad-fecha`) que
+    siempre se resuelve a una FECHA (`calcularFechaNacimientoDesdeEdadInputs(prefix)`
+    — si el modo es años/meses, resta esa cantidad a hoy para
+    aproximar la fecha de nacimiento; si es fecha exacta, la usa tal
+    cual). Esa fecha es lo único que se persiste
+    (`patientData[petKey].fechaNacimiento` / columna
+    `mascotas.fecha_nacimiento`, `date`, agregada vía migración — no
+    existía en el schema original). La edad mostrada en cualquier
+    lugar (ficha de Historia, header del paciente, etc.) se calcula
+    SIEMPRE a partir de esa fecha vía `edadTextoParaMostrar(data)` →
+    `formatearEdadYMD(fechaISO)` (formato "X años, Y meses, Z días",
+    omitiendo las unidades en 0 salvo que todas lo sean), nunca se
+    guarda como string fijo — así se mantiene correcta con el paso
+    del tiempo en vez de quedar congelada en lo que se escribió al
+    registrar. El campo legado `data.age`/`mascotas.edad` (texto) solo
+    sirve de respaldo en `edadTextoParaMostrar` para mascotas viejas
+    sin `fechaNacimiento`. Al editar una mascota que ya tiene
+    `fechaNacimiento`, el modal siempre precarga el modo "Fecha exacta"
+    con ese valor (reconstruir años/meses desde ahí sería ambiguo).
+  - `renderWeightChartSVG` (Histórico de peso) pinta además números de
+    kg a la izquierda del gráfico (`.weight-chart-yaxis`, 3 ticks:
+    máximo/medio/mínimo, alineados al mismo padTop/padBottom que ya
+    usan los puntos) y la fecha completa dd/mm/aaaa debajo de cada
+    punto (antes solo dd/mm) — mismo criterio de "pintar fuera del
+    `<svg>`" del punto anterior, aplica también a estos ticks nuevos.
 - Patrón de Kardex (Hospitalizaciones/ambulatorios, `abrirKardex()`):
   - Es una "pantalla completa" propia (`#kardex-view`, hermana de
     `#consultorio-search-view`/`#consultorio-patient-view` dentro de

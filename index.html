@@ -2361,17 +2361,25 @@
        pintan como HTML normal posicionado en % encima del SVG — un
        <circle>/<text> dentro de ese viewBox saldría deformado (óvalos,
        texto aplastado) por esa misma escala no uniforme. */
-    .weight-chart-plot { position: relative; width: 100%; height: 96px; }
+    .weight-chart-row { display: flex; gap: 6px; }
+    .weight-chart-yaxis, .weight-chart-yaxis-spacer { width: 38px; flex-shrink: 0; }
+    .weight-chart-yaxis { position: relative; height: 96px; }
+    .weight-chart-yaxis span {
+      position: absolute; left: 0; transform: translateY(-50%);
+      font-size: 9px; color: var(--text-2); white-space: nowrap;
+    }
+    .weight-chart-plot { position: relative; flex: 1; min-width: 0; height: 96px; }
     .weight-chart-svg { width: 100%; height: 100%; display: block; overflow: visible; }
     .weight-chart-point {
       position: absolute; width: 9px; height: 9px; border-radius: 50%;
       background-color: var(--surface); border: 2px solid var(--clinic-accent);
       transform: translate(-50%, -50%); cursor: pointer;
     }
-    .weight-chart-axis { position: relative; width: 100%; height: 16px; margin-top: 4px; }
+    .weight-chart-axis-row { display: flex; gap: 6px; margin-top: 4px; }
+    .weight-chart-axis { position: relative; flex: 1; min-width: 0; height: 16px; }
     .weight-chart-axis-label {
       position: absolute; top: 0; transform: translateX(-50%);
-      font-size: 10px; color: var(--text-2); white-space: nowrap;
+      font-size: 9px; color: var(--text-2); white-space: nowrap;
     }
     .weight-chart-tooltip {
       position: absolute; background-color: var(--text-1); color: #fff; font-size: 11px;
@@ -5117,6 +5125,18 @@
                         <label class="input-label" for="tablero-soap-vital-crt">TLLC</label>
                         <input type="text" id="tablero-soap-vital-crt" class="input-control" style="padding-left:12px;" placeholder="< 2s">
                       </div>
+                      <div class="input-group">
+                        <label class="input-label" for="tablero-soap-vital-pas">PAS (mmHg)</label>
+                        <input type="number" id="tablero-soap-vital-pas" class="input-control" style="padding-left:12px;" placeholder="120">
+                      </div>
+                      <div class="input-group">
+                        <label class="input-label" for="tablero-soap-vital-pad">PAD (mmHg)</label>
+                        <input type="number" id="tablero-soap-vital-pad" class="input-control" style="padding-left:12px;" placeholder="80">
+                      </div>
+                      <div class="input-group">
+                        <label class="input-label" for="tablero-soap-vital-pam">PAM (mmHg)</label>
+                        <input type="number" id="tablero-soap-vital-pam" class="input-control" style="padding-left:12px;" placeholder="93">
+                      </div>
                     </div>
                     <textarea class="soap-textarea" id="tablero-soap-o" style="margin-top:8px;" placeholder="Hallazgos del examen físico, mucosas, hidratación, etc."></textarea>
                   </div>
@@ -6338,6 +6358,7 @@
         species: 'Felino',
         breed: 'Siamés',
         age: '3 años 2 meses',
+        fechaNacimiento: '2023-05-26',
         weight: '4.2 kg',
         owner: 'Carlos Mendoza',
         ownerPhone: '+57 300 456 7890',
@@ -6575,6 +6596,7 @@
         species: 'Canino',
         breed: 'Golden Retriever',
         age: '5 años 6 meses',
+        fechaNacimiento: '2021-01-26',
         weight: '32.5 kg',
         owner: 'Andrea Gómez',
         ownerPhone: '+57 301 567 8901',
@@ -6632,6 +6654,7 @@
         species: 'Canino',
         breed: 'Criollo',
         age: '2 años 1 mes',
+        fechaNacimiento: '2024-06-26',
         weight: '12.1 kg',
         owner: 'Liliana Pérez',
         ownerPhone: '+57 302 678 9012',
@@ -7638,7 +7661,7 @@
       document.getElementById('pet-profile-chip').textContent = data.chip;
       document.getElementById('pet-profile-species').textContent = data.species;
       document.getElementById('pet-profile-breed').textContent = data.breed;
-      document.getElementById('pet-profile-age').textContent = data.age;
+      document.getElementById('pet-profile-age').textContent = edadTextoParaMostrar(data);
       document.getElementById('pet-profile-weight').textContent = data.weight;
       document.getElementById('pet-profile-owner').textContent = data.owner;
 
@@ -9148,6 +9171,81 @@
       `;
     }
 
+    // ── Edad del paciente: años/meses/días calculados desde fechaNacimiento ──
+    // El formulario de mascota nunca guarda la edad como texto libre: sea
+    // cual sea el modo elegido (años/meses/fecha exacta), se resuelve a una
+    // fecha de nacimiento (aproximada si vino de años/meses, restando esa
+    // cantidad a hoy) y esa fecha es la que se persiste (data.fechaNacimiento
+    // / columna `fecha_nacimiento`). Así la edad mostrada se recalcula sola
+    // con el paso del tiempo en vez de quedar congelada en el texto que se
+    // escribió al registrar. `data.age` (texto legado) solo se usa como
+    // respaldo para mascotas que vinieron de antes de este cambio y todavía
+    // no tienen fechaNacimiento.
+    function diffFechaEnYMD(fechaNacISO, hasta = new Date()) {
+      const nacimiento = new Date(`${fechaNacISO}T00:00:00`);
+      let years = hasta.getFullYear() - nacimiento.getFullYear();
+      let months = hasta.getMonth() - nacimiento.getMonth();
+      let days = hasta.getDate() - nacimiento.getDate();
+      if (days < 0) {
+        months--;
+        days += new Date(hasta.getFullYear(), hasta.getMonth(), 0).getDate();
+      }
+      if (months < 0) { years--; months += 12; }
+      return { years: Math.max(years, 0), months: Math.max(months, 0), days: Math.max(days, 0) };
+    }
+
+    function formatearEdadYMD(fechaNacISO) {
+      if (!fechaNacISO) return '—';
+      const { years, months, days } = diffFechaEnYMD(fechaNacISO);
+      const partes = [];
+      if (years > 0) partes.push(`${years} ${years === 1 ? 'año' : 'años'}`);
+      if (months > 0) partes.push(`${months} ${months === 1 ? 'mes' : 'meses'}`);
+      if (days > 0 || partes.length === 0) partes.push(`${days} ${days === 1 ? 'día' : 'días'}`);
+      return partes.join(', ');
+    }
+
+    function edadTextoParaMostrar(data) {
+      if (data && data.fechaNacimiento) return formatearEdadYMD(data.fechaNacimiento);
+      return (data && data.age) || '—';
+    }
+
+    // Lee el selector "Tipo de edad" (años/meses/fecha exacta) + su input
+    // asociado y resuelve la fecha de nacimiento a persistir. `prefix` es
+    // 'mascota' (editar) o 'nueva-mascota' (registrar) — mismos 3 ids con
+    // ese prefijo en ambos modales.
+    function calcularFechaNacimientoDesdeEdadInputs(prefix) {
+      const tipoEl = document.getElementById(`${prefix}-edad-tipo`);
+      if (!tipoEl) return null;
+      const tipo = tipoEl.value;
+      if (tipo === 'fecha') {
+        const fechaEl = document.getElementById(`${prefix}-edad-fecha`);
+        return (fechaEl && fechaEl.value) || null;
+      }
+      const cantidadEl = document.getElementById(`${prefix}-edad-cantidad`);
+      const cantidad = cantidadEl ? parseInt(cantidadEl.value, 10) : NaN;
+      if (isNaN(cantidad) || cantidad < 0) return null;
+      const hoy = new Date();
+      if (tipo === 'meses') hoy.setMonth(hoy.getMonth() - cantidad);
+      else hoy.setFullYear(hoy.getFullYear() - cantidad);
+      const pad = n => String(n).padStart(2, '0');
+      return `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}`;
+    }
+
+    // Alterna cantidad (años/meses) vs. fecha exacta y refresca el preview.
+    function onChangeEdadTipo(prefix) {
+      const tipo = document.getElementById(`${prefix}-edad-tipo`).value;
+      document.getElementById(`${prefix}-edad-cantidad`).style.display = tipo === 'fecha' ? 'none' : '';
+      document.getElementById(`${prefix}-edad-fecha`).style.display = tipo === 'fecha' ? '' : 'none';
+      actualizarEdadPreview(prefix);
+    }
+
+    function actualizarEdadPreview(prefix) {
+      const preview = document.getElementById(`${prefix}-edad-preview`);
+      if (!preview) return;
+      const fechaNac = calcularFechaNacimientoDesdeEdadInputs(prefix);
+      preview.textContent = fechaNac ? `Edad actual: ${formatearEdadYMD(fechaNac)}` : '';
+    }
+
     function petDataTableHTML(data) {
       const items = [
         ['Especie', data.species],
@@ -9157,7 +9255,7 @@
         ['Peso', data.weight],
         ['Talla', data.talla || '—'],
         ['Estado reproductivo', data.estadoReproductivo || '—'],
-        ['Edad', data.age],
+        ['Edad', edadTextoParaMostrar(data)],
         ['Animal de servicio', data.animalServicio ? 'Sí' : 'No'],
         ['Fallecido', data.fallecido ? 'Sí' : 'No'],
         ['Código/Chip', data.chip]
@@ -9329,19 +9427,36 @@
           onmouseleave="hideWeightTooltip('${containerId}')"></div>
       `).join('');
 
+      // Fecha completa dd/mm/aaaa debajo de cada punto (antes solo dd/mm).
       const labelsHTML = points.map(p => `
-        <span class="weight-chart-axis-label" style="left:${p.xPct.toFixed(2)}%;">${p.fecha.slice(0, 5)}</span>
+        <span class="weight-chart-axis-label" style="left:${p.xPct.toFixed(2)}%;">${p.fecha}</span>
       `).join('');
+
+      // Números de kg a la izquierda del gráfico, alineados con el mismo
+      // padTop/padBottom que usan los puntos — máximo arriba, mínimo abajo
+      // y el punto medio entre ambos.
+      const formatKg = n => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+      const yAxisHTML = `
+        <span style="top:${padTop}%;">${formatKg(max)} kg</span>
+        <span style="top:50%;">${formatKg((max + min) / 2)} kg</span>
+        <span style="top:${100 - padBottom}%;">${formatKg(min)} kg</span>
+      `;
 
       container.innerHTML = `
         <div class="weight-chart-wrap">
-          <div class="weight-chart-plot">
-            <svg class="weight-chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <path d="${pathD}" fill="none" stroke="var(--clinic-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>
-            </svg>
-            ${dotsHTML}
+          <div class="weight-chart-row">
+            <div class="weight-chart-yaxis">${yAxisHTML}</div>
+            <div class="weight-chart-plot">
+              <svg class="weight-chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <path d="${pathD}" fill="none" stroke="var(--clinic-accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>
+              </svg>
+              ${dotsHTML}
+            </div>
           </div>
-          <div class="weight-chart-axis">${labelsHTML}</div>
+          <div class="weight-chart-axis-row">
+            <div class="weight-chart-yaxis-spacer"></div>
+            <div class="weight-chart-axis">${labelsHTML}</div>
+          </div>
           <div class="weight-chart-tooltip" id="${containerId}-tooltip"></div>
         </div>
       `;
@@ -9381,7 +9496,14 @@
       document.getElementById('mascota-peso').value = parseFloat(data.weight) || '';
       document.getElementById('mascota-talla').value = data.talla || 'Pequeña';
       document.getElementById('mascota-estado-reproductivo').value = data.estadoReproductivo || 'Desconocido';
-      document.getElementById('mascota-edad').value = data.age || '';
+      // Siempre se precarga como "fecha exacta": es la única representación
+      // sin pérdida de la fechaNacimiento ya guardada (reconstruir años/meses
+      // desde ahí sería ambiguo). Si la mascota no tiene fechaNacimiento
+      // (dato legado), queda vacía en vez de intentar adivinar desde data.age.
+      document.getElementById('mascota-edad-tipo').value = 'fecha';
+      document.getElementById('mascota-edad-fecha').value = data.fechaNacimiento || '';
+      document.getElementById('mascota-edad-cantidad').value = '';
+      onChangeEdadTipo('mascota');
       document.getElementById('mascota-chip').value = data.chip || '';
       document.getElementById('mascota-alimentacion').value = data.alimentacion || '';
       document.getElementById('mascota-frecuencia-bano').value = data.frecuenciaBano || '';
@@ -9414,7 +9536,7 @@
       const weight = !isNaN(pesoNum) ? `${pesoNum} kg` : data.weight;
       const talla = document.getElementById('mascota-talla').value;
       const estadoReproductivo = document.getElementById('mascota-estado-reproductivo').value;
-      const age = document.getElementById('mascota-edad').value.trim();
+      const fechaNacimiento = calcularFechaNacimientoDesdeEdadInputs('mascota');
       const chip = document.getElementById('mascota-chip').value.trim();
       const alimentacion = document.getElementById('mascota-alimentacion').value.trim();
       const frecuenciaBano = document.getElementById('mascota-frecuencia-bano').value.trim();
@@ -9428,7 +9550,7 @@
         const { error } = await window.supabase.from('mascotas').update({
           especie: species || null, raza: breed || null, color: color || null, genero: genero || null,
           peso: weight || null, talla: talla || null, estado_reproductivo: estadoReproductivo || null,
-          edad: age || null, chip: chip || null, alimentacion: alimentacion || null,
+          fecha_nacimiento: fechaNacimiento || null, chip: chip || null, alimentacion: alimentacion || null,
           frecuencia_bano: frecuenciaBano || null, animal_servicio: animalServicio, fallecido,
           updated_at: new Date().toISOString()
         }).eq('id', data.mascotaId);
@@ -9443,14 +9565,14 @@
 
       data.species = species; data.breed = breed; data.color = color; data.genero = genero;
       data.weight = weight; data.talla = talla; data.estadoReproductivo = estadoReproductivo;
-      data.age = age; data.chip = chip; data.alimentacion = alimentacion; data.frecuenciaBano = frecuenciaBano;
+      data.fechaNacimiento = fechaNacimiento; data.chip = chip; data.alimentacion = alimentacion; data.frecuenciaBano = frecuenciaBano;
       data.animalServicio = animalServicio; data.fallecido = fallecido;
 
       // Refrescar cabeceras/tablas que muestran estos datos
       if (selectedPetKey === petKey) {
         document.getElementById('pet-profile-species').textContent = data.species;
         document.getElementById('pet-profile-breed').textContent = data.breed;
-        document.getElementById('pet-profile-age').textContent = data.age;
+        document.getElementById('pet-profile-age').textContent = edadTextoParaMostrar(data);
         document.getElementById('pet-profile-weight').textContent = data.weight;
         document.getElementById('pet-profile-chip').textContent = data.chip;
         mountPetGeneralCard('historia-pet-general', petKey);
@@ -9586,12 +9708,14 @@
 
       document.getElementById('registrar-mascota-propietario-label').textContent = `Propietario: ${p.nombre}`;
       ['nueva-mascota-nombre', 'nueva-mascota-raza', 'nueva-mascota-color',
-       'nueva-mascota-peso', 'nueva-mascota-edad', 'nueva-mascota-chip', 'nueva-mascota-frecuencia-bano',
-       'nueva-mascota-alimentacion'].forEach(id => { document.getElementById(id).value = ''; });
+       'nueva-mascota-peso', 'nueva-mascota-chip', 'nueva-mascota-frecuencia-bano',
+       'nueva-mascota-alimentacion', 'nueva-mascota-edad-cantidad', 'nueva-mascota-edad-fecha'].forEach(id => { document.getElementById(id).value = ''; });
       document.getElementById('nueva-mascota-especie').value = 'Canino';
       document.getElementById('nueva-mascota-genero').value = 'Hembra';
       document.getElementById('nueva-mascota-talla').value = 'Pequeña';
       document.getElementById('nueva-mascota-estado-reproductivo').value = 'Desconocido';
+      document.getElementById('nueva-mascota-edad-tipo').value = 'anios';
+      onChangeEdadTipo('nueva-mascota');
       document.getElementById('nueva-mascota-animal-servicio').checked = false;
       document.getElementById('nueva-mascota-fallecido').checked = false;
       nuevaMascotaFotoFile = null;
@@ -9643,7 +9767,7 @@
         chip: document.getElementById('nueva-mascota-chip').value.trim(),
         especie,
         raza: document.getElementById('nueva-mascota-raza').value.trim(),
-        edad: document.getElementById('nueva-mascota-edad').value.trim(),
+        fechaNacimiento: calcularFechaNacimientoDesdeEdadInputs('nueva-mascota'),
         peso: !isNaN(pesoNum) ? `${pesoNum} kg` : '',
         color: document.getElementById('nueva-mascota-color').value.trim(),
         genero: document.getElementById('nueva-mascota-genero').value,
@@ -9668,7 +9792,7 @@
           propietario_id: p.id,
           pet_key: petKey,
           nombre, chip: datos.chip || null, especie: datos.especie || null, raza: datos.raza || null,
-          edad: datos.edad || null, peso: datos.peso || null, color: datos.color || null,
+          fecha_nacimiento: datos.fechaNacimiento || null, peso: datos.peso || null, color: datos.color || null,
           genero: datos.genero || null, talla: datos.talla || null,
           estado_reproductivo: datos.estadoReproductivo || null,
           animal_servicio: datos.animalServicio, fallecido: datos.fallecido,
@@ -9680,7 +9804,7 @@
 
         patientData[petKey] = {
           name: nombre, chip: datos.chip, species: datos.especie, breed: datos.raza,
-          age: datos.edad, weight: datos.peso,
+          fechaNacimiento: datos.fechaNacimiento, weight: datos.peso,
           owner: p.nombre, ownerPhone: p.movil, propietarioId: p.id, mascotaId: inserted.id,
           avatarText: nombre.charAt(0).toUpperCase(), avatarClass: avatarClassForEspecie(especie),
           fotoUrl: null, fotoPath: null,
@@ -10055,7 +10179,7 @@
 
       // Signos vitales (solo presentes en el Tablero de trabajo, no en el modal clásico)
       const vitalTempEl = document.getElementById(idPrefix + 'vital-temp');
-      let vitals = { temp: null, fc: null, fr: null, crt: null };
+      let vitals = { temp: null, fc: null, fr: null, crt: null, pas: null, pad: null, pam: null };
       let vitalsLine = '';
       if (vitalTempEl) {
         const parts = [];
@@ -10063,16 +10187,24 @@
         const fc = document.getElementById(idPrefix + 'vital-fc').value.trim();
         const fr = document.getElementById(idPrefix + 'vital-fr').value.trim();
         const crt = document.getElementById(idPrefix + 'vital-crt').value.trim();
+        const pas = document.getElementById(idPrefix + 'vital-pas').value.trim();
+        const pad = document.getElementById(idPrefix + 'vital-pad').value.trim();
+        const pam = document.getElementById(idPrefix + 'vital-pam').value.trim();
         vitals = {
           temp: temp ? parseFloat(temp) : null,
           fc: fc ? parseInt(fc, 10) : null,
           fr: fr ? parseInt(fr, 10) : null,
-          crt: crt || null
+          crt: crt || null,
+          pas: pas ? parseInt(pas, 10) : null,
+          pad: pad ? parseInt(pad, 10) : null,
+          pam: pam ? parseInt(pam, 10) : null
         };
         if (temp) parts.push(`Temp ${temp}°C`);
         if (fc) parts.push(`FC ${fc} lpm`);
         if (fr) parts.push(`FR ${fr} rpm`);
         if (crt) parts.push(`TLLC ${crt}`);
+        if (pas || pad) parts.push(`PA ${pas || '—'}/${pad || '—'} mmHg`);
+        if (pam) parts.push(`PAM ${pam} mmHg`);
         if (parts.length) vitalsLine = ` (${parts.join(' · ')})`;
       }
 
@@ -10105,7 +10237,7 @@
           // Los signos vitales solo viven en el Tablero de trabajo (ver nota
           // arriba) — si se edita desde el modal clásico (sin esos campos en
           // el DOM), no se incluyen en el payload para no pisarlos con null.
-          if (vitalTempEl) Object.assign(payload, { vital_temp: vitals.temp, vital_fc: vitals.fc, vital_fr: vitals.fr, vital_crt: vitals.crt });
+          if (vitalTempEl) Object.assign(payload, { vital_temp: vitals.temp, vital_fc: vitals.fc, vital_fr: vitals.fr, vital_crt: vitals.crt, vital_pas: vitals.pas, vital_pad: vitals.pad, vital_pam: vitals.pam });
 
           if (isEditing) {
             payload.updated_at = new Date().toISOString();
@@ -10143,6 +10275,7 @@
             dbId, fechaISO: fechaHoraISO, fecha: formatFechaHoraCorta(fechaHoraISO), motivo: motivo || 'Consulta general',
             subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), assessment: aEl.value.trim(), plan: pEl.value.trim(),
             vitalTemp: vitals.temp, vitalFc: vitals.fc, vitalFr: vitals.fr, vitalCrt: vitals.crt,
+            vitalPas: vitals.pas, vitalPad: vitals.pad, vitalPam: vitals.pam,
             examenFisico: examFindings, usuario
           });
           data.timeline.unshift({
@@ -10222,7 +10355,7 @@
         el.classList.remove('field-error');
         el.oninput = () => { if (el.value.trim() !== '') el.classList.remove('field-error'); };
       });
-      ['tablero-soap-vital-temp', 'tablero-soap-vital-fc', 'tablero-soap-vital-fr', 'tablero-soap-vital-crt'].forEach(id => {
+      ['tablero-soap-vital-temp', 'tablero-soap-vital-fc', 'tablero-soap-vital-fr', 'tablero-soap-vital-crt', 'tablero-soap-vital-pas', 'tablero-soap-vital-pad', 'tablero-soap-vital-pam'].forEach(id => {
         document.getElementById(id).value = '';
       });
 
@@ -11446,6 +11579,8 @@
       if (record.vitalFc != null) vitalsParts.push(`FC ${record.vitalFc} lpm`);
       if (record.vitalFr != null) vitalsParts.push(`FR ${record.vitalFr} rpm`);
       if (record.vitalCrt) vitalsParts.push(`TLLC ${record.vitalCrt}`);
+      if (record.vitalPas || record.vitalPad) vitalsParts.push(`PA ${record.vitalPas || '—'}/${record.vitalPad || '—'} mmHg`);
+      if (record.vitalPam != null) vitalsParts.push(`PAM ${record.vitalPam} mmHg`);
       const vitalsHTML = vitalsParts.length
         ? `<div class="info-label">Signos vitales</div><div class="info-value">${vitalsParts.join(' · ')}</div>` : '';
       const examHTML = (record.examenFisico && record.examenFisico.length)
@@ -22267,7 +22402,7 @@
     function construirMascotaDesdeFila(r, propietario) {
       return {
         name: r.nombre, chip: r.chip || '', species: r.especie || '', breed: r.raza || '',
-        age: r.edad || '', weight: r.peso || '',
+        age: r.edad || '', fechaNacimiento: r.fecha_nacimiento || null, weight: r.peso || '',
         owner: propietario ? propietario.nombre : '', ownerPhone: propietario ? propietario.movil : '',
         propietarioId: r.propietario_id, mascotaId: r.id,
         avatarText: (r.nombre || '?').charAt(0).toUpperCase(),
@@ -22318,6 +22453,8 @@
       if (r.vital_fc != null) vitalsParts.push(`FC ${r.vital_fc} lpm`);
       if (r.vital_fr != null) vitalsParts.push(`FR ${r.vital_fr} rpm`);
       if (r.vital_crt) vitalsParts.push(`TLLC ${r.vital_crt}`);
+      if (r.vital_pas || r.vital_pad) vitalsParts.push(`PA ${r.vital_pas || '—'}/${r.vital_pad || '—'} mmHg`);
+      if (r.vital_pam != null) vitalsParts.push(`PAM ${r.vital_pam} mmHg`);
       const vitalsLine = vitalsParts.length ? ` (${vitalsParts.join(' · ')})` : '';
 
       let summary = `S: ${r.subjetivo || ''}<br>O: ${r.objetivo || ''}${vitalsLine}<br>A: ${r.assessment || ''}<br>P: ${r.plan || ''}`;
@@ -22352,6 +22489,7 @@
         assessment: r.assessment || '',
         plan: r.plan || '',
         vitalTemp: r.vital_temp, vitalFc: r.vital_fc, vitalFr: r.vital_fr, vitalCrt: r.vital_crt,
+        vitalPas: r.vital_pas, vitalPad: r.vital_pad, vitalPam: r.vital_pam,
         examenFisico: Array.isArray(r.examen_fisico) ? r.examen_fisico : [],
         usuario: r.usuario || ''
       };
@@ -24289,9 +24427,18 @@
               <option value="Desconocido">Desconocido</option>
             </select>
           </div>
-          <div class="input-group">
-            <label class="input-label">Edad o fecha de nacimiento</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="mascota-edad" placeholder="Ej: 3 años 2 meses">
+          <div class="input-group" style="grid-column:span 2;">
+            <label class="input-label">Edad</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <select class="soap-select-control" id="mascota-edad-tipo" style="flex:1;min-width:130px;" onchange="onChangeEdadTipo('mascota')">
+                <option value="anios">En años</option>
+                <option value="meses">En meses</option>
+                <option value="fecha">Fecha de nacimiento exacta</option>
+              </select>
+              <input type="number" min="0" step="1" class="input-control" style="padding-left:12px;flex:1;min-width:90px;" id="mascota-edad-cantidad" placeholder="Ej: 3" oninput="actualizarEdadPreview('mascota')">
+              <input type="date" class="input-control" style="padding-left:12px;flex:1;min-width:130px;display:none;" id="mascota-edad-fecha" onchange="actualizarEdadPreview('mascota')">
+            </div>
+            <span style="font-size:12px;color:var(--text-2);margin-top:4px;display:block;" id="mascota-edad-preview"></span>
           </div>
           <div class="input-group">
             <label class="input-label">Código/Chip</label>
@@ -25867,9 +26014,18 @@
               <option value="Desconocido">Desconocido</option>
             </select>
           </div>
-          <div class="input-group">
-            <label class="input-label">Edad o fecha de nacimiento</label>
-            <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-edad" placeholder="Ej: 3 años 2 meses">
+          <div class="input-group" style="grid-column:span 2;">
+            <label class="input-label">Edad</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <select class="soap-select-control" id="nueva-mascota-edad-tipo" style="flex:1;min-width:130px;" onchange="onChangeEdadTipo('nueva-mascota')">
+                <option value="anios">En años</option>
+                <option value="meses">En meses</option>
+                <option value="fecha">Fecha de nacimiento exacta</option>
+              </select>
+              <input type="number" min="0" step="1" class="input-control" style="padding-left:12px;flex:1;min-width:90px;" id="nueva-mascota-edad-cantidad" placeholder="Ej: 3" oninput="actualizarEdadPreview('nueva-mascota')">
+              <input type="date" class="input-control" style="padding-left:12px;flex:1;min-width:130px;display:none;" id="nueva-mascota-edad-fecha" onchange="actualizarEdadPreview('nueva-mascota')">
+            </div>
+            <span style="font-size:12px;color:var(--text-2);margin-top:4px;display:block;" id="nueva-mascota-edad-preview"></span>
           </div>
           <div class="input-group">
             <label class="input-label">Frecuencia de baño</label>

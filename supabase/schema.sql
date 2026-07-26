@@ -617,6 +617,7 @@ create table if not exists public.mascotas (
   especie              text,
   raza                 text,
   edad                 text,
+  fecha_nacimiento     date,
   peso                 text,
   color                text,
   genero               text,
