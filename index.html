@@ -5776,6 +5776,17 @@
           </div>
 
           <div class="card" style="margin-top:20px;">
+            <div class="card-header"><span class="card-title"><i data-lucide="message-square" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Mensaje predeterminado de observaciones</span></div>
+            <div class="input-group">
+              <label class="input-label" for="config-obs-default-factura">Se precarga automáticamente en el campo Observaciones al crear una nueva venta/recibo/factura</label>
+              <textarea id="config-obs-default-factura" class="input-control" style="padding-left:12px;min-height:70px;resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+              <button type="button" class="btn-primary" style="padding:8px 16px;font-size:13px;" onclick="guardarObservacionesDefaultFactura()">Guardar</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:20px;">
             <div class="card-header"><span class="card-title"><i data-lucide="hash" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Numeración de documentos</span></div>
             <table class="results-table">
               <thead><tr><th>Tipo de documento</th><th>Prefijo</th><th>Consecutivo actual</th></tr></thead>
@@ -16740,6 +16751,31 @@
       document.querySelectorAll('#tab-ventas > .admin-pane > .admin-subview').forEach(pane => {
         pane.classList.toggle('active', pane.id === `ventas-view-${viewKey}`);
       });
+      if (viewKey === 'config-facturacion') renderConfigObservacionesDefault();
+    }
+
+    // Mensaje predeterminado de Observaciones (Ventas > Configuración de
+    // facturación) — se precarga en #doc-venta-observaciones al crear una
+    // venta/recibo/factura nueva (openDocVentaModal). Vive SOLO en
+    // localStorage de este navegador (scoped al establecimiento activo),
+    // no en Supabase: sobrevive a un F5 pero no se comparte con otros
+    // usuarios/dispositivos de la clínica ni se escribe a ningún lado
+    // mientras se tipea — solo al presionar "Guardar".
+    function obsDefaultFacturaStorageKey() {
+      const estabId = (currentSession && currentSession.activeMembership) ? currentSession.activeMembership.establecimientoId : 'demo';
+      return `iris_obs_default_factura_${estabId}`;
+    }
+    function getObsDefaultFactura() {
+      return localStorage.getItem(obsDefaultFacturaStorageKey()) || '';
+    }
+    function renderConfigObservacionesDefault() {
+      const el = document.getElementById('config-obs-default-factura');
+      if (el) el.value = getObsDefaultFactura();
+    }
+    function guardarObservacionesDefaultFactura() {
+      const valor = document.getElementById('config-obs-default-factura').value.trim();
+      localStorage.setItem(obsDefaultFacturaStorageKey(), valor);
+      showToast('Mensaje predeterminado guardado');
     }
 
     // Botón "Cierre de caja" del Dashboard de ventas: atajo directo al
@@ -18247,7 +18283,7 @@
         }
       } else {
         document.getElementById('doc-venta-fecha-input').value = VENTAS_HOY;
-        document.getElementById('doc-venta-observaciones').value = '';
+        document.getElementById('doc-venta-observaciones').value = (tipo === 'factura') ? getObsDefaultFactura() : '';
         if (tipo === 'cotizacion') estadoSel.value = 'Borrador';
         if (tipo === 'factura') estadoSel.value = 'Pendiente';
         if ((tipo === 'cotizacion' || tipo === 'factura') && presetClienteId) clienteSel.value = presetClienteId;
