@@ -4023,6 +4023,17 @@
             <h2 class="admin-pane-title">Agenda</h2>
             <p class="admin-pane-subtitle">Consultas, cirugías, vacunaciones y demás eventos del establecimiento</p>
           </div>
+          <!-- Mismo botón/modal de "Registrar propietario" del buscador de
+               Consultorio (openRegistrarPropietarioModal), disponible también
+               acá para poder dar de alta al tutor sin salir de la Agenda
+               cuando llama alguien que todavía no existe en el sistema. Va en
+               el header del pane (no en el toolbar de una sub-vista) para que
+               esté visible en las 4 vistas de Agenda. Su visibilidad por rol
+               la maneja applySimRole() vía data-btn-registrar-propietario,
+               igual que el de Consultorio. -->
+          <button class="btn-primary" id="btn-registrar-propietario-agenda" data-btn-registrar-propietario onclick="openRegistrarPropietarioModal()">
+            <i data-lucide="plus" style="width: 16px; height: 16px;"></i> Registrar propietario
+          </button>
         </div>
 
         <div class="admin-subview-tabs">
@@ -4164,7 +4175,7 @@
                 </div>
                 <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
               </div>
-              <button class="btn-primary" id="btn-registrar-propietario" onclick="openRegistrarPropietarioModal()">
+              <button class="btn-primary" id="btn-registrar-propietario" data-btn-registrar-propietario onclick="openRegistrarPropietarioModal()">
                 <i data-lucide="plus" style="width: 16px; height: 16px;"></i> Registrar propietario
               </button>
             </div>
@@ -7175,7 +7186,11 @@
       { id: 'ag-9', tipo: 'imagenes_diagnosticas', estado: 'programada', title: 'Imágenes diagnósticas — Nuevo paciente', startISO: '2026-07-10T00:00:00', endISO: '2026-07-10T00:00:00', sinHora: true, soloEspacio: false, propietario: 'María Fernanda Ospina', petKey: null, encargadoId: 2, lugar: 'Por definir', descripcion: 'Propietario nuevo, aún sin mascota registrada en el sistema. Solicita valoración general.' },
       { id: 'ag-10', tipo: 'consulta', estado: 'programada', title: 'Consulta — Milo', startISO: '2026-07-11T09:00:00', endISO: '2026-07-11T09:30:00', sinHora: false, soloEspacio: false, propietario: 'Liliana Pérez', petKey: 'milo', encargadoId: 2, lugar: 'Consultorio 1', descripcion: 'Control post-quirúrgico.' }
     ];
-    let agendaEventSeq = 11;
+    // (Ya no hay contador de ids de evento: desde que la Agenda persiste en
+    // Supabase, el id de un evento nuevo es el uuid que devuelve el insert —
+    // ver guardarEventoAgenda(). Los ids 'ag-N' de arriba solo sobreviven
+    // como semilla de la clínica demo, que se inserta una vez y vuelve a
+    // leerse con uuid real.)
     let agendaFiltroEncargado = 'todos';
     let agendaCalendar = null;
     let agendaCalendarInitialized = false;
@@ -7428,9 +7443,13 @@
       const text = `Privilegios activos: ${role.privileges.join(' · ')}`;
       document.querySelectorAll('[data-privileges-text]').forEach(el => { el.textContent = text; });
 
-      // Botón "+ Registrar propietario"
-      const btnRegOwner = document.getElementById('btn-registrar-propietario');
-      if (btnRegOwner) btnRegOwner.style.display = role.canRegisterOwner ? 'inline-flex' : 'none';
+      // Botón "+ Registrar propietario" — hay más de uno (buscador de
+      // Consultorio y header de Agenda), por eso se seleccionan por atributo
+      // y no por id; cualquier botón futuro que abra ese mismo modal solo
+      // necesita llevar data-btn-registrar-propietario para quedar cubierto.
+      document.querySelectorAll('[data-btn-registrar-propietario]').forEach(btn => {
+        btn.style.display = role.canRegisterOwner ? 'inline-flex' : 'none';
+      });
 
       // Botón "+ Nueva Consulta"
       const btnNueva = document.getElementById('btn-nueva-consulta');
@@ -8547,7 +8566,14 @@
       if (e.target === document.getElementById('agenda-evento-modal')) closeAgendaEventoModal();
     }
 
-    function guardarEventoAgenda() {
+    // Persistencia real: insert/update bloqueante contra la tabla
+    // `agenda_eventos` (Supabase) antes de tocar AGENDA_EVENTOS — mismo
+    // criterio que guardarMovimiento()/guardarPropietario(): si la escritura
+    // remota falla no se aplica el cambio local, para que el calendario nunca
+    // muestre un evento que desaparece al recargar (que era justo el bug: los
+    // eventos vivían solo en memoria). El id ya no sale de `agendaEventSeq`
+    // sino del uuid que devuelve Supabase.
+    async function guardarEventoAgenda() {
       const soloEspacio = document.getElementById('ag-solo-espacio').checked;
       const sinHora = document.getElementById('ag-sin-hora').checked;
       const tipo = document.getElementById('ag-tipo').value;
@@ -8573,9 +8599,15 @@
         return;
       }
 
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+
       const startISO = `${fechaInicio}T${horaInicio}:00`;
       const evento = {
-        id: agendaEditingId || `ag-${agendaEventSeq++}`,
+        id: agendaEditingId,
         tipo,
         estado: document.getElementById('ag-estado').value,
         title: titulo,
@@ -8593,12 +8625,33 @@
         recordatorio24hISO: new Date(new Date(startISO).getTime() - 24 * 60 * 60000).toISOString().slice(0, 19)
       };
 
+      const btnGuardar = document.getElementById('agenda-evento-guardar-btn');
+      if (btnGuardar) btnGuardar.disabled = true;
       let estadoPrevio = null;
-      if (agendaEditingId) {
-        const idx = AGENDA_EVENTOS.findIndex(e => e.id === agendaEditingId);
-        if (idx !== -1) { estadoPrevio = AGENDA_EVENTOS[idx].estado; AGENDA_EVENTOS[idx] = evento; }
-      } else {
-        AGENDA_EVENTOS.push(evento);
+      try {
+        if (agendaEditingId) {
+          const { error } = await window.supabase.from('agenda_eventos')
+            .update({ ...filaSupabaseDesdeEventoAgenda(evento), updated_at: new Date().toISOString() })
+            .eq('id', agendaEditingId);
+          if (error) throw error;
+          const idx = AGENDA_EVENTOS.findIndex(e => e.id === agendaEditingId);
+          if (idx !== -1) { estadoPrevio = AGENDA_EVENTOS[idx].estado; AGENDA_EVENTOS[idx] = evento; }
+        } else {
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+          const { data: inserted, error } = await window.supabase.from('agenda_eventos')
+            .insert({ ...filaSupabaseDesdeEventoAgenda(evento), establecimiento_id: establecimientoId, created_by: userId })
+            .select().single();
+          if (error) throw error;
+          evento.id = inserted.id;
+          AGENDA_EVENTOS.push(evento);
+        }
+      } catch (err) {
+        console.error('[IRIS] Error guardando el evento de agenda en Supabase:', err);
+        showToast('No se pudo guardar el evento — intenta de nuevo');
+        return;
+      } finally {
+        if (btnGuardar) btnGuardar.disabled = false;
       }
 
       // Al marcar la cita como "Completada" (y solo la primera vez que pasa a
@@ -11290,10 +11343,7 @@
           }, 250);
         }
       } else if (moduleKey === 'agenda-evento') {
-        AGENDA_EVENTOS = AGENDA_EVENTOS.filter(ev => ev.id !== recordId);
-        refreshAgendaCalendarEvents();
-        if (selectedPetKey) renderCitasPacienteTable(selectedPetKey);
-        closeAgendaEventoModal();
+        eliminarEventoAgendaReal(recordId);
       } else if (moduleKey === 'cotizacion') {
         eliminarCotizacionReal(recordId);
       } else if (moduleKey === 'factura') {
@@ -11359,6 +11409,28 @@
       } catch (err) {
         console.error('[IRIS] Error eliminando factura en Supabase:', err);
         showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+    // Eventos de Agenda: mismo patrón optimista que facturas/cotizaciones —
+    // el evento desaparece del calendario de inmediato y el delete real corre
+    // en paralelo. Se muta AGENDA_EVENTOS in-place (splice, no reasignación
+    // con filter) porque resetMockDataForClinic()/la carga desde Supabase
+    // asumen que ese binding nunca se reemplaza.
+    async function eliminarEventoAgendaReal(recordId) {
+      const idx = AGENDA_EVENTOS.findIndex(ev => ev.id === recordId);
+      if (idx !== -1) AGENDA_EVENTOS.splice(idx, 1);
+      refreshAgendaCalendarEvents();
+      refreshAgendaPersonalCalendarEvents();
+      if (document.getElementById('agenda-view-personal').classList.contains('active')) renderAgendaPersonalActiveView();
+      if (selectedPetKey) renderCitasPacienteTable(selectedPetKey);
+      closeAgendaEventoModal();
+      if (!window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('agenda_eventos').delete().eq('id', recordId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando el evento de agenda en Supabase:', err);
+        showToast('El evento se quitó del calendario pero no se pudo eliminar del servidor');
       }
     }
     async function eliminarCotizacionReal(recordId) {
@@ -17332,9 +17404,27 @@
       return ventas > 0 ? (margenBruto / ventas) * 100 : 0;
     }
 
-    // "Hoy" fijo del prototipo (coherente con las fechas mock de arriba,
-    // independiente de la fecha real del navegador donde se abra la demo).
-    const VENTAS_HOY = '2026-07-08';
+    // "Hoy" de TODO el módulo de Ventas: ancla de los presets de fecha
+    // (Dashboard, Ingresos y Egresos), valor por defecto de la fecha en
+    // los formularios (movimiento, documento soporte, fecha de pago) y
+    // fecha inicial de Cierre de caja.
+    //
+    // Antes era la constante fija '2026-07-08' del prototipo. Con datos
+    // reales ya persistidos en Supabase eso rompía el módulo de forma
+    // confusa: el preset "Último mes" termina en esta fecha, así que
+    // cualquier movimiento fechado DESPUÉS de ella quedaba fuera del
+    // rango del filtro y la tabla salía vacía al recargar — parecía que
+    // el guardado no se había persistido cuando la fila sí estaba en la
+    // tabla `movimientos`.
+    //
+    // Debe ser la fecha LOCAL, construida a mano: `new Date().toISOString()`
+    // devuelve UTC y en Colombia (UTC-5) adelanta un día a partir de las
+    // 19:00, con lo que un movimiento registrado de noche caería en
+    // "mañana" y volvería a quedar fuera de todo rango.
+    const VENTAS_HOY = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
     function ventasDiffDias(fechaStr) {
       return Math.floor((new Date(VENTAS_HOY) - new Date(fechaStr)) / 86400000);
     }
@@ -21138,12 +21228,13 @@
 
     // NOTA — esta función YA NO toca `patientData`/`propietarios`/
     // `nextPropietarioSeq`/`VENTAS_FACTURAS`/`VENTAS_COTIZACIONES`/
-    // `VENTAS_CATALOGO`/`VENTAS_MOVIMIENTOS`/`VENTAS_ARQUEOS`: esos ocho
+    // `VENTAS_CATALOGO`/`VENTAS_MOVIMIENTOS`/`VENTAS_ARQUEOS`/
+    // `AGENDA_EVENTOS`: esos nueve
     // ahora se cargan de verdad desde Supabase (tablas propietarios/
     // mascotas/documentos/ventas_facturas/ventas_cotizaciones/productos/
-    // movimientos/arqueos) vía cargarDatosClinicaDesdeSupabase(), llamada
-    // aparte desde bootstrapSession(). Todo lo demás en esta función sigue
-    // siendo mock (fuera del alcance de la fase 1 de persistencia real).
+    // movimientos/arqueos/agenda_eventos) vía cargarDatosClinicaDesdeSupabase(),
+    // llamada aparte desde bootstrapSession(). Todo lo demás en esta función
+    // sigue siendo mock (fuera del alcance de la fase 1 de persistencia real).
     function resetMockDataForClinic(seedDemo) {
       const seed = seedDemo ? structuredClone(DEMO_SEED) : null;
 
@@ -21163,8 +21254,13 @@
       Object.keys(DISPONIBILIDAD_MEDICOS).forEach(k => delete DISPONIBILIDAD_MEDICOS[k]);
       if (seed) Object.assign(DISPONIBILIDAD_MEDICOS, seed.DISPONIBILIDAD_MEDICOS);
 
-      AGENDA_EVENTOS.length = 0;
-      if (seed) AGENDA_EVENTOS.push(...seed.AGENDA_EVENTOS);
+      // AGENDA_EVENTOS ya NO se resetea/siembra acá (mismo criterio que
+      // propietarios/patientData/VENTAS_*, ver nota junto a
+      // cargarDatosClinicaDesdeSupabase()): se carga de verdad desde la tabla
+      // `agenda_eventos`, filtrada por establecimiento_id, en esa función.
+      // EVENTOS_SEGUIMIENTO (arriba) sigue siendo mock a propósito — es un
+      // derivado en memoria de Vacunaciones/Desparasitaciones/Seguimientos,
+      // que tampoco persisten todavía.
 
       SIIGO_RESOLUCIONES.length = 0;
       if (seed) SIIGO_RESOLUCIONES.push(...seed.SIIGO_RESOLUCIONES);
@@ -21444,6 +21540,34 @@
         cerrado_por: a.cerradoPor || null, cerrado_en: a.cerradoEn || null
       };
     }
+    // Agenda: las columnas start_iso/end_iso/recordatorio_24h son `timestamp`
+    // sin zona horaria (ver supabase/schema.sql), así que PostgREST devuelve
+    // exactamente la misma cadena local ingenua que usa el módulo
+    // ('2026-07-06T09:00:00'). El .slice(0, 19) es solo un resguardo por si
+    // Postgres agrega fracción de segundo — todo el módulo asume ese largo
+    // fijo (formatearFechaHoraAgenda, chequearDisponibilidadAgendaModal, etc.).
+    function construirEventoAgendaDesdeFila(r) {
+      return {
+        id: r.id, tipo: r.tipo, estado: r.estado, title: r.titulo,
+        startISO: (r.start_iso || '').slice(0, 19), endISO: (r.end_iso || '').slice(0, 19),
+        sinHora: !!r.sin_hora, soloEspacio: !!r.solo_espacio,
+        propietario: r.propietario || null, petKey: r.pet_key || null,
+        encargadoId: r.encargado_id != null ? Number(r.encargado_id) : null,
+        lugar: r.lugar || '', descripcion: r.descripcion || '',
+        recordatorio24hISO: r.recordatorio_24h ? r.recordatorio_24h.slice(0, 19) : null
+      };
+    }
+    function filaSupabaseDesdeEventoAgenda(ev) {
+      return {
+        tipo: ev.tipo, estado: ev.estado, titulo: ev.title,
+        start_iso: ev.startISO, end_iso: ev.endISO,
+        sin_hora: !!ev.sinHora, solo_espacio: !!ev.soloEspacio,
+        propietario: ev.propietario || null, pet_key: ev.petKey || null,
+        encargado_id: ev.encargadoId || null,
+        lugar: ev.lugar || null, descripcion: ev.descripcion || null,
+        recordatorio_24h: ev.recordatorio24hISO || null
+      };
+    }
 
     // Clínica recién creada (o clínica demo la primerísima vez): siembra en
     // Supabase el contenido de DEMO_SEED.propietarios/patientData/documentos
@@ -21575,6 +21699,21 @@
           const { error: arqueoErr } = await window.supabase.from('arqueos').insert(arqueoInsertRows);
           if (arqueoErr) throw arqueoErr;
         }
+
+        // Agenda: los eventos semilla sí referencian a las mascotas por
+        // `petKey`, que es exactamente el `pet_key` con el que se acaban de
+        // insertar arriba — no hace falta resolver ids. Los que quedaron
+        // apuntando a una mascota que no se insertó se siembran igual con
+        // pet_key null (el evento sigue siendo válido: propietario + texto).
+        const agendaInsertRows = DEMO_SEED.AGENDA_EVENTOS.map(ev => ({
+          establecimiento_id: establecimientoId, created_by: userId,
+          ...filaSupabaseDesdeEventoAgenda(ev),
+          pet_key: (ev.petKey && petIdPorKey[ev.petKey]) ? ev.petKey : null
+        }));
+        if (agendaInsertRows.length) {
+          const { error: agendaErr } = await window.supabase.from('agenda_eventos').insert(agendaInsertRows);
+          if (agendaErr) throw agendaErr;
+        }
       } catch (err) {
         console.error('[IRIS] No se pudo sembrar la clínica demo en Supabase:', err);
       }
@@ -21587,7 +21726,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -21599,7 +21738,8 @@
           window.supabase.from('hospitalizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('productos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('movimientos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
-          window.supabase.from('arqueos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false })
+          window.supabase.from('arqueos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('agenda_eventos').select('*').eq('establecimiento_id', establecimientoId).order('start_iso', { ascending: true })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -21613,20 +21753,22 @@
         if (productoRes.error) throw productoRes.error;
         if (movimientoRes.error) throw movimientoRes.error;
         if (arqueoRes.error) throw arqueoRes.error;
+        if (agendaRes.error) throw agendaRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
           facturaRows: facturaRes.data || [], cotizacionRows: cotizacionRes.data || [],
           hospRows: hospRes.data || [], productoRows: productoRes.data || [],
-          movimientoRows: movimientoRes.data || [], arqueoRows: arqueoRes.data || []
+          movimientoRows: movimientoRes.data || [], arqueoRows: arqueoRes.data || [],
+          agendaRows: agendaRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -21696,6 +21838,16 @@
 
       VENTAS_ARQUEOS.length = 0;
       arqueoRows.forEach(r => VENTAS_ARQUEOS.push(construirArqueoDesdeFila(r)));
+
+      // Agenda: los calendarios de FullCalendar se inicializan perezosamente
+      // al abrir el tab (initAgendaCalendar), así que normalmente basta con
+      // dejar el array cargado antes de renderAllModulesData(); los refresh
+      // son para el caso de recarga de datos con el tab ya abierto (ambos
+      // salen temprano si su calendario todavía no existe).
+      AGENDA_EVENTOS.length = 0;
+      agendaRows.forEach(r => AGENDA_EVENTOS.push(construirEventoAgendaDesdeFila(r)));
+      refreshAgendaCalendarEvents();
+      refreshAgendaPersonalCalendarEvents();
     }
 
     // Clínica nueva: el único "usuario del sistema" visible en Admin >

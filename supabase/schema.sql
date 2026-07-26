@@ -1201,3 +1201,61 @@ drop policy if exists "arqueos_delete_member" on public.arqueos;
 create policy "arqueos_delete_member"
   on public.arqueos for delete
   using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: agenda_eventos (Agenda > eventos/citas del calendario) ─
+-- start_iso/end_iso/recordatorio_24h son `timestamp` SIN zona horaria a
+-- propósito: el frontend trabaja con cadenas locales ingenuas
+-- ('2026-07-06T09:00:00', ver AGENDA_EVENTOS en index.html) y PostgREST
+-- las devuelve tal cual con este tipo — con timestamptz volverían
+-- convertidas a UTC con offset y romperían FullCalendar y todos los
+-- .split('T') del módulo.
+-- pet_key (no mascota_id) porque el evento referencia la clave con la que
+-- patientData indexa a la mascota, y puede ser null cuando el evento es
+-- "solo reservar espacio" o el propietario aún no tiene mascota registrada.
+-- encargado_id es el id LOCAL numérico de USUARIOS_SISTEMA (1..N en el
+-- orden de list_establecimiento_members), no un uuid de auth.users.
+create table if not exists public.agenda_eventos (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  tipo               text not null,
+  estado             text not null,
+  titulo             text not null,
+  start_iso          timestamp not null,
+  end_iso            timestamp not null,
+  sin_hora           boolean not null default false,
+  solo_espacio       boolean not null default false,
+  propietario        text,
+  pet_key            text,
+  encargado_id       integer,
+  lugar              text,
+  descripcion        text,
+  recordatorio_24h   timestamp,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create index if not exists agenda_eventos_establecimiento_id_idx on public.agenda_eventos (establecimiento_id);
+
+alter table public.agenda_eventos enable row level security;
+
+drop policy if exists "agenda_eventos_select_member" on public.agenda_eventos;
+create policy "agenda_eventos_select_member"
+  on public.agenda_eventos for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "agenda_eventos_insert_member" on public.agenda_eventos;
+create policy "agenda_eventos_insert_member"
+  on public.agenda_eventos for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "agenda_eventos_update_member" on public.agenda_eventos;
+create policy "agenda_eventos_update_member"
+  on public.agenda_eventos for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "agenda_eventos_delete_member" on public.agenda_eventos;
+create policy "agenda_eventos_delete_member"
+  on public.agenda_eventos for delete
+  using (public.user_is_member_of(establecimiento_id));

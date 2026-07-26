@@ -283,6 +283,33 @@ calcula `recordatorio24hISO` (mock, Tarea 3) y abre `#agenda-notif-modal`
 listando destinatarios simulados (tutor/clínica/médico) — sin envío
 real.
 
+**`AGENDA_EVENTOS` SÍ persiste en Supabase** (tabla `agenda_eventos`,
+ver `supabase/schema.sql`), igual que propietarios/mascotas/facturas/
+movimientos: `guardarEventoAgenda()` es `async` y hace insert/update
+BLOQUEANTE antes de tocar el array (si falla la escritura remota no se
+aplica el cambio local), `eliminarEventoAgendaReal()` borra de forma
+optimista, y `cargarDatosClinicaDesdeSupabase()` reconstruye el array al
+iniciar sesión. El id de un evento nuevo es el uuid que devuelve el
+insert — ya no existe `agendaEventSeq` ni ids `ag-N` (esos sobreviven
+solo como semilla de la clínica demo, que `sembrarDemoEnSupabase()`
+inserta una vez). Por eso `resetMockDataForClinic()` ya NO resetea
+`AGENDA_EVENTOS`. Detalle importante del esquema: `start_iso`/`end_iso`/
+`recordatorio_24h` son `timestamp` SIN zona horaria a propósito — todo
+el módulo trabaja con cadenas locales ingenuas (`'2026-07-06T09:00:00'`,
+con `.split('T')` por todas partes) y con `timestamptz` PostgREST las
+devolvería en UTC con offset, rompiendo FullCalendar y el formateo. Lo
+que sigue mock en Agenda: `EVENTOS_SEGUIMIENTO` y
+`DISPONIBILIDAD_MEDICOS`.
+
+El botón **"Registrar propietario"** del buscador de Consultorio está
+también en el header del pane de Agenda (`#btn-registrar-propietario-agenda`),
+reusando el mismo `openRegistrarPropietarioModal()` — va en el header
+del pane, no en el toolbar de una sub-vista, para verse en las 4 vistas.
+`applySimRole()` ya no los toca por id sino por
+`[data-btn-registrar-propietario]`: cualquier botón nuevo que abra ese
+modal solo necesita ese atributo para heredar la restricción por rol
+(`role.canRegisterOwner`).
+
 **Encargado / médico de un evento (`#ag-encargado`) — identidad real vs.
 mock:** el select se llena con `getEncargadosAgendaCandidatos()`, que son
 los usuarios ACTIVOS con rol `medico` **o `admin`** (médicos primero, los
