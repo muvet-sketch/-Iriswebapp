@@ -10058,7 +10058,8 @@
       const motivo = document.getElementById(idPrefix + 'motivo').value;
       const fechaValue = document.getElementById(idPrefix + 'fecha').value;
       const fechaHoraISO = fechaValue ? new Date(fechaValue).toISOString() : new Date().toISOString();
-      const usuario = 'Dr. Sebastián Ríos · MP 4567-CO';
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
+      const usuario = (currentSession.user && currentSession.user.matricula) ? `${usuarioNombre} · ${currentSession.user.matricula}` : usuarioNombre;
 
       // Hallazgos de examen físico por sistema (solo los evaluados)
       const examBody = document.getElementById(examBodyId);
@@ -11507,6 +11508,8 @@
         ? `<img src="${currentSession.user.firmaUrl}" alt="Firma electrónica" style="display:block;max-height:48px;max-width:180px;margin-bottom:4px;">` : '';
       const matriculaHTML = tieneMatricula
         ? `<div style="font-size:12px;color:var(--text-2);">Matrícula profesional ${currentSession.user.matricula}</div>` : '';
+      const indicacionesHTML = record.indicaciones
+        ? `<div class="info-label">Indicaciones</div><div class="info-value">${record.indicaciones}</div>` : '';
       return `
         <div class="info-label">Fecha fórmula</div>
         <div class="info-value">${record.fecha}</div>
@@ -11514,6 +11517,7 @@
         <div class="info-value">${record.diagnostico}</div>
         <div class="info-label">Medicamentos</div>
         ${medsHTML}
+        ${indicacionesHTML}
         <div class="info-label" style="margin-top:8px;">Usuario</div>
         <div class="info-value">
           ${firmaHTML}${record.usuario}
@@ -11765,11 +11769,13 @@
         const record = data.formulas[formulaIndex];
         document.getElementById('formula-fecha').value = record.fechaISO;
         document.getElementById('formula-diagnostico').value = record.diagnostico;
+        document.getElementById('formula-indicaciones').value = record.indicaciones || '';
         renderFormulaMedBlocks(record.medicamentos);
         saveBtn.textContent = 'Guardar cambios';
       } else {
         document.getElementById('formula-fecha').value = new Date().toISOString().slice(0, 10);
         document.getElementById('formula-diagnostico').value = '';
+        document.getElementById('formula-indicaciones').value = '';
         renderFormulaMedBlocks([{}]);
         saveBtn.textContent = 'Guardar fórmula médica';
       }
@@ -11793,7 +11799,8 @@
       const data = patientData[petKey];
       const fechaISO = document.getElementById('formula-fecha').value;
       const diagnostico = document.getElementById('formula-diagnostico').value.trim();
-      const usuario = 'Dr. Sebastián Ríos';
+      const indicaciones = document.getElementById('formula-indicaciones').value.trim();
+      const usuario = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
 
       const medicamentos = [...document.querySelectorAll('#formula-meds-list .med-block')].map(block => ({
         nombre: block.querySelector('[data-med-field="nombre"]').value.trim(),
@@ -11807,6 +11814,7 @@
         fecha: formatFechaCorta(fechaISO),
         diagnostico: diagnostico,
         medicamentos: medicamentos,
+        indicaciones: indicaciones,
         usuario
       };
 
@@ -11815,7 +11823,7 @@
 
       try {
         if (window.supabase && data.mascotaId && currentSession && currentSession.activeMembership) {
-          const filaForm = { fecha: fechaISO, diagnostico: diagnostico || null, medicamentos, usuario };
+          const filaForm = { fecha: fechaISO, diagnostico: diagnostico || null, medicamentos, indicaciones: indicaciones || null, usuario };
 
           if (isEdit && data.formulas[editingFormulaContext.index].dbId) {
             const { error } = await window.supabase.from('formulas_medicas')
@@ -12534,7 +12542,7 @@
       const responsableNombre = responsable ? responsable.nombre : '—';
       const fechaLimite = fechaLimiteISO ? formatFechaCorta(fechaLimiteISO) : null;
       const establecimientoId = currentSession.activeMembership.establecimientoId;
-      const usuarioNombre = 'Dr. Sebastián Ríos';
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
 
       const saveBtn = document.getElementById('tarea-pendiente-save-btn');
       if (saveBtn) saveBtn.disabled = true;
@@ -13243,7 +13251,7 @@
         return;
       }
       const establecimientoId = currentSession.activeMembership.establecimientoId;
-      const usuarioNombre = 'Dr. Sebastián Ríos';
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
 
       const saveBtn = document.getElementById('remision-save-btn');
       if (saveBtn) saveBtn.disabled = true;
@@ -13747,7 +13755,7 @@
         return;
       }
       const establecimientoId = currentSession.activeMembership.establecimientoId;
-      const usuarioNombre = 'Dr. Sebastián Ríos';
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
 
       const saveBtn = document.getElementById('cirugia-save-btn');
       if (saveBtn) saveBtn.disabled = true;
@@ -14161,6 +14169,7 @@
       const fechaISO = document.getElementById('orden-fecha').value;
       const fecha = formatFechaCorta(fechaISO);
       const motivo = document.getElementById('orden-motivo').value.trim();
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
 
       const nuevasOrdenes = [...document.querySelectorAll('#orden-blocks-list .orden-block')].map(block => {
         const tipo = block.querySelector('[data-orden-field="tipo"]').value;
@@ -14180,7 +14189,7 @@
           generarSolicitud: block.querySelector('.mini-toggle-input').checked,
           motivo,
           estado: 'pendiente',
-          usuario: 'Dr. Sebastián Ríos'
+          usuario: usuarioNombre
         };
       }).filter(Boolean);
 
@@ -14386,7 +14395,7 @@
         fechaISO: isEdit ? data.resultados[editingResultadoContext.index].fechaISO : today,
         fecha: isEdit ? data.resultados[editingResultadoContext.index].fecha : formatFechaCorta(today),
         estado: accion === 'finalizado' ? 'finalizado' : 'borrador',
-        usuario: 'Dr. Sebastián Ríos'
+        usuario: (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario'
       };
 
       if (esLab) {
@@ -15837,7 +15846,8 @@
 
     function usuarioNombreSimActual() {
       const usuario = USUARIOS_SISTEMA.find(u => u.id === getCurrentSimUserId());
-      return usuario ? usuario.nombre : 'Dr. Sebastián Ríos';
+      if (usuario) return usuario.nombre;
+      return (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
     }
 
     function agregarKardexDia() {
@@ -16853,7 +16863,7 @@
       const contenido = document.getElementById('documento-editor').innerHTML;
       const notificarPropietario = document.getElementById('documento-notificar').checked;
       const plantilla = plantillaInput ? plantillaInput.value : '';
-      const usuario = 'Dr. Sebastián Ríos';
+      const usuario = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
 
       const record = {
         nombre,
@@ -22362,6 +22372,7 @@
         fecha: formatFechaCorta(r.fecha),
         diagnostico: r.diagnostico || '',
         medicamentos: Array.isArray(r.medicamentos) ? r.medicamentos : [],
+        indicaciones: r.indicaciones || '',
         usuario: r.usuario || ''
       };
     }
@@ -23411,6 +23422,11 @@
           <button type="button" class="btn-outline" onclick="addFormulaMedBlock()">
             <i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar medicamento
           </button>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label" for="formula-indicaciones">Indicaciones</label>
+          <textarea class="soap-textarea" id="formula-indicaciones" placeholder="Indicaciones adicionales para el propietario..."></textarea>
         </div>
       </div>
 
