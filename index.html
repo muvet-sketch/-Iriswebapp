@@ -5302,7 +5302,12 @@
           <div style="display:flex;flex-direction:column;gap:20px;">
 
             <div class="card">
-              <div class="card-header"><span class="card-title"><i data-lucide="filter" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Filtros</span></div>
+              <div class="card-header">
+                <span class="card-title"><i data-lucide="filter" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Filtros</span>
+                <button type="button" class="btn-primary" style="padding:8px 16px;font-size:13px;" onclick="irACierreCajaDesdeDashboard()">
+                  <i data-lucide="lock" style="width:14px;height:14px;"></i> Cierre de caja
+                </button>
+              </div>
               <div class="ventas-filter-bar">
                 <div class="ventas-filter-row">
                   <div class="input-group">
@@ -16737,6 +16742,16 @@
       });
     }
 
+    // Botón "Cierre de caja" del Dashboard de ventas: atajo directo al
+    // arqueo del día (Ingresos y Egresos > Cierre de caja), sin pasar por
+    // el dropdown "Documentos" del top-nav — reutiliza abrirVentasView() +
+    // switchIngresosEgresosView('cierre'), mismo camino que ya dispara el
+    // sub-tab "Cierre de caja" a mano.
+    function irACierreCajaDesdeDashboard() {
+      abrirVentasView('ingresos-egresos');
+      switchIngresosEgresosView('cierre');
+    }
+
     // Vista A — Usuarios
     function renderUsuariosTable() {
       const tbody = document.getElementById('usuarios-table-body');
@@ -19144,7 +19159,16 @@
         renderCierreCajaResumen();
         renderCierreCajaHistorial();
         renderIngresosEgresosTable();
-        showToast(estado === 'Cerrado' ? `Día ${cierreCajaState.fecha} cerrado correctamente` : 'Cierre guardado como pendiente');
+        if (estado === 'Cerrado') {
+          // Auto-descarga la misma colilla que "Imprimir" genera desde el
+          // historial (arqueoViewContentHTML vía getRegistroViewData) — al
+          // cerrar el día el usuario no debería tener que ir a buscarla.
+          showToast(`Día ${cierreCajaState.fecha} cerrado correctamente — generando PDF...`);
+          const vista = getRegistroViewData('arqueo', data.fecha);
+          if (vista) await generarPdfRegistroImpresion(vista.title, vista.html, data.fecha);
+        } else {
+          showToast('Cierre guardado como pendiente');
+        }
       } catch (err) {
         console.error('[IRIS] Error guardando el cierre de caja en Supabase:', err);
         showToast('No se pudo guardar el cierre — intenta de nuevo');
