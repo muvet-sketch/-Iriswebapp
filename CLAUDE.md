@@ -301,6 +301,37 @@ devolvería en UTC con offset, rompiendo FullCalendar y el formateo. Lo
 que sigue mock en Agenda: `EVENTOS_SEGUIMIENTO` y
 `DISPONIBILIDAD_MEDICOS`.
 
+**Trampa de zona horaria (ya sufrida en el Dashboard) — `fechaISO` NO
+siempre es una fecha local ingenua.** `consultas.fecha_hora` sí es
+`timestamptz` (a diferencia de `agenda_eventos`, ver arriba) y además
+`guardarConsulta()` la escribe con `new Date(valor).toISOString()`: el
+`fechaISO` de una consulta está SIEMPRE en UTC, tanto en memoria como
+al volver de Supabase. Hacer `fechaISO.slice(0, 10)` para compararlo
+contra "hoy" devuelve el día UTC, que en Colombia (UTC-5) ya es el día
+siguiente a partir de las 19:00 — "Consultas Hoy" contaba 0 con una
+consulta guardada a las 9pm, mientras la tabla la mostraba con la
+fecha de hoy (esa pasa por `formatFechaHoraCorta`, que sí convierte a
+local). Para agrupar/comparar por día o mes usa
+`dashDiaLocalDeISO()`/`dashMesLocalDeISO()` (módulo Dashboard): pasan
+por `new Date()` solo las cadenas con zona (`Z` u offset) y dejan
+intactas las ingenuas (`'2026-07-07'`, `'2026-07-07T09:00'`), que
+serían corridas un día hacia atrás si se parsearan. Las fechas que el
+usuario escribe a mano y se guardan en columnas `date`
+(`movimientos.fecha`, `ventas_facturas.fecha`, escritas con
+`VENTAS_HOY`) ya son locales y se comparan como strings, sin helper.
+
+**"Ingresos Hoy" del Dashboard sale de `VENTAS_MOVIMIENTOS`, no de
+`VENTAS_FACTURAS`.** Ingresos y Egresos es el ledger real de caja y una
+factura cerrada como Pagada entra ahí sola vía
+`crearMovimientoDesdeFactura()`, así que sumar facturas además de
+movimientos duplicaría lo cobrado por Facturación; al revés, sumar
+solo facturas dejaba el dashboard en $0 con la caja llena, porque el
+registro rápido de un ingreso no crea ninguna factura. Cualquier
+métrica nueva de dinero cobrado debe salir del mismo array — y
+acordarse de llamar `renderDashboard()` al mutarlo
+(`guardarMovimiento`/`eliminarMovimientoReal`/`confirmarCerrarCuenta`
+ya lo hacen).
+
 El botón **"Registrar propietario"** del buscador de Consultorio está
 también en el header del pane de Agenda (`#btn-registrar-propietario-agenda`),
 reusando el mismo `openRegistrarPropietarioModal()` — va en el header

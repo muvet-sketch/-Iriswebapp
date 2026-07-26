@@ -5672,6 +5672,16 @@
                 <tbody id="cierre-caja-table-body"></tbody>
               </table>
 
+              <div style="margin-top:22px;">
+                <div style="font-size:13.5px;font-weight:600;color:var(--text-1);margin-bottom:10px;display:flex;align-items:center;gap:7px;">
+                  <i data-lucide="wallet" style="width:15px;height:15px;color:var(--clinic-accent);"></i> Total por método de pago
+                </div>
+                <table class="results-table">
+                  <thead><tr><th>Método de pago</th><th>Ingresos</th><th>Egresos</th><th>Total sistema</th><th>Total contado</th><th>Diferencia</th></tr></thead>
+                  <tbody id="cierre-caja-metodos-body"></tbody>
+                </table>
+              </div>
+
               <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
                 <button type="button" class="btn-secondary" id="cierre-caja-pendiente-btn" onclick="guardarCierreCajaPendiente()">Dejar pendiente</button>
                 <button type="button" class="btn-primary" id="cierre-caja-cerrar-btn" onclick="intentarCerrarCaja()">
@@ -8787,8 +8797,13 @@
 
     function renderAgendaPersonalActiveView() {
       const esLista = agendaPersonalViewMode === 'lista';
+      // OJO: los dos contenedores son EXCLUYENTES — el calendario va oculto
+      // justo cuando la lista se muestra, y al revés. Estaban ambos con el
+      // mismo ternario (copy-paste), así que en Mes/Semana/Día se ocultaban
+      // los dos y el pane quedaba en blanco: parecía que los botones no
+      // hacían nada.
       document.getElementById('agenda-personal-lista').style.display = esLista ? 'block' : 'none';
-      document.getElementById('agenda-personal-calendar').style.display = esLista ? 'block' : 'none';
+      document.getElementById('agenda-personal-calendar').style.display = esLista ? 'none' : 'block';
       if (esLista) {
         renderAgendaPersonalLista();
       } else {
@@ -11466,6 +11481,7 @@
       if (idx !== -1) VENTAS_MOVIMIENTOS.splice(idx, 1);
       renderIngresosEgresosTable();
       if (document.getElementById('ingegr-view-cierre').classList.contains('active')) abrirCierreCajaEnFecha(cierreCajaState.fecha);
+      renderDashboard(); // "Ingresos Hoy" del Dashboard sale de este array
       if (!window.supabase) return;
       try {
         const { error } = await window.supabase.from('movimientos').delete().eq('id', recordId);
@@ -17551,7 +17567,7 @@
         '<option value="">Todos</option>' + VENTAS_CLIENTES.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
       document.getElementById('ventas-filtro-origen').innerHTML =
         '<option value="">Todos</option>' + VENTAS_ORIGENES.map(o => `<option value="${o}">${o}</option>`).join('');
-      aplicarPresetFechaVentas('mes', document.querySelector('.ventas-preset-btn[data-preset="mes"]'));
+      aplicarPresetFechaVentas('mes', document.querySelector('#ventas-view-dashboard .ventas-preset-btn[data-preset="mes"]'));
       // El preset "Este mes" ya queda marcado activo y con los inputs
       // Desde/Hasta poblados — sincroniza ventasDashboardFilters con esos
       // mismos valores para que el primer render (antes de que el usuario
@@ -17561,7 +17577,12 @@
     }
 
     function aplicarPresetFechaVentas(preset, btnEl) {
-      document.querySelectorAll('.ventas-preset-btn').forEach(b => b.classList.remove('active'));
+      // Scope obligatorio a #ventas-view-dashboard: la misma clase
+      // .ventas-preset-btn la usa la barra de filtros de Ingresos y Egresos
+      // (aplicarPresetFechaMovimientos, que sí filtra por su contenedor). Sin
+      // el scope, tocar un preset acá apagaba también el botón resaltado de
+      // Movimientos, que quedaba mostrando un rango sin ningún preset marcado.
+      document.querySelectorAll('#ventas-view-dashboard .ventas-preset-btn').forEach(b => b.classList.remove('active'));
       if (btnEl) btnEl.classList.add('active');
       if (preset === 'personalizado') return;
       const hoy = new Date(VENTAS_HOY);
@@ -17595,7 +17616,7 @@
       document.getElementById('ventas-filtro-producto').value = '';
       document.getElementById('ventas-filtro-cliente').value = '';
       document.getElementById('ventas-filtro-origen').value = '';
-      aplicarPresetFechaVentas('mes', document.querySelector('.ventas-preset-btn[data-preset="mes"]'));
+      aplicarPresetFechaVentas('mes', document.querySelector('#ventas-view-dashboard .ventas-preset-btn[data-preset="mes"]'));
       ventasDashboardFilters = {
         desde: document.getElementById('ventas-filtro-desde').value,
         hasta: document.getElementById('ventas-filtro-hasta').value,
@@ -18781,6 +18802,7 @@
         }
         renderIngresosEgresosTable();
         if (document.getElementById('ingegr-view-cierre').classList.contains('active')) abrirCierreCajaEnFecha(cierreCajaState.fecha);
+        renderDashboard(); // "Ingresos Hoy" del Dashboard sale de este array
         closeMovimientoModal();
         showToast(wasEdit ? 'Movimiento actualizado' : 'Movimiento registrado');
       } catch (err) {
@@ -18820,6 +18842,20 @@
           <td style="text-align:right;">${formatCOP(f.sistemaValor)}</td>
           <td style="text-align:right;">${f.contado == null ? '—' : formatCOP(f.contado)}</td>
         </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--text-2);">Sin filas</td></tr>`;
+      const metodos = agruparTotalesPorMetodoPago(a.filas);
+      const metodosHTML = metodos.length ? metodos.map(t => `
+        <tr>
+          <td>${t.metodoPago}</td>
+          <td style="text-align:right;">${formatCOP(t.ingresos)}</td>
+          <td style="text-align:right;">${formatCOP(t.egresos)}</td>
+          <td style="text-align:right;font-weight:700;">${formatCOP(t.neto)}</td>
+        </tr>`).join('') + `
+        <tr>
+          <td style="font-weight:700;">Total general</td>
+          <td style="text-align:right;font-weight:700;">${formatCOP(metodos.reduce((s, t) => s + t.ingresos, 0))}</td>
+          <td style="text-align:right;font-weight:700;">${formatCOP(metodos.reduce((s, t) => s + t.egresos, 0))}</td>
+          <td style="text-align:right;font-weight:700;">${formatCOP(metodos.reduce((s, t) => s + t.neto, 0))}</td>
+        </tr>` : `<tr><td colspan="4" style="text-align:center;color:var(--text-2);">Sin filas</td></tr>`;
       const movsHTML = movs.length ? movs.map(m => `
         <tr>
           <td>${m.tipo}</td><td>${m.categoria}</td><td>${m.concepto}</td>
@@ -18838,6 +18874,11 @@
         <table class="results-table" style="margin-bottom:14px;">
           <thead><tr><th>Tipo</th><th>Forma de pago</th><th style="text-align:right;">Sistema</th><th style="text-align:right;">Contado</th></tr></thead>
           <tbody>${filasHTML}</tbody>
+        </table>
+        <div class="info-label">Total por método de pago</div>
+        <table class="results-table" style="margin-bottom:14px;">
+          <thead><tr><th>Método de pago</th><th style="text-align:right;">Ingresos</th><th style="text-align:right;">Egresos</th><th style="text-align:right;">Total</th></tr></thead>
+          <tbody>${metodosHTML}</tbody>
         </table>
         <div class="info-label">Detalle de movimientos del día</div>
         <table class="results-table">
@@ -18916,6 +18957,64 @@
       return Array.from(map.entries())
         .map(([key, sistemaValor]) => { const [tipo, metodoPago] = key.split('|'); return { tipo, metodoPago, sistemaValor }; })
         .sort((a, b) => a.tipo !== b.tipo ? (a.tipo === 'Ingreso' ? -1 : 1) : a.metodoPago.localeCompare(b.metodoPago));
+    }
+
+    // Segundo nivel de agregación del arqueo: toma las MISMAS filas
+    // (agrupadas por Tipo+Forma de pago) y las colapsa por Forma de pago,
+    // cruzando Ingresos contra Egresos para dar el total real que quedó en
+    // cada método (efectivo, tarjeta, transferencia...). No vuelve a leer
+    // VENTAS_MOVIMIENTOS a propósito: así el "contado" que el usuario está
+    // digitando fila por fila se refleja acá en vivo, y la misma función
+    // sirve para un arqueo ya guardado (colilla impresa), que solo conserva
+    // sus filas, no los movimientos originales.
+    function agruparTotalesPorMetodoPago(filas) {
+      const map = new Map();
+      (filas || []).forEach(f => {
+        if (!map.has(f.metodoPago)) map.set(f.metodoPago, { metodoPago: f.metodoPago, ingresos: 0, egresos: 0, contadoIngresos: 0, contadoEgresos: 0, faltaContado: false });
+        const t = map.get(f.metodoPago);
+        if (f.tipo === 'Ingreso') { t.ingresos += f.sistemaValor; t.contadoIngresos += (f.contado || 0); }
+        else { t.egresos += f.sistemaValor; t.contadoEgresos += (f.contado || 0); }
+        if (f.contado == null) t.faltaContado = true;
+      });
+      return Array.from(map.values())
+        .map(t => ({ ...t, neto: t.ingresos - t.egresos, contadoNeto: t.contadoIngresos - t.contadoEgresos }))
+        .sort((a, b) => a.metodoPago.localeCompare(b.metodoPago));
+    }
+
+    function renderCierreCajaTotalesPorMetodo() {
+      const totales = agruparTotalesPorMetodoPago(cierreCajaState.filas);
+      const tbody = document.getElementById('cierre-caja-metodos-body');
+      if (!totales.length) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No hay movimientos registrados para esta fecha</td></tr>`;
+        return;
+      }
+      const filasHTML = totales.map(t => {
+        const diff = t.faltaContado ? null : (t.contadoNeto - t.neto);
+        return `
+        <tr>
+          <td style="font-weight:600;">${t.metodoPago}</td>
+          <td style="color:var(--success);">${formatCOP(t.ingresos)}</td>
+          <td style="color:var(--danger);">${formatCOP(t.egresos)}</td>
+          <td style="font-weight:600;">${formatCOP(t.neto)}</td>
+          <td>${t.faltaContado ? '—' : formatCOP(t.contadoNeto)}</td>
+          <td style="font-weight:600;color:${diff == null ? 'var(--text-2)' : (diff === 0 ? 'var(--success)' : 'var(--danger)')};">${diff == null ? '—' : formatCOPDiff(diff)}</td>
+        </tr>`;
+      }).join('');
+      const g = totales.reduce((s, t) => ({
+        ingresos: s.ingresos + t.ingresos, egresos: s.egresos + t.egresos,
+        contadoNeto: s.contadoNeto + t.contadoNeto, faltaContado: s.faltaContado || t.faltaContado
+      }), { ingresos: 0, egresos: 0, contadoNeto: 0, faltaContado: false });
+      const gNeto = g.ingresos - g.egresos;
+      const gDiff = g.faltaContado ? null : (g.contadoNeto - gNeto);
+      tbody.innerHTML = filasHTML + `
+        <tr style="border-top:2px solid var(--border);">
+          <td style="font-weight:700;">Total general</td>
+          <td style="font-weight:700;color:var(--success);">${formatCOP(g.ingresos)}</td>
+          <td style="font-weight:700;color:var(--danger);">${formatCOP(g.egresos)}</td>
+          <td style="font-weight:700;">${formatCOP(gNeto)}</td>
+          <td style="font-weight:700;">${g.faltaContado ? '—' : formatCOP(g.contadoNeto)}</td>
+          <td style="font-weight:700;color:${gDiff == null ? 'var(--text-2)' : (gDiff === 0 ? 'var(--success)' : 'var(--danger)')};">${gDiff == null ? '—' : formatCOPDiff(gDiff)}</td>
+        </tr>`;
     }
 
     function abrirCierreCajaEnFecha(fecha) {
@@ -19003,6 +19102,7 @@
       }
       document.getElementById('cierre-caja-cerrar-btn').disabled = bloqueado;
       document.getElementById('cierre-caja-pendiente-btn').disabled = bloqueado;
+      renderCierreCajaTotalesPorMetodo();
       lucide.createIcons();
     }
 
@@ -21016,15 +21116,44 @@
     // Tarjetas/gráfica/tabla calculadas en caliente a partir de las mismas
     // fuentes reales que ya alimentan el resto de módulos -- patientData
     // (consultas reales vía Supabase, ver cargarDatosClinicaDesdeSupabase),
-    // VENTAS_FACTURAS y USUARIOS_SISTEMA -- en vez de los números fijos que
-    // traía el prototipo. Se llama desde renderAllModulesData() (carga
+    // VENTAS_MOVIMIENTOS y USUARIOS_SISTEMA -- en vez de los números fijos
+    // que traía el prototipo. Se llama desde renderAllModulesData() (carga
     // inicial/cambio de establecimiento), al activar el tab Dashboard, y
-    // tras guardar/eliminar una consulta o registrar una mascota nueva.
+    // tras guardar/eliminar una consulta, registrar una mascota nueva o
+    // mover la caja (guardarMovimiento/eliminarMovimientoReal/cerrar cuenta).
     const DASH_MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
     function dashFechaISODia(d) {
       const pad = n => String(n).padStart(2, '0');
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    // Día LOCAL (YYYY-MM-DD) de un `fechaISO` cualquiera de los módulos.
+    // Los `fechaISO` de consultas NO son fechas ingenuas: se generan con
+    // `new Date(valor).toISOString()` al guardar y vuelven de Supabase desde
+    // una columna timestamptz — o sea siempre en UTC, con 'Z' u offset.
+    // Cortar los primeros 10 caracteres devolvía el día UTC, que en Colombia
+    // (UTC-5) ya es el día SIGUIENTE a partir de las 19:00: una consulta
+    // guardada a las 9pm no contaba en "Consultas Hoy" aunque la tabla de
+    // "Últimas consultas" la mostrara con la fecha de hoy (esa sí pasa por
+    // formatFechaHoraCorta, que convierte a hora local). Mismo criterio que
+    // VENTAS_HOY: el día del dashboard es el día local del usuario.
+    // Las fechas sin zona ('2026-07-07', '2026-07-07T09:00' de los mocks y
+    // de los módulos que guardan la fecha tal cual la escribió el usuario)
+    // ya son locales, así que esas se siguen cortando igual que antes — no
+    // se las pasa por `new Date()`, que interpretaría las de solo fecha
+    // como medianoche UTC y las correría un día hacia atrás.
+    function dashDiaLocalDeISO(iso) {
+      if (!iso) return '';
+      const s = String(iso);
+      const tieneZona = /[Zz]$/.test(s) || /[+-]\d{2}:?\d{2}$/.test(s.slice(10));
+      if (!tieneZona) return s.slice(0, 10);
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? s.slice(0, 10) : dashFechaISODia(d);
+    }
+
+    function dashMesLocalDeISO(iso) {
+      return dashDiaLocalDeISO(iso).slice(0, 7);
     }
 
     function setDashStatTrend(elId, text, direction, iconOverride) {
@@ -21083,7 +21212,7 @@
         const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
         meses.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: DASH_MESES_CORTOS[d.getMonth()] });
       }
-      const conteos = meses.map(m => todasConsultas.filter(c => (c.fechaISO || '').slice(0, 7) === m.key).length);
+      const conteos = meses.map(m => todasConsultas.filter(c => dashMesLocalDeISO(c.fechaISO) === m.key).length);
       const max = Math.max(...conteos, 1);
 
       barsEl.innerHTML = conteos.map(n => `
@@ -21112,21 +21241,31 @@
       });
       todasConsultas.sort((a, b) => new Date(b.fechaISO || 0) - new Date(a.fechaISO || 0));
 
-      // Consultas Hoy
-      const consultasHoy = todasConsultas.filter(c => (c.fechaISO || '').slice(0, 10) === hoyStr).length;
-      const consultasAyer = todasConsultas.filter(c => (c.fechaISO || '').slice(0, 10) === ayerStr).length;
+      // Consultas Hoy (día LOCAL de la consulta, ver dashDiaLocalDeISO)
+      const consultasHoy = todasConsultas.filter(c => dashDiaLocalDeISO(c.fechaISO) === hoyStr).length;
+      const consultasAyer = todasConsultas.filter(c => dashDiaLocalDeISO(c.fechaISO) === ayerStr).length;
       document.getElementById('dash-stat-consultas-valor').textContent = consultasHoy;
       const deltaConsultas = consultasHoy - consultasAyer;
       setDashStatTrend('dash-stat-consultas-trend',
         deltaConsultas === 0 ? 'Igual que ayer' : `${deltaConsultas > 0 ? '+' : ''}${deltaConsultas} desde ayer`,
         deltaConsultas > 0 ? 'up' : deltaConsultas < 0 ? 'down' : 'neutral');
 
-      // Ingresos Hoy (facturas pagadas del módulo Ventas — VENTAS_FACTURAS)
-      const sumFacturasDelDia = fecha => VENTAS_FACTURAS
-        .filter(f => f.estado === 'Pagada' && f.fecha === fecha)
-        .reduce((s, f) => s + f.total, 0);
-      const ingresosHoy = sumFacturasDelDia(hoyStr);
-      const ingresosAyer = sumFacturasDelDia(ayerStr);
+      // Ingresos Hoy (movimientos de caja — VENTAS_MOVIMIENTOS)
+      // La fuente es Ingresos y Egresos, NO las facturas: una factura que se
+      // cierra como Pagada ya entra sola a ese ledger vía
+      // crearMovimientoDesdeFactura, mientras que un ingreso registrado a
+      // mano (registro rápido de Ingresos y Egresos, que es como se cobra la
+      // mayoría del día a día) no genera ninguna factura y por eso el
+      // dashboard mostraba $0 con la caja llena. Sumar facturas Pagadas
+      // ADEMÁS de los movimientos duplicaría todo lo cobrado por Facturación,
+      // así que se cuentan solo los movimientos. `m.fecha` ya es una fecha
+      // local ingenua (columna `date`, se escribe con VENTAS_HOY) — no pasa
+      // por dashDiaLocalDeISO.
+      const sumIngresosDelDia = fecha => VENTAS_MOVIMIENTOS
+        .filter(m => m.tipo === 'Ingreso' && m.fecha === fecha)
+        .reduce((s, m) => s + (Number(m.monto) || 0), 0);
+      const ingresosHoy = sumIngresosDelDia(hoyStr);
+      const ingresosAyer = sumIngresosDelDia(ayerStr);
       document.getElementById('dash-stat-ingresos-valor').textContent = formatCOP(ingresosHoy);
       const deltaIngresos = ingresosHoy - ingresosAyer;
       setDashStatTrend('dash-stat-ingresos-trend',
@@ -21136,7 +21275,10 @@
       // Mascotas Registradas
       const mascotas = Object.values(patientData);
       document.getElementById('dash-stat-mascotas-valor').textContent = mascotas.length;
-      const nuevasEsteMes = mascotas.filter(d => d.createdAt && d.createdAt.slice(0, 7) === mesActual).length;
+      // createdAt es el created_at (timestamptz) de la fila de Supabase, así
+      // que también se convierte a mes local — si no, una mascota registrada
+      // de noche el último día del mes cae en el mes siguiente.
+      const nuevasEsteMes = mascotas.filter(d => d.createdAt && dashMesLocalDeISO(d.createdAt) === mesActual).length;
       setDashStatTrend('dash-stat-mascotas-trend',
         nuevasEsteMes ? `+${nuevasEsteMes} nuevas este mes` : 'Sin nuevas este mes', 'neutral', 'plus');
 
