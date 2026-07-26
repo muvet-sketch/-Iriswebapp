@@ -3681,27 +3681,7 @@
           <span style="font-size: 11px; color: var(--clinic-accent); cursor: pointer;">Marcar todo como leído</span>
         </div>
         <div class="notif-list">
-          <div class="notif-item">
-            <i data-lucide="alert-circle" class="notif-icon text-warning" style="width: 16px; height: 16px;"></i>
-            <div>
-              <p>Vacuna antirrábica pendiente para <strong>Luna</strong></p>
-              <div class="notif-time">Hace 15 minutos</div>
-            </div>
-          </div>
-          <div class="notif-item">
-            <i data-lucide="check-circle" class="notif-icon text-success" style="width: 16px; height: 16px;"></i>
-            <div>
-              <p>Resultado del hemograma cargado para <strong>Toby</strong></p>
-              <div class="notif-time">Hace 2 horas</div>
-            </div>
-          </div>
-          <div class="notif-item">
-            <i data-lucide="calendar" class="notif-icon text-success" style="width: 16px; height: 16px;"></i>
-            <div>
-              <p>Nueva cita agendada por propietario de <strong>Milo</strong></p>
-              <div class="notif-time">Ayer</div>
-            </div>
-          </div>
+          <div style="padding:24px 16px;text-align:center;color:var(--text-2);font-size:12.5px;">No hay notificaciones nuevas</div>
         </div>
       </div>
 
@@ -11941,10 +11921,7 @@
     // TODO: ITERACIÓN FUTURA — calcular alertas de vencimiento a partir de
     // "próxima vacunación" (ej. badge de vencida/próxima a vencer). No
     // implementado todavía en este prototipo.
-    const VACUNAS_CATALOGO_BASE = [
-      'Antirrábica', 'Sextuple/Hexavalente canina', 'Triple felina',
-      'Leucemia felina (FeLV)', 'Bordetella', 'Giardia', 'Otra'
-    ];
+    const VACUNAS_CATALOGO_BASE = []; // sin ejemplos — cada clínica registra sus propias vacunas vía "+Registrar vacuna"
     let vacunasCatalogoCustom = []; // vacunas agregadas vía "+Registrar vacuna" (mock, en memoria)
     function getVacunasCatalogo() { return [...VACUNAS_CATALOGO_BASE, ...vacunasCatalogoCustom]; }
 
@@ -13825,25 +13802,15 @@
     // Cuando ese módulo exista, reemplazar esta fuente mock por la consulta
     // real a la base de datos. La estructura de datos debe mantenerse igual
     // para no romper los componentes que la consumen (Órdenes, y a futuro
-    // Facturación).
+    // Facturación). Sin datos de ejemplo — cada clínica lo llena desde cero.
+    // Las 4 claves se mantienen (TIPOS_ORDEN.catalogKey depende de ellas)
+    // pero arrancan vacías; el dropdown buscable ya maneja el caso sin
+    // opciones (ver searchableSelectHTML: "Sin resultados").
     const CATALOGO_PRODUCTOS_SERVICIOS = {
-      imagenes_diagnosticas: ['Ecografía', 'Radiografía', 'Resonancia magnética', 'Tomografía', 'Otro'],
-      cirugias_procedimientos: [
-        'Abdominocentesis ecoguiada', 'Ablación conducto auditivo externo bilateral',
-        'Amputación de cola no electivo', 'Artroscopia', 'Esterilización (ovariohisterectomía)',
-        'Orquiectomía', 'Cistotomía', 'Osteosíntesis de fractura', 'Extracción dental múltiple',
-        'Resección de masa cutánea', 'Cesárea', 'Gastropexia profiláctica'
-      ],
-      pruebas_examenes: [
-        'Perfil de chequeo I (Hemograma+ALT+Creatinina+Glucosa)',
-        'Perfil renal I (BUN+Urea+Creatinina+Citoquímico orina)',
-        'Perfil prequirúrgico I (Hemograma+ALT+Creatinina)',
-        'Perfil hepático (ALT+AST+FA+Bilirrubinas)',
-        'Hemograma completo', 'Uroanálisis completo', 'Coprológico seriado',
-        'Perfil tiroideo (T4 total)', 'Citología de oído', 'Prueba rápida moquillo/parvovirus'
-      ],
-      // Reutiliza la misma lista de motivos/especialidades usada en "Motivo de consulta"
-      consultas_especialidad: ['Consulta general', 'Urgencia', 'Vacunación', 'Control', 'Revisión', 'Otro']
+      imagenes_diagnosticas: [],
+      cirugias_procedimientos: [],
+      pruebas_examenes: [],
+      consultas_especialidad: []
     };
 
     const TIPOS_ORDEN = [
@@ -22249,6 +22216,31 @@
       VENTAS_PROVEEDORES.length = 0;
       if (seed) VENTAS_PROVEEDORES.push(...seed.VENTAS_PROVEEDORES);
     }
+
+    // Arranque en cero: todo el contenido de ejemplo con el que este archivo
+    // venía poblado (pacientes Luna/Toby/Milo, roster de usuarios, ventas,
+    // agenda, inventario, etc.) ya quedó preservado dentro de DEMO_SEED
+    // (clonado arriba, ANTES de este punto) para que
+    // sembrarDemoEnSupabase()/la clínica demo (DEMO_ESTABLISHMENT_NIT) lo
+    // siga usando. A partir de acá, en memoria, no debe quedar ningún dato
+    // de ejemplo — ni para una sesión real ni en el instante antes de que
+    // bootstrapSession() cargue lo que corresponda desde Supabase.
+    // resetMockDataForClinic(false) ya vacía USUARIOS_SISTEMA/
+    // USUARIO_PRIVILEGIOS/EVENTOS_SEGUIMIENTO/DISPONIBILIDAD_MEDICOS/
+    // SIIGO_*/INVENTARIO_*/PLANTILLAS_DOCUMENTOS/CLINIC_INFO/
+    // VARIABLES_CATALOGOS/VENTAS_CLIENTES/VENTAS_NOTAS_CREDITO/
+    // VENTAS_DOC_SOPORTE/VENTAS_CATEGORIAS/VENTAS_PROVEEDORES — lo único que
+    // faltaba (los bindings que esa función deliberadamente NO toca porque
+    // se cargan de verdad desde Supabase, ver sus notas) se vacía acá a mano.
+    resetMockDataForClinic(false);
+    Object.keys(patientData).forEach(k => delete patientData[k]);
+    propietarios.length = 0;
+    VENTAS_FACTURAS.length = 0;
+    VENTAS_COTIZACIONES.length = 0;
+    VENTAS_CATALOGO.length = 0;
+    VENTAS_MOVIMIENTOS.length = 0;
+    VENTAS_ARQUEOS.length = 0;
+    AGENDA_EVENTOS.length = 0;
 
     // ── NÚCLEO DE DATOS CLÍNICOS — persistencia real (Supabase) ──────
     // propietarios/patientData ya NO se resetean/siembran en memoria (ver
