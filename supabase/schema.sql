@@ -895,6 +895,102 @@ create policy "hospitalizaciones_delete_member"
   on public.hospitalizaciones for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── TABLA: vacunaciones ──────────────────────────────────────────
+-- Un registro por vacuna aplicada. Antes vivía solo en memoria
+-- (patientData[petKey].vacunaciones, mock) y se perdía al refrescar —
+-- mismo criterio de columnas planas que examenes/hospitalizaciones
+-- (sin jsonb acá porque no hay sub-estructura repetida).
+create table if not exists public.vacunaciones (
+  id                   uuid primary key default gen_random_uuid(),
+  establecimiento_id   uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id           uuid not null references public.mascotas (id) on delete cascade,
+  fecha                date not null,
+  vacuna               text not null,
+  laboratorio          text,
+  lote                 text,
+  observaciones        text,
+  proxima_vacunacion   date,
+  usuario              text,
+  created_by           uuid references auth.users (id) on delete set null,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create index if not exists vacunaciones_establecimiento_id_idx on public.vacunaciones (establecimiento_id);
+create index if not exists vacunaciones_mascota_id_idx on public.vacunaciones (mascota_id);
+
+alter table public.vacunaciones enable row level security;
+
+drop policy if exists "vacunaciones_select_member" on public.vacunaciones;
+create policy "vacunaciones_select_member"
+  on public.vacunaciones for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "vacunaciones_insert_member" on public.vacunaciones;
+create policy "vacunaciones_insert_member"
+  on public.vacunaciones for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "vacunaciones_update_member" on public.vacunaciones;
+create policy "vacunaciones_update_member"
+  on public.vacunaciones for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "vacunaciones_delete_member" on public.vacunaciones;
+create policy "vacunaciones_delete_member"
+  on public.vacunaciones for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: desparasitaciones ─────────────────────────────────────
+-- Mismo criterio que vacunaciones. `archivo_adjunto_nombre` solo
+-- guarda el nombre de archivo mostrado en el formulario (el adjunto en
+-- sí nunca se subió a Storage, tampoco antes de esta tabla — el modal
+-- solo lo usaba como texto decorativo junto al input file).
+create table if not exists public.desparasitaciones (
+  id                        uuid primary key default gen_random_uuid(),
+  establecimiento_id        uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id                uuid not null references public.mascotas (id) on delete cascade,
+  fecha                     date not null,
+  ultima_desparasitacion    date,
+  tipo                      text not null,
+  producto                  text,
+  dosis                     text,
+  proximo_control           date,
+  archivo_adjunto_nombre    text,
+  observaciones             text,
+  usuario                   text,
+  created_by                uuid references auth.users (id) on delete set null,
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now()
+);
+
+create index if not exists desparasitaciones_establecimiento_id_idx on public.desparasitaciones (establecimiento_id);
+create index if not exists desparasitaciones_mascota_id_idx on public.desparasitaciones (mascota_id);
+
+alter table public.desparasitaciones enable row level security;
+
+drop policy if exists "desparasitaciones_select_member" on public.desparasitaciones;
+create policy "desparasitaciones_select_member"
+  on public.desparasitaciones for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "desparasitaciones_insert_member" on public.desparasitaciones;
+create policy "desparasitaciones_insert_member"
+  on public.desparasitaciones for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "desparasitaciones_update_member" on public.desparasitaciones;
+create policy "desparasitaciones_update_member"
+  on public.desparasitaciones for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "desparasitaciones_delete_member" on public.desparasitaciones;
+create policy "desparasitaciones_delete_member"
+  on public.desparasitaciones for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── STORAGE: bucket `avatars` (foto de perfil de usuario) ───────
 -- Público (igual que `fotos-mascotas`) — a diferencia de ese bucket, que
 -- es por establecimiento ("clinica/<estab>/..."), este es por usuario

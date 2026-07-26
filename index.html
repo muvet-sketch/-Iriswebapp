@@ -11202,24 +11202,12 @@
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-vacunacion-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].vacunaciones.splice(idx, 1);
-            renderVacunacionesTable(petKey);
-          }, 250);
-        }
+        eliminarVacunacionReal(petKey, idx, row);
       } else if (moduleKey === 'desparasitacion') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-desparasitacion-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].desparasitaciones.splice(idx, 1);
-            renderDesparasitacionesTable(petKey);
-          }, 250);
-        }
+        eliminarDesparasitacionReal(petKey, idx, row);
       } else if (moduleKey === 'tarea') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
@@ -12107,7 +12095,22 @@
       if (e.target === document.getElementById('vacunacion-modal')) closeVacunacionModal();
     }
 
-    function guardarVacunacion() {
+    // Construye la entrada de timeline de una vacunación a partir del
+    // record ya armado (fila real o recién guardada) — reutilizado tanto
+    // al crear (guardarVacunacion) como al reconstruir el timeline desde
+    // Supabase al cargar la clínica (cargarDatosClinicaDesdeSupabase).
+    function construirVacunacionTimelineDesdeFila(record) {
+      return {
+        type: 'Vacunación',
+        date: record.fecha,
+        dateSortKey: record.fechaISO,
+        title: `Vacuna aplicada — ${record.vacuna}`,
+        summary: `Laboratorio: ${record.laboratorio || '—'} · Lote: ${record.lote || '—'}${record.proximaVacunacion ? ' · Próxima vacunación: ' + record.proximaVacunacion : ''}`,
+        vet: record.usuario || ''
+      };
+    }
+
+    async function guardarVacunacion() {
       const isEdit = !!editingVacunacionContext;
       const petKey = isEdit ? editingVacunacionContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -12124,40 +12127,73 @@
         return;
       }
 
-      const record = {
-        fechaISO, fecha: formatFechaCorta(fechaISO),
-        vacuna, laboratorio, lote, observaciones,
-        proximaVacunacionISO: proximaISO || null,
-        proximaVacunacion: proximaISO ? formatFechaCorta(proximaISO) : null,
-        usuario: 'Dr. Sebastián Ríos'
-      };
-
-      if (isEdit) {
-        data.vacunaciones[editingVacunacionContext.index] = record;
-      } else {
-        data.vacunaciones.unshift(record);
-        data.timeline.unshift({
-          type: 'Vacunación',
-          date: record.fecha,
-          title: `Vacuna aplicada — ${record.vacuna}`,
-          summary: `Laboratorio: ${record.laboratorio || '—'} · Lote: ${record.lote || '—'}${record.proximaVacunacion ? ' · Próxima vacunación: ' + record.proximaVacunacion : ''}`,
-          vet: 'Dr. Sebastián Ríos · MP 4567-CO'
-        });
-        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
       }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || '';
 
-      renderVacunacionesTable(petKey);
-      refrescarTableroQuicknavSi('vacunaciones', petKey);
-      closeVacunacionModal();
-      showToast(isEdit ? 'Vacunación actualizada' : 'Vacunación registrada');
-      if (!isEdit && record.proximaVacunacionISO) {
-        crearEventoSeguimiento({
-          fechaISO: record.proximaVacunacionISO,
-          propietario: data.owner,
-          petKey,
-          tipoEvento: 'vacunacion',
-          origen: `Vacunación — ${data.name} — Próxima vacunación ${record.proximaVacunacion}`
-        });
+      const saveBtn = document.getElementById('vacunacion-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        const payload = {
+          fecha: fechaISO, vacuna, laboratorio: laboratorio || null, lote: lote || null,
+          observaciones: observaciones || null, proxima_vacunacion: proximaISO || null,
+          usuario: usuarioNombre
+        };
+
+        let dbId = isEdit ? data.vacunaciones[editingVacunacionContext.index].id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('vacunaciones')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('vacunaciones').insert({
+            ...payload, establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        const record = {
+          id: dbId, fechaISO, fecha: formatFechaCorta(fechaISO),
+          vacuna, laboratorio, lote, observaciones,
+          proximaVacunacionISO: proximaISO || null,
+          proximaVacunacion: proximaISO ? formatFechaCorta(proximaISO) : null,
+          usuario: usuarioNombre
+        };
+
+        if (isEdit) {
+          data.vacunaciones[editingVacunacionContext.index] = record;
+        } else {
+          data.vacunaciones.unshift(record);
+          data.timeline.unshift(construirVacunacionTimelineDesdeFila(record));
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderVacunacionesTable(petKey);
+        refrescarTableroQuicknavSi('vacunaciones', petKey);
+        closeVacunacionModal();
+        showToast(isEdit ? 'Vacunación actualizada' : 'Vacunación registrada');
+        if (!isEdit && record.proximaVacunacionISO) {
+          crearEventoSeguimiento({
+            fechaISO: record.proximaVacunacionISO,
+            propietario: data.owner,
+            petKey,
+            tipoEvento: 'vacunacion',
+            origen: `Vacunación — ${data.name} — Próxima vacunación ${record.proximaVacunacion}`
+          });
+        }
+      } catch (err) {
+        console.error('[IRIS] Error guardando vacunación en Supabase:', err);
+        showToast('No se pudo guardar la vacunación — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
       }
     }
 
@@ -12288,7 +12324,20 @@
       if (e.target === document.getElementById('desparasitacion-modal')) closeDesparasitacionModal();
     }
 
-    function guardarDesparasitacion() {
+    // Ver construirVacunacionTimelineDesdeFila — mismo criterio de
+    // reutilización entre creación en vivo y reconstrucción al cargar.
+    function construirDesparasitacionTimelineDesdeFila(record) {
+      return {
+        type: 'Desparasitación',
+        date: record.fecha,
+        dateSortKey: record.fechaISO,
+        title: `Desparasitación — ${record.tipo}`,
+        summary: `Producto: ${record.producto || '—'}${record.dosis ? ' · Dosis: ' + record.dosis : ''}${record.proximoControl ? ' · Próximo control: ' + record.proximoControl : ''}`,
+        vet: record.usuario || ''
+      };
+    }
+
+    async function guardarDesparasitacion() {
       const isEdit = !!editingDesparasitacionContext;
       const petKey = isEdit ? editingDesparasitacionContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -12307,46 +12356,86 @@
         return;
       }
 
-      const record = {
-        fechaISO, fecha: formatFechaCorta(fechaISO),
-        ultimaDesparasitacionISO: ultimaISO || null,
-        ultimaDesparasitacion: ultimaISO ? formatFechaCorta(ultimaISO) : null,
-        tipo, producto, dosis,
-        proximoControlISO: proximoControlISO || null,
-        proximoControl: proximoControlISO ? formatFechaCorta(proximoControlISO) : null,
-        archivoAdjuntoNombre: archivoInput.files.length
-          ? archivoInput.files[0].name
-          : (isEdit ? data.desparasitaciones[editingDesparasitacionContext.index].archivoAdjuntoNombre : null),
-        observaciones,
-        usuario: 'Dr. Sebastián Ríos'
-      };
-
-      if (isEdit) {
-        data.desparasitaciones[editingDesparasitacionContext.index] = record;
-      } else {
-        data.desparasitaciones.unshift(record);
-        data.timeline.unshift({
-          type: 'Desparasitación',
-          date: record.fecha,
-          title: `Desparasitación — ${record.tipo}`,
-          summary: `Producto: ${record.producto || '—'}${record.dosis ? ' · Dosis: ' + record.dosis : ''}${record.proximoControl ? ' · Próximo control: ' + record.proximoControl : ''}`,
-          vet: 'Dr. Sebastián Ríos · MP 4567-CO'
-        });
-        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
       }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || '';
 
-      renderDesparasitacionesTable(petKey);
-      refrescarTableroQuicknavSi('desparasitaciones', petKey);
-      closeDesparasitacionModal();
-      showToast(isEdit ? 'Desparasitación actualizada' : 'Desparasitación registrada');
-      if (!isEdit && record.proximoControlISO) {
-        crearEventoSeguimiento({
-          fechaISO: record.proximoControlISO,
-          propietario: data.owner,
-          petKey,
-          tipoEvento: 'desparasitacion',
-          origen: `Desparasitación — ${data.name} — Próximo control ${record.proximoControl}`
-        });
+      const archivoAdjuntoNombre = archivoInput.files.length
+        ? archivoInput.files[0].name
+        : (isEdit ? data.desparasitaciones[editingDesparasitacionContext.index].archivoAdjuntoNombre : null);
+
+      const saveBtn = document.getElementById('desparasitacion-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        const payload = {
+          fecha: fechaISO,
+          ultima_desparasitacion: ultimaISO || null,
+          tipo, producto: producto || null, dosis: dosis || null,
+          proximo_control: proximoControlISO || null,
+          archivo_adjunto_nombre: archivoAdjuntoNombre || null,
+          observaciones: observaciones || null,
+          usuario: usuarioNombre
+        };
+
+        let dbId = isEdit ? data.desparasitaciones[editingDesparasitacionContext.index].id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('desparasitaciones')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('desparasitaciones').insert({
+            ...payload, establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        const record = {
+          id: dbId,
+          fechaISO, fecha: formatFechaCorta(fechaISO),
+          ultimaDesparasitacionISO: ultimaISO || null,
+          ultimaDesparasitacion: ultimaISO ? formatFechaCorta(ultimaISO) : null,
+          tipo, producto, dosis,
+          proximoControlISO: proximoControlISO || null,
+          proximoControl: proximoControlISO ? formatFechaCorta(proximoControlISO) : null,
+          archivoAdjuntoNombre,
+          observaciones,
+          usuario: usuarioNombre
+        };
+
+        if (isEdit) {
+          data.desparasitaciones[editingDesparasitacionContext.index] = record;
+        } else {
+          data.desparasitaciones.unshift(record);
+          data.timeline.unshift(construirDesparasitacionTimelineDesdeFila(record));
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderDesparasitacionesTable(petKey);
+        refrescarTableroQuicknavSi('desparasitaciones', petKey);
+        closeDesparasitacionModal();
+        showToast(isEdit ? 'Desparasitación actualizada' : 'Desparasitación registrada');
+        if (!isEdit && record.proximoControlISO) {
+          crearEventoSeguimiento({
+            fechaISO: record.proximoControlISO,
+            propietario: data.owner,
+            petKey,
+            tipoEvento: 'desparasitacion',
+            origen: `Desparasitación — ${data.name} — Próximo control ${record.proximoControl}`
+          });
+        }
+      } catch (err) {
+        console.error('[IRIS] Error guardando desparasitación en Supabase:', err);
+        showToast('No se pudo guardar la desparasitación — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
       }
     }
 
@@ -14609,6 +14698,79 @@
         if (error) throw error;
       } catch (err) {
         console.error('[IRIS] Error eliminando examen en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function construirVacunacionDesdeFila(r) {
+      return {
+        id: r.id,
+        fechaISO: r.fecha, fecha: formatFechaCorta(r.fecha),
+        vacuna: r.vacuna, laboratorio: r.laboratorio || '', lote: r.lote || '',
+        observaciones: r.observaciones || '',
+        proximaVacunacionISO: r.proxima_vacunacion || null,
+        proximaVacunacion: r.proxima_vacunacion ? formatFechaCorta(r.proxima_vacunacion) : null,
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarVacunacionReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.vacunaciones[idx];
+      const quitarLocal = () => {
+        data.vacunaciones.splice(idx, 1);
+        renderVacunacionesTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('vacunaciones').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando vacunación en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function construirDesparasitacionDesdeFila(r) {
+      return {
+        id: r.id,
+        fechaISO: r.fecha, fecha: formatFechaCorta(r.fecha),
+        ultimaDesparasitacionISO: r.ultima_desparasitacion || null,
+        ultimaDesparasitacion: r.ultima_desparasitacion ? formatFechaCorta(r.ultima_desparasitacion) : null,
+        tipo: r.tipo, producto: r.producto || '', dosis: r.dosis || '',
+        proximoControlISO: r.proximo_control || null,
+        proximoControl: r.proximo_control ? formatFechaCorta(r.proximo_control) : null,
+        archivoAdjuntoNombre: r.archivo_adjunto_nombre || null,
+        observaciones: r.observaciones || '',
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarDesparasitacionReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.desparasitaciones[idx];
+      const quitarLocal = () => {
+        data.desparasitaciones.splice(idx, 1);
+        renderDesparasitacionesTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('desparasitaciones').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando desparasitación en Supabase:', err);
         showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
       }
     }
@@ -21928,7 +22090,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, vacunacionRes, desparasitacionRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -21941,7 +22103,9 @@
           window.supabase.from('productos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('movimientos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('arqueos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
-          window.supabase.from('agenda_eventos').select('*').eq('establecimiento_id', establecimientoId).order('start_iso', { ascending: true })
+          window.supabase.from('agenda_eventos').select('*').eq('establecimiento_id', establecimientoId).order('start_iso', { ascending: true }),
+          window.supabase.from('vacunaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('desparasitaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -21956,21 +22120,24 @@
         if (movimientoRes.error) throw movimientoRes.error;
         if (arqueoRes.error) throw arqueoRes.error;
         if (agendaRes.error) throw agendaRes.error;
+        if (vacunacionRes.error) throw vacunacionRes.error;
+        if (desparasitacionRes.error) throw desparasitacionRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
           facturaRows: facturaRes.data || [], cotizacionRows: cotizacionRes.data || [],
           hospRows: hospRes.data || [], productoRows: productoRes.data || [],
           movimientoRows: movimientoRes.data || [], arqueoRows: arqueoRes.data || [],
-          agendaRows: agendaRes.data || []
+          agendaRows: agendaRes.data || [],
+          vacunacionRows: vacunacionRes.data || [], desparasitacionRows: desparasitacionRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -22006,16 +22173,32 @@
         if (pet) pet.hospitalizaciones.push(construirHospitalizacionDesdeFila(r));
       });
 
-      // consultas es hoy la única fuente real de `timeline` (vacunaciones/
-      // desparasitaciones que también empujan al timeline siguen en memoria
-      // pura, sin persistir) — se ordena por fecha desc al final por si en
-      // el futuro se suma otra fuente real a este mismo array.
+      // consultas, vacunaciones y desparasitaciones alimentan `timeline` —
+      // cada una aporta sus propias entradas, se ordena por fecha desc al
+      // final una sola vez con todas juntas.
       consultaRows.forEach(r => {
         const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
         if (!pet) return;
         pet.timeline.push(construirConsultaDesdeFila(r));
         pet.consultas.push(construirConsultaRegistroDesdeFila(r));
       });
+
+      vacunacionRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const record = construirVacunacionDesdeFila(r);
+        pet.vacunaciones.push(record);
+        pet.timeline.push(construirVacunacionTimelineDesdeFila(record));
+      });
+
+      desparasitacionRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const record = construirDesparasitacionDesdeFila(r);
+        pet.desparasitaciones.push(record);
+        pet.timeline.push(construirDesparasitacionTimelineDesdeFila(record));
+      });
+
       Object.values(patientData).forEach(pet => {
         pet.timeline.sort((a, b) => new Date(b.dateSortKey || 0) - new Date(a.dateSortKey || 0));
         pet.consultas.sort((a, b) => new Date(b.fechaISO || 0) - new Date(a.fechaISO || 0));
