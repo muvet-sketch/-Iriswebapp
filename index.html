@@ -11306,13 +11306,7 @@
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-formula-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].formulas.splice(idx, 1);
-            renderFormulasTable(petKey);
-          }, 250);
-        }
+        eliminarFormulaReal(petKey, idx, row);
       } else if (moduleKey === 'vacunacion') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
@@ -15073,6 +15067,29 @@
         if (error) throw error;
       } catch (err) {
         console.error('[IRIS] Error eliminando vacunación en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    async function eliminarFormulaReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.formulas[idx];
+      const quitarLocal = () => {
+        data.formulas.splice(idx, 1);
+        renderFormulasTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.dbId) return;
+      try {
+        const { error } = await window.supabase.from('formulas_medicas').delete().eq('id', record.dbId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando fórmula médica en Supabase:', err);
         showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
       }
     }
