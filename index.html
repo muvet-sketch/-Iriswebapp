@@ -6704,7 +6704,6 @@
         problemas: []
       }
     };
-    let seguimientoSeq = 2; // seg-1 ya usado en el mock de Luna
     // hospId identifica de forma estable cada hospitalización/ambulatorio
     // (independiente de su posición en el array, que cambia con unshift()
     // al crear una nueva) — necesario porque los seguimientos guardan
@@ -9580,11 +9579,13 @@
       return /felin|gat/i.test(especie || '') ? 'cat' : 'dog';
     }
 
-    // Arrays/objetos de los m\u00f3dulos cl\u00ednicos que todav\u00eda son 100% mock (las
-    // 18 sub-secciones de Historia salvo Documentos) \u2014 comparten este mismo
-    // scaffold vac\u00edo tanto al registrar una mascota nueva (guardarMascotaRegistro)
-    // como al reconstruir patientData desde Supabase
-    // (cargarDatosClinicaDesdeSupabase), para no duplicar la lista de campos.
+    // Arrays de las sub-secciones cl\u00ednicas de Historia (algunas ya
+    // persisten en Supabase \u2014 documentos, examenes, hospitalizaciones,
+    // vacunaciones, desparasitaciones, cirugias, tareasPendientes \u2014 el
+    // resto sigue 100% mock) \u2014 comparten este mismo scaffold vac\u00edo tanto
+    // al registrar una mascota nueva (guardarMascotaRegistro) como al
+    // reconstruir patientData desde Supabase (cargarDatosClinicaDesdeSupabase),
+    // para no duplicar la lista de campos.
     function crearScaffoldClinicoVacio() {
       return {
         timeline: [], consultas: [],
@@ -11212,57 +11213,27 @@
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-tarea-pendiente-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].tareasPendientes.splice(idx, 1);
-            renderTareasPendientesTable(petKey);
-          }, 250);
-        }
+        eliminarTareaPendienteReal(petKey, idx, row);
       } else if (moduleKey === 'peluqueria') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-peluqueria-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].peluquerias.splice(idx, 1);
-            renderPeluqueriaTable(petKey);
-          }, 250);
-        }
+        eliminarPeluqueriaReal(petKey, idx, row);
       } else if (moduleKey === 'guarderia') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-guarderia-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].guarderias.splice(idx, 1);
-            renderGuarderiaTable(petKey);
-          }, 250);
-        }
+        eliminarGuarderiaReal(petKey, idx, row);
       } else if (moduleKey === 'remision') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-remision-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].remisiones.splice(idx, 1);
-            renderRemisionesTable(petKey);
-          }, 250);
-        }
+        eliminarRemisionReal(petKey, idx, row);
       } else if (moduleKey === 'mensaje') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-mensaje-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].mensajes.splice(idx, 1);
-            renderMensajesTable(petKey);
-          }, 250);
-        }
+        eliminarMensajeReal(petKey, idx, row);
       } else if (moduleKey === 'orden') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
@@ -11335,32 +11306,12 @@
         // El mismo registro puede estar visible en la lista del Kardex y/o en
         // la tabla central — busca la fila en cualquiera de las dos.
         const row = document.querySelector(`tr[data-seguimiento-row="${idx}"]`) || document.querySelector(`tr[data-seguimiento-central-row="${idx}"]`);
-        const finishDeleteSeguimiento = () => {
-          patientData[petKey].seguimientos.splice(idx, 1);
-          renderSeguimientosCentralTable(petKey);
-          if (kardexContext && kardexContext.petKey === petKey) {
-            renderSeguimientosTable();
-            renderKardexTrazabilidad();
-            mountKardexHeader(petKey);
-          }
-        };
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(finishDeleteSeguimiento, 250);
-        } else {
-          finishDeleteSeguimiento();
-        }
+        eliminarSeguimientoReal(petKey, idx, row);
       } else if (moduleKey === 'cirugia') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-cirugia-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].cirugias.splice(idx, 1);
-            renderCirugiasTable(petKey);
-          }, 250);
-        }
+        eliminarCirugiaReal(petKey, idx, row);
       } else if (moduleKey === 'agenda-evento') {
         eliminarEventoAgendaReal(recordId);
       } else if (moduleKey === 'cotizacion') {
@@ -12558,7 +12509,7 @@
       if (e.target === document.getElementById('tarea-pendiente-modal')) closeTareaPendienteModal();
     }
 
-    function guardarTareaPendiente() {
+    async function guardarTareaPendiente() {
       const isEdit = !!editingTareaPendienteContext;
       const petKey = isEdit ? editingTareaPendienteContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -12574,41 +12525,85 @@
         return;
       }
 
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+
       const responsable = USUARIOS_SISTEMA.find(u => u.id === responsableId);
       const responsableNombre = responsable ? responsable.nombre : '—';
       const fechaLimite = fechaLimiteISO ? formatFechaCorta(fechaLimiteISO) : null;
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = 'Dr. Sebastián Ríos';
 
-      if (isEdit) {
-        const record = data.tareasPendientes[editingTareaPendienteContext.index];
-        record.descripcion = descripcion;
-        record.responsableId = responsableId;
-        record.responsableNombre = responsableNombre;
-        record.prioridad = prioridad;
-        record.fechaLimiteISO = fechaLimiteISO || null;
-        record.fechaLimite = fechaLimite;
-        record.notas = notas;
-      } else {
-        data.tareasPendientes.unshift({
-          descripcion, responsableId, responsableNombre, prioridad,
-          fechaLimiteISO: fechaLimiteISO || null, fechaLimite,
-          notas,
-          estado: 'pendiente',
-          usuario: 'Dr. Sebastián Ríos'
-        });
+      const saveBtn = document.getElementById('tarea-pendiente-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        const payload = {
+          descripcion, responsable_id: responsableId, responsable_nombre: responsableNombre,
+          prioridad, fecha_limite: fechaLimiteISO || null, notas: notas || null,
+          usuario: usuarioNombre
+        };
+
+        let dbId = isEdit ? data.tareasPendientes[editingTareaPendienteContext.index].id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('tareas_pendientes')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('tareas_pendientes').insert({
+            ...payload, estado: 'pendiente', establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        if (isEdit) {
+          const record = data.tareasPendientes[editingTareaPendienteContext.index];
+          record.descripcion = descripcion;
+          record.responsableId = responsableId;
+          record.responsableNombre = responsableNombre;
+          record.prioridad = prioridad;
+          record.fechaLimiteISO = fechaLimiteISO || null;
+          record.fechaLimite = fechaLimite;
+          record.notas = notas;
+        } else {
+          data.tareasPendientes.unshift({
+            id: dbId, descripcion, responsableId, responsableNombre, prioridad,
+            fechaLimiteISO: fechaLimiteISO || null, fechaLimite,
+            notas,
+            estado: 'pendiente',
+            usuario: usuarioNombre
+          });
+        }
+
+        renderTareasPendientesTable(petKey);
+        refrescarTableroQuicknavSi('tareas-pendientes', petKey);
+        closeTareaPendienteModal();
+        showToast(isEdit ? 'Tarea actualizada' : 'Tarea registrada');
+      } catch (err) {
+        console.error('[IRIS] Error guardando tarea pendiente en Supabase:', err);
+        showToast('No se pudo guardar la tarea — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
       }
-
-      renderTareasPendientesTable(petKey);
-      refrescarTableroQuicknavSi('tareas-pendientes', petKey);
-      closeTareaPendienteModal();
-      showToast(isEdit ? 'Tarea actualizada' : 'Tarea registrada');
     }
 
-    function toggleEstadoTareaPendiente(petKey, idx) {
+    async function toggleEstadoTareaPendiente(petKey, idx) {
       const record = patientData[petKey].tareasPendientes[idx];
       record.estado = record.estado === 'completada' ? 'pendiente' : 'completada';
       renderTareasPendientesTable(petKey);
       refrescarTableroQuicknavSi('tareas-pendientes', petKey);
       showToast(record.estado === 'completada' ? 'Tarea marcada como completada' : 'Tarea reabierta');
+      if (window.supabase && record.id) {
+        const { error } = await window.supabase.from('tareas_pendientes')
+          .update({ estado: record.estado, updated_at: new Date().toISOString() }).eq('id', record.id);
+        if (error) console.error('[IRIS] Error actualizando estado de tarea pendiente en Supabase:', error);
+      }
     }
 
     // ── MÓDULO: PELUQUERÍA Y SPA ──────────────────────────────────
@@ -12822,7 +12817,18 @@
       if (e.target === document.getElementById('peluqueria-modal')) closePeluqueriaModal();
     }
 
-    function guardarPeluqueria() {
+    function construirPeluqueriaTimelineDesdeFila(record) {
+      return {
+        type: 'Peluquería y Spa',
+        date: record.fecha,
+        dateSortKey: record.fechaISO,
+        title: `Servicio de peluquería y spa — ${peluqueriaServiciosLabel(record)}`,
+        summary: record.observaciones || `${record.servicios.length} servicio(s) registrado(s).`,
+        vet: peluqueriaEncargadosLabel(record)
+      };
+    }
+
+    async function guardarPeluqueria() {
       const isEdit = !!editingPeluqueriaContext;
       const petKey = isEdit ? editingPeluqueriaContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -12838,43 +12844,85 @@
         return;
       }
 
-      const record = {
-        fechaISO, fecha: formatFechaHoraCorta(fechaISO),
-        servicios,
-        observaciones,
-        fotosAntes: [...peluFotosAntes],
-        fotosDespues: [...peluFotosDespues],
-        proximaCitaISO: proximaCitaISO || null,
-        proximaCita: proximaCitaISO ? formatFechaCorta(proximaCitaISO) : null,
-        vacunacionAntirrabica,
-        usuario: 'Dr. Sebastián Ríos'
-      };
-
-      if (isEdit) {
-        data.peluquerias[editingPeluqueriaContext.index] = record;
-      } else {
-        data.peluquerias.unshift(record);
-        data.timeline.unshift({
-          type: 'Peluquería y Spa',
-          date: record.fecha,
-          title: `Servicio de peluquería y spa — ${peluqueriaServiciosLabel(record)}`,
-          summary: record.observaciones || `${record.servicios.length} servicio(s) registrado(s).`,
-          vet: peluqueriaEncargadosLabel(record)
-        });
-        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
       }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || '';
 
-      renderPeluqueriaTable(petKey);
-      closePeluqueriaModal();
-      showToast(isEdit ? 'Registro de peluquería y spa actualizado' : 'Peluquería y spa registrada');
-      if (!isEdit && record.proximaCitaISO) {
-        crearEventoSeguimiento({
-          fechaISO: record.proximaCitaISO,
-          propietario: data.owner,
-          petKey,
-          tipoEvento: 'otro',
-          origen: `Peluquería y spa — ${data.name} — Próxima cita ${record.proximaCita}`
-        });
+      const saveBtn = document.getElementById('peluqueria-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        // `fotos_antes`/`fotos_despues` en Supabase solo guardan {nombre} —
+        // el archivo en sí nunca se sube a Storage (ver nota junto a la
+        // tabla `peluquerias` en supabase/schema.sql), así que la URL de
+        // blob local (peluFotosAntes/peluFotosDespues en memoria) no se
+        // persiste.
+        const payload = {
+          fecha: fechaISO, servicios,
+          observaciones: observaciones || null,
+          fotos_antes: peluFotosAntes.map(f => ({ nombre: f.nombre })),
+          fotos_despues: peluFotosDespues.map(f => ({ nombre: f.nombre })),
+          proxima_cita: proximaCitaISO || null,
+          vacunacion_antirrabica: vacunacionAntirrabica,
+          usuario: usuarioNombre
+        };
+
+        let dbId = isEdit ? data.peluquerias[editingPeluqueriaContext.index].id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('peluquerias')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('peluquerias').insert({
+            ...payload, establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        const record = {
+          id: dbId, fechaISO, fecha: formatFechaHoraCorta(fechaISO),
+          servicios,
+          observaciones,
+          fotosAntes: [...peluFotosAntes],
+          fotosDespues: [...peluFotosDespues],
+          proximaCitaISO: proximaCitaISO || null,
+          proximaCita: proximaCitaISO ? formatFechaCorta(proximaCitaISO) : null,
+          vacunacionAntirrabica,
+          usuario: usuarioNombre
+        };
+
+        if (isEdit) {
+          data.peluquerias[editingPeluqueriaContext.index] = record;
+        } else {
+          data.peluquerias.unshift(record);
+          data.timeline.unshift(construirPeluqueriaTimelineDesdeFila(record));
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderPeluqueriaTable(petKey);
+        closePeluqueriaModal();
+        showToast(isEdit ? 'Registro de peluquería y spa actualizado' : 'Peluquería y spa registrada');
+        if (!isEdit && record.proximaCitaISO) {
+          crearEventoSeguimiento({
+            fechaISO: record.proximaCitaISO,
+            propietario: data.owner,
+            petKey,
+            tipoEvento: 'otro',
+            origen: `Peluquería y spa — ${data.name} — Próxima cita ${record.proximaCita}`
+          });
+        }
+      } catch (err) {
+        console.error('[IRIS] Error guardando peluquería y spa en Supabase:', err);
+        showToast('No se pudo guardar el registro de peluquería y spa — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
       }
     }
 
@@ -12979,7 +13027,18 @@
       if (e.target === document.getElementById('guarderia-modal')) closeGuarderiaModal();
     }
 
-    function guardarGuarderia() {
+    function construirGuarderiaTimelineDesdeFila(record) {
+      return {
+        type: 'Guardería',
+        date: record.fechaIngreso,
+        dateSortKey: record.fechaIngresoISO,
+        title: `Ingreso a ${record.tipo}`,
+        summary: record.observaciones || `Tipo de comida: ${record.tipoComida || '—'}${record.fechaSalida ? ' · Salida: ' + record.fechaSalida : ' · En curso'}`,
+        vet: record.usuario
+      };
+    }
+
+    async function guardarGuarderia() {
       const isEdit = !!editingGuarderiaContext;
       const petKey = isEdit ? editingGuarderiaContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -12997,31 +13056,66 @@
         return;
       }
 
-      const record = {
-        fechaIngresoISO, fechaIngreso: formatFechaHoraCorta(fechaIngresoISO),
-        fechaSalidaISO: fechaSalidaISO || null,
-        fechaSalida: fechaSalidaISO ? formatFechaHoraCorta(fechaSalidaISO) : null,
-        tipo, tipoComida, cantidadComida, objetos, observaciones,
-        usuario: 'Dr. Sebastián Ríos'
-      };
-
-      if (isEdit) {
-        data.guarderias[editingGuarderiaContext.index] = record;
-      } else {
-        data.guarderias.unshift(record);
-        data.timeline.unshift({
-          type: 'Guardería',
-          date: record.fechaIngreso,
-          title: `Ingreso a ${record.tipo}`,
-          summary: record.observaciones || `Tipo de comida: ${record.tipoComida || '—'}${record.fechaSalida ? ' · Salida: ' + record.fechaSalida : ' · En curso'}`,
-          vet: record.usuario
-        });
-        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
       }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || '';
 
-      renderGuarderiaTable(petKey);
-      closeGuarderiaModal();
-      showToast(isEdit ? 'Registro de guardería actualizado' : 'Guardería registrada');
+      const saveBtn = document.getElementById('guarderia-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        const payload = {
+          fecha_ingreso: fechaIngresoISO, fecha_salida: fechaSalidaISO || null,
+          tipo, tipo_comida: tipoComida || null, cantidad_comida: cantidadComida || null,
+          objetos: objetos || null, observaciones: observaciones || null,
+          usuario: usuarioNombre
+        };
+
+        let dbId = isEdit ? data.guarderias[editingGuarderiaContext.index].id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('guarderias')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('guarderias').insert({
+            ...payload, establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        const record = {
+          id: dbId,
+          fechaIngresoISO, fechaIngreso: formatFechaHoraCorta(fechaIngresoISO),
+          fechaSalidaISO: fechaSalidaISO || null,
+          fechaSalida: fechaSalidaISO ? formatFechaHoraCorta(fechaSalidaISO) : null,
+          tipo, tipoComida, cantidadComida, objetos, observaciones,
+          usuario: usuarioNombre
+        };
+
+        if (isEdit) {
+          data.guarderias[editingGuarderiaContext.index] = record;
+        } else {
+          data.guarderias.unshift(record);
+          data.timeline.unshift(construirGuarderiaTimelineDesdeFila(record));
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderGuarderiaTable(petKey);
+        closeGuarderiaModal();
+        showToast(isEdit ? 'Registro de guardería actualizado' : 'Guardería registrada');
+      } catch (err) {
+        console.error('[IRIS] Error guardando guardería en Supabase:', err);
+        showToast('No se pudo guardar el registro de guardería — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
     }
 
     // ── MÓDULO: REMISIONES ────────────────────────────────────────
@@ -13117,7 +13211,18 @@
       if (e.target === document.getElementById('remision-modal')) closeRemisionModal();
     }
 
-    function guardarRemision() {
+    function construirRemisionTimelineDesdeFila(record) {
+      return {
+        type: 'Remisión',
+        date: record.fecha,
+        dateSortKey: record.fechaISO,
+        title: `Remisión a ${record.centroDestino}`,
+        summary: record.procedimiento || `Profesional: ${record.profesional}`,
+        vet: record.profesional
+      };
+    }
+
+    async function guardarRemision() {
       const isEdit = !!editingRemisionContext;
       const petKey = isEdit ? editingRemisionContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -13133,30 +13238,66 @@
         return;
       }
 
-      const record = {
-        fechaISO, fecha: formatFechaHoraCorta(fechaISO),
-        profesional, centroDestino, procedimiento, observaciones,
-        usuario: 'Dr. Sebastián Ríos'
-      };
-
-      if (isEdit) {
-        data.remisiones[editingRemisionContext.index] = record;
-      } else {
-        data.remisiones.unshift(record);
-        data.timeline.unshift({
-          type: 'Remisión',
-          date: record.fecha,
-          title: `Remisión a ${record.centroDestino}`,
-          summary: record.procedimiento || `Profesional: ${record.profesional}`,
-          vet: record.profesional
-        });
-        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
       }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = 'Dr. Sebastián Ríos';
 
-      renderRemisionesTable(petKey);
-      refrescarTableroQuicknavSi('remisiones', petKey);
-      closeRemisionModal();
-      showToast(isEdit ? 'Remisión actualizada' : 'Remisión registrada');
+      const saveBtn = document.getElementById('remision-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        const payload = {
+          fecha: fechaISO, profesional,
+          centro_destino: centroDestino,
+          procedimiento: procedimiento || null,
+          observaciones: observaciones || null,
+          usuario: usuarioNombre
+        };
+
+        let dbId = isEdit ? data.remisiones[editingRemisionContext.index].id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('remisiones')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('remisiones').insert({
+            ...payload, establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        const record = {
+          id: dbId,
+          fechaISO, fecha: formatFechaHoraCorta(fechaISO),
+          profesional, centroDestino, procedimiento, observaciones,
+          usuario: usuarioNombre
+        };
+
+        if (isEdit) {
+          data.remisiones[editingRemisionContext.index] = record;
+        } else {
+          data.remisiones.unshift(record);
+          data.timeline.unshift(construirRemisionTimelineDesdeFila(record));
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderRemisionesTable(petKey);
+        refrescarTableroQuicknavSi('remisiones', petKey);
+        closeRemisionModal();
+        showToast(isEdit ? 'Remisión actualizada' : 'Remisión registrada');
+      } catch (err) {
+        console.error('[IRIS] Error guardando remisión en Supabase:', err);
+        showToast('No se pudo guardar la remisión — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
     }
 
     // ── MÓDULO: MENSAJES AL PROPIETARIO ───────────────────────────
@@ -13232,7 +13373,22 @@
       if (e.target === document.getElementById('mensaje-modal')) closeMensajeModal();
     }
 
-    function enviarMensaje() {
+    // Construye la entrada de timeline de un mensaje a partir del record ya
+    // armado — reutilizado tanto al enviar (enviarMensaje) como al
+    // reconstruir el timeline desde Supabase (cargarDatosClinicaDesdeSupabase),
+    // mismo criterio que construirVacunacionTimelineDesdeFila.
+    function construirMensajeTimelineDesdeFila(record) {
+      return {
+        type: 'Mensaje al propietario',
+        date: record.fecha,
+        dateSortKey: record.fechaISO,
+        title: `Mensaje enviado — ${record.metodos.join(', ')}`,
+        summary: record.texto.length > 140 ? record.texto.slice(0, 140) + '…' : record.texto,
+        vet: record.usuario
+      };
+    }
+
+    async function enviarMensaje() {
       const petKey = selectedPetKey;
       const data = patientData[petKey];
 
@@ -13244,26 +13400,45 @@
         return;
       }
 
-      const fechaISO = new Date().toISOString().slice(0, 16);
-      const record = {
-        fechaISO, fecha: formatFechaHoraCorta(fechaISO),
-        texto, metodos,
-        usuario: 'Dr. Sebastián Ríos'
-      };
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede enviar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || '';
 
-      data.mensajes.unshift(record);
-      data.timeline.unshift({
-        type: 'Mensaje al propietario',
-        date: record.fecha,
-        title: `Mensaje enviado — ${record.metodos.join(', ')}`,
-        summary: record.texto.length > 140 ? record.texto.slice(0, 140) + '…' : record.texto,
-        vet: record.usuario
-      });
-      if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+      const sendBtn = document.getElementById('mensaje-enviar-btn');
+      if (sendBtn) sendBtn.disabled = true;
 
-      renderMensajesTable(petKey);
-      closeMensajeModal();
-      showToast('Mensaje enviado al propietario (simulado)');
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        const fechaISO = new Date().toISOString().slice(0, 16);
+        const { data: inserted, error } = await window.supabase.from('mensajes').insert({
+          fecha: fechaISO, texto, metodos, usuario: usuarioNombre,
+          establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+        }).select().single();
+        if (error) throw error;
+
+        const record = {
+          id: inserted.id, fechaISO, fecha: formatFechaHoraCorta(fechaISO),
+          texto, metodos, usuario: usuarioNombre
+        };
+
+        data.mensajes.unshift(record);
+        data.timeline.unshift(construirMensajeTimelineDesdeFila(record));
+        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+
+        renderMensajesTable(petKey);
+        closeMensajeModal();
+        showToast('Mensaje enviado al propietario (simulado)');
+      } catch (err) {
+        console.error('[IRIS] Error guardando mensaje en Supabase:', err);
+        showToast('No se pudo enviar el mensaje — intenta de nuevo');
+      } finally {
+        if (sendBtn) sendBtn.disabled = false;
+      }
     }
 
     // ── MÓDULO: CIRUGÍAS/PROCEDIMIENTOS ──────────────────────────
@@ -13513,7 +13688,19 @@
       if (e.target === document.getElementById('cirugia-modal')) closeCirugiaModal();
     }
 
-    function guardarCirugia() {
+    function construirCirugiaTimelineDesdeFila(record) {
+      return {
+        type: record.grupo === 'quirurgico' ? 'Procedimiento quirúrgico' : 'Procedimiento menor',
+        icon: record.grupo === 'quirurgico' ? 'scissors' : 'bandage',
+        date: `${record.fecha} ${record.hora}`,
+        dateSortKey: record.fechaISO,
+        title: `${record.tipo} — ${CIRUGIA_ESTADO_LABELS[record.estado]}`,
+        summary: `Médico responsable: ${record.medicoResponsable} · Auxiliar: ${record.auxiliarAsignado}${record.notasPreOp ? ' · ' + record.notasPreOp : ''}`,
+        vet: record.medicoResponsable
+      };
+    }
+
+    async function guardarCirugia() {
       const isEdit = !!editingCirugiaContext;
       const petKey = isEdit ? editingCirugiaContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -13527,6 +13714,11 @@
         renderCirugiasTable(petKey);
         closeCirugiaModal();
         showToast('Notas post-operatorias actualizadas');
+        if (window.supabase && record.id) {
+          const { error } = await window.supabase.from('cirugias')
+            .update({ notas_postop: record.notasPostOp || null, updated_at: new Date().toISOString() }).eq('id', record.id);
+          if (error) console.error('[IRIS] Error actualizando notas post-operatorias en Supabase:', error);
+        }
         return;
       }
 
@@ -13550,36 +13742,73 @@
         return;
       }
 
-      const record = {
-        grupo, tipo,
-        fechaISO, fecha: formatFechaCorta(fechaISO), hora,
-        medicoResponsable, auxiliarAsignado, anestesia, estado,
-        notasPreOp, notasPostOp,
-        consentimientoFirmado,
-        consentimientoFechaISO: consentimientoFechaISO || null,
-        consentimientoFecha: consentimientoFechaISO ? formatFechaCorta(consentimientoFechaISO) : null,
-        usuario: 'Dr. Sebastián Ríos'
-      };
-
-      if (isEdit) {
-        data.cirugias[editingCirugiaContext.index] = record;
-      } else {
-        data.cirugias.unshift(record);
-        data.timeline.unshift({
-          type: grupo === 'quirurgico' ? 'Procedimiento quirúrgico' : 'Procedimiento menor',
-          icon: grupo === 'quirurgico' ? 'scissors' : 'bandage',
-          date: `${record.fecha} ${record.hora}`,
-          title: `${record.tipo} — ${CIRUGIA_ESTADO_LABELS[estado]}`,
-          summary: `Médico responsable: ${medicoResponsable} · Auxiliar: ${auxiliarAsignado}${notasPreOp ? ' · ' + notasPreOp : ''}`,
-          vet: medicoResponsable
-        });
-        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
       }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const usuarioNombre = 'Dr. Sebastián Ríos';
 
-      renderCirugiasTable(petKey);
-      refrescarTableroQuicknavSi('cirugias', petKey);
-      closeCirugiaModal();
-      showToast(isEdit ? 'Procedimiento actualizado' : 'Procedimiento registrado');
+      const saveBtn = document.getElementById('cirugia-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        const payload = {
+          grupo, tipo, fecha: fechaISO, hora,
+          medico_responsable: medicoResponsable || null,
+          auxiliar_asignado: auxiliarAsignado || null,
+          anestesia: anestesia || null, estado,
+          notas_preop: notasPreOp || null, notas_postop: notasPostOp || null,
+          consentimiento_firmado: consentimientoFirmado,
+          consentimiento_fecha: consentimientoFechaISO || null,
+          usuario: usuarioNombre
+        };
+
+        let dbId = isEdit ? data.cirugias[editingCirugiaContext.index].id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('cirugias')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('cirugias').insert({
+            ...payload, establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        const record = {
+          id: dbId, grupo, tipo,
+          fechaISO, fecha: formatFechaCorta(fechaISO), hora,
+          medicoResponsable, auxiliarAsignado, anestesia, estado,
+          notasPreOp, notasPostOp,
+          consentimientoFirmado,
+          consentimientoFechaISO: consentimientoFechaISO || null,
+          consentimientoFecha: consentimientoFechaISO ? formatFechaCorta(consentimientoFechaISO) : null,
+          usuario: usuarioNombre
+        };
+
+        if (isEdit) {
+          data.cirugias[editingCirugiaContext.index] = record;
+        } else {
+          data.cirugias.unshift(record);
+          data.timeline.unshift(construirCirugiaTimelineDesdeFila(record));
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderCirugiasTable(petKey);
+        refrescarTableroQuicknavSi('cirugias', petKey);
+        closeCirugiaModal();
+        showToast(isEdit ? 'Procedimiento actualizado' : 'Procedimiento registrado');
+      } catch (err) {
+        console.error('[IRIS] Error guardando cirugía/procedimiento en Supabase:', err);
+        showToast('No se pudo guardar el procedimiento — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
     }
 
     // ── MÓDULO: ÓRDENES ──────────────────────────────────────────
@@ -14775,6 +15004,273 @@
       }
     }
 
+    function construirCirugiaDesdeFila(r) {
+      return {
+        id: r.id, grupo: r.grupo, tipo: r.tipo,
+        fechaISO: r.fecha, fecha: formatFechaCorta(r.fecha), hora: r.hora,
+        medicoResponsable: r.medico_responsable || '', auxiliarAsignado: r.auxiliar_asignado || '',
+        anestesia: r.anestesia || '', estado: r.estado,
+        notasPreOp: r.notas_preop || '', notasPostOp: r.notas_postop || '',
+        consentimientoFirmado: !!r.consentimiento_firmado,
+        consentimientoFechaISO: r.consentimiento_fecha || null,
+        consentimientoFecha: r.consentimiento_fecha ? formatFechaCorta(r.consentimiento_fecha) : null,
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarCirugiaReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.cirugias[idx];
+      const quitarLocal = () => {
+        data.cirugias.splice(idx, 1);
+        renderCirugiasTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('cirugias').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando cirugía/procedimiento en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function construirTareaPendienteDesdeFila(r) {
+      return {
+        id: r.id, descripcion: r.descripcion,
+        responsableId: r.responsable_id != null ? Number(r.responsable_id) : null,
+        responsableNombre: r.responsable_nombre || '—',
+        prioridad: r.prioridad,
+        fechaLimiteISO: r.fecha_limite || null,
+        fechaLimite: r.fecha_limite ? formatFechaCorta(r.fecha_limite) : null,
+        notas: r.notas || '',
+        estado: r.estado,
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarTareaPendienteReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.tareasPendientes[idx];
+      const quitarLocal = () => {
+        data.tareasPendientes.splice(idx, 1);
+        renderTareasPendientesTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('tareas_pendientes').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando tarea pendiente en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function construirPeluqueriaDesdeFila(r) {
+      return {
+        id: r.id,
+        fechaISO: (r.fecha || '').slice(0, 16), fecha: formatFechaHoraCorta(r.fecha),
+        servicios: Array.isArray(r.servicios) ? r.servicios : [],
+        observaciones: r.observaciones || '',
+        fotosAntes: Array.isArray(r.fotos_antes) ? r.fotos_antes : [],
+        fotosDespues: Array.isArray(r.fotos_despues) ? r.fotos_despues : [],
+        proximaCitaISO: r.proxima_cita || null,
+        proximaCita: r.proxima_cita ? formatFechaCorta(r.proxima_cita) : null,
+        vacunacionAntirrabica: r.vacunacion_antirrabica || 'no_especificado',
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarPeluqueriaReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.peluquerias[idx];
+      const quitarLocal = () => {
+        data.peluquerias.splice(idx, 1);
+        renderPeluqueriaTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('peluquerias').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando registro de peluquería y spa en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function construirGuarderiaDesdeFila(r) {
+      return {
+        id: r.id,
+        fechaIngresoISO: (r.fecha_ingreso || '').slice(0, 16), fechaIngreso: formatFechaHoraCorta(r.fecha_ingreso),
+        fechaSalidaISO: r.fecha_salida ? r.fecha_salida.slice(0, 16) : null,
+        fechaSalida: r.fecha_salida ? formatFechaHoraCorta(r.fecha_salida) : null,
+        tipo: r.tipo, tipoComida: r.tipo_comida || '', cantidadComida: r.cantidad_comida || '',
+        objetos: r.objetos || '', observaciones: r.observaciones || '',
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarGuarderiaReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.guarderias[idx];
+      const quitarLocal = () => {
+        data.guarderias.splice(idx, 1);
+        renderGuarderiaTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('guarderias').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando registro de guardería en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function construirSeguimientoTimelineDesdeFila(record) {
+      return {
+        type: 'Seguimiento',
+        date: record.fecha,
+        dateSortKey: record.fechaISO,
+        title: `Seguimiento — ${record.motivo || record.tipo || 'Sin motivo'}`,
+        summary: record.detalles || '—',
+        vet: seguimientoUsuarioNombre(record)
+      };
+    }
+
+    function construirSeguimientoDesdeFila(r) {
+      return {
+        id: r.id,
+        fechaISO: (r.fecha || '').slice(0, 16), fecha: formatFechaHoraCorta(r.fecha),
+        tipo: r.tipo, motivo: r.motivo || '', detalles: r.detalles || '',
+        adjuntos: r.adjuntos || [],
+        proximoControlISO: r.proximo_control || '', proximoControl: r.proximo_control ? formatFechaCorta(r.proximo_control) : '',
+        examenFisico: r.examen_fisico || '',
+        mensajePropietario: { enviar: !!r.mensaje_enviar, texto: r.mensaje_texto || '' },
+        origen: { modulo: r.origen_modulo, referenciaId: r.origen_referencia_id || null },
+        registradoPor: r.registrado_por != null ? Number(r.registrado_por) : null,
+        registradoPorNombre: r.registrado_por_nombre || '—',
+        creadoEnISO: r.created_at, editadoEnISO: r.updated_at
+      };
+    }
+
+    async function eliminarSeguimientoReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.seguimientos[idx];
+      const quitarLocal = () => {
+        data.seguimientos.splice(idx, 1);
+        renderSeguimientosCentralTable(petKey);
+        if (kardexContext && kardexContext.petKey === petKey) {
+          renderSeguimientosTable();
+          renderKardexTrazabilidad();
+          mountKardexHeader(petKey);
+        }
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('seguimientos').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando seguimiento en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function construirRemisionDesdeFila(r) {
+      return {
+        id: r.id,
+        fechaISO: (r.fecha || '').slice(0, 16), fecha: formatFechaHoraCorta(r.fecha),
+        profesional: r.profesional, centroDestino: r.centro_destino,
+        procedimiento: r.procedimiento || '', observaciones: r.observaciones || '',
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarRemisionReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.remisiones[idx];
+      const quitarLocal = () => {
+        data.remisiones.splice(idx, 1);
+        renderRemisionesTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('remisiones').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando remisión en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    function construirMensajeDesdeFila(r) {
+      return {
+        id: r.id,
+        fechaISO: (r.fecha || '').slice(0, 16), fecha: formatFechaHoraCorta(r.fecha),
+        texto: r.texto, metodos: Array.isArray(r.metodos) ? r.metodos : [],
+        usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarMensajeReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.mensajes[idx];
+      const quitarLocal = () => {
+        data.mensajes.splice(idx, 1);
+        renderMensajesTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('mensajes').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando mensaje en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
     function examenPruebasResumenHTML(petKey, examenIndex, tipo, pruebas) {
       const campoLabel = getExamenCampoLabel(tipo);
       return pruebas.map((p, pi) => `
@@ -15911,7 +16407,7 @@
 
     function seguimientoUsuarioNombre(record) {
       const u = USUARIOS_SISTEMA.find(u => u.id === record.registradoPor);
-      return u ? u.nombre : '—';
+      return u ? u.nombre : (record.registradoPorNombre || '—');
     }
 
     // ── Modal listado (dentro del Kardex de Hospitalización) ─────────
@@ -16050,66 +16546,112 @@
         : '<span style="font-size:12px;color:var(--text-2);">Sin adjuntos</span>';
     }
 
-    function guardarSeguimiento() {
+    async function guardarSeguimiento() {
       const isEdit = !!editingSeguimientoContext;
       const petKey = isEdit ? editingSeguimientoContext.petKey : seguimientoFormPetKey;
       const data = patientData[petKey];
       const existing = isEdit ? data.seguimientos[editingSeguimientoContext.idx] : null;
       const fechaValue = document.getElementById('seg-fecha').value;
-      const nowISO = new Date().toISOString();
       const mensajeEnviar = document.getElementById('seg-mensaje-enviar').checked;
+      const proximoControlValue = document.getElementById('seg-proximo-control').value;
+
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const registradoPor = isEdit ? existing.registradoPor : getCurrentSimUserId();
+      const registradoPorUsuario = USUARIOS_SISTEMA.find(u => u.id === registradoPor);
+
+      const saveBtn = document.getElementById('seg-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
 
       // TODO: fuera de alcance de este prototipo — botón "Corregir con IA"
       // sobre el campo Detalles del seguimiento (ver prompt original de este módulo).
-      const record = {
-        id: isEdit ? existing.id : `seg-${seguimientoSeq++}`,
-        fechaISO: fechaValue,
-        fecha: formatFechaHoraCorta(fechaValue),
-        tipo: document.getElementById('seg-tipo').value,
-        motivo: document.getElementById('seg-motivo').value.trim(),
-        detalles: document.getElementById('seg-detalles').value.trim(),
-        adjuntos: [...seguimientoAdjuntos],
-        proximoControlISO: document.getElementById('seg-proximo-control').value,
-        proximoControl: document.getElementById('seg-proximo-control').value ? formatFechaCorta(document.getElementById('seg-proximo-control').value) : '',
-        examenFisico: document.getElementById('seg-examen-fisico').value.trim(),
-        mensajePropietario: { enviar: mensajeEnviar, texto: document.getElementById('seg-mensaje-texto').value.trim() },
-        origen: isEdit ? existing.origen : { ...pendingSeguimientoOrigen },
-        registradoPor: isEdit ? existing.registradoPor : getCurrentSimUserId(),
-        creadoEnISO: isEdit ? existing.creadoEnISO : nowISO,
-        editadoEnISO: nowISO
-      };
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
 
-      if (isEdit) {
-        data.seguimientos[editingSeguimientoContext.idx] = record;
-      } else {
-        data.seguimientos.unshift(record);
-        data.timeline.unshift({
-          type: 'Seguimiento',
-          date: record.fecha,
-          title: `Seguimiento — ${record.motivo || record.tipo || 'Sin motivo'}`,
-          summary: record.detalles || '—',
-          vet: seguimientoUsuarioNombre(record)
-        });
-        if (selectedPetKey === petKey) renderHistoriaTimeline(data);
-      }
+        const origen = isEdit ? existing.origen : { ...pendingSeguimientoOrigen };
+        const payload = {
+          fecha: fechaValue,
+          tipo: document.getElementById('seg-tipo').value,
+          motivo: document.getElementById('seg-motivo').value.trim() || null,
+          detalles: document.getElementById('seg-detalles').value.trim() || null,
+          adjuntos: seguimientoAdjuntos.map(a => ({ nombre: a.nombre })),
+          proximo_control: proximoControlValue || null,
+          examen_fisico: document.getElementById('seg-examen-fisico').value.trim() || null,
+          mensaje_enviar: mensajeEnviar,
+          mensaje_texto: document.getElementById('seg-mensaje-texto').value.trim() || null,
+          origen_modulo: origen.modulo,
+          origen_referencia_id: origen.referenciaId || null,
+          registrado_por: registradoPor || null,
+          registrado_por_nombre: registradoPorUsuario ? registradoPorUsuario.nombre : (isEdit ? existing.registradoPorNombre : null)
+        };
 
-      closeSeguimientoFormModal();
-      renderSeguimientosCentralTable(petKey);
-      refrescarTableroQuicknavSi('seguimientos', petKey);
-      if (kardexContext && kardexContext.petKey === petKey) {
-        renderSeguimientosTable();
-        renderKardexTrazabilidad();
-        mountKardexHeader(petKey);
-      }
-      showToast((isEdit ? 'Seguimiento actualizado' : 'Seguimiento registrado') + (mensajeEnviar ? ' — mensaje enviado al propietario (simulado)' : ''));
-      if (!isEdit && record.proximoControlISO) {
-        crearEventoSeguimiento({
-          fechaISO: record.proximoControlISO,
-          propietario: data.owner,
-          petKey,
-          tipoEvento: 'control',
-          origen: `Seguimiento — ${data.name} — Próximo control ${record.proximoControl}`
-        });
+        let dbId = isEdit ? existing.id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('seguimientos')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('seguimientos').insert({
+            ...payload, establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        const record = {
+          id: dbId,
+          fechaISO: fechaValue,
+          fecha: formatFechaHoraCorta(fechaValue),
+          tipo: payload.tipo,
+          motivo: payload.motivo || '',
+          detalles: payload.detalles || '',
+          adjuntos: payload.adjuntos,
+          proximoControlISO: proximoControlValue,
+          proximoControl: proximoControlValue ? formatFechaCorta(proximoControlValue) : '',
+          examenFisico: payload.examen_fisico || '',
+          mensajePropietario: { enviar: mensajeEnviar, texto: payload.mensaje_texto || '' },
+          origen,
+          registradoPor,
+          registradoPorNombre: payload.registrado_por_nombre || '—',
+          creadoEnISO: isEdit ? existing.creadoEnISO : new Date().toISOString(),
+          editadoEnISO: new Date().toISOString()
+        };
+
+        if (isEdit) {
+          data.seguimientos[editingSeguimientoContext.idx] = record;
+        } else {
+          data.seguimientos.unshift(record);
+          data.timeline.unshift(construirSeguimientoTimelineDesdeFila(record));
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        closeSeguimientoFormModal();
+        renderSeguimientosCentralTable(petKey);
+        refrescarTableroQuicknavSi('seguimientos', petKey);
+        if (kardexContext && kardexContext.petKey === petKey) {
+          renderSeguimientosTable();
+          renderKardexTrazabilidad();
+          mountKardexHeader(petKey);
+        }
+        showToast((isEdit ? 'Seguimiento actualizado' : 'Seguimiento registrado') + (mensajeEnviar ? ' — mensaje enviado al propietario (simulado)' : ''));
+        if (!isEdit && record.proximoControlISO) {
+          crearEventoSeguimiento({
+            fechaISO: record.proximoControlISO,
+            propietario: data.owner,
+            petKey,
+            tipoEvento: 'control',
+            origen: `Seguimiento — ${data.name} — Próximo control ${record.proximoControl}`
+          });
+        }
+      } catch (err) {
+        console.error('[IRIS] Error guardando seguimiento en Supabase:', err);
+        showToast('No se pudo guardar el seguimiento — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
       }
     }
 
@@ -22090,7 +22632,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, vacunacionRes, desparasitacionRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -22105,7 +22647,14 @@
           window.supabase.from('arqueos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('agenda_eventos').select('*').eq('establecimiento_id', establecimientoId).order('start_iso', { ascending: true }),
           window.supabase.from('vacunaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
-          window.supabase.from('desparasitaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false })
+          window.supabase.from('desparasitaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('cirugias').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('tareas_pendientes').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
+          window.supabase.from('seguimientos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('remisiones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('peluquerias').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('guarderias').select('*').eq('establecimiento_id', establecimientoId).order('fecha_ingreso', { ascending: false }),
+          window.supabase.from('mensajes').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -22122,6 +22671,13 @@
         if (agendaRes.error) throw agendaRes.error;
         if (vacunacionRes.error) throw vacunacionRes.error;
         if (desparasitacionRes.error) throw desparasitacionRes.error;
+        if (cirugiaRes.error) throw cirugiaRes.error;
+        if (tareaPendienteRes.error) throw tareaPendienteRes.error;
+        if (seguimientoRes.error) throw seguimientoRes.error;
+        if (remisionRes.error) throw remisionRes.error;
+        if (peluqueriaRes.error) throw peluqueriaRes.error;
+        if (guarderiaRes.error) throw guarderiaRes.error;
+        if (mensajeRes.error) throw mensajeRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
@@ -22129,15 +22685,19 @@
           hospRows: hospRes.data || [], productoRows: productoRes.data || [],
           movimientoRows: movimientoRes.data || [], arqueoRows: arqueoRes.data || [],
           agendaRows: agendaRes.data || [],
-          vacunacionRows: vacunacionRes.data || [], desparasitacionRows: desparasitacionRes.data || []
+          vacunacionRows: vacunacionRes.data || [], desparasitacionRows: desparasitacionRes.data || [],
+          cirugiaRows: cirugiaRes.data || [], tareaPendienteRows: tareaPendienteRes.data || [],
+          seguimientoRows: seguimientoRes.data || [], remisionRows: remisionRes.data || [],
+          peluqueriaRows: peluqueriaRes.data || [], guarderiaRows: guarderiaRes.data || [],
+          mensajeRows: mensajeRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -22197,6 +22757,59 @@
         const record = construirDesparasitacionDesdeFila(r);
         pet.desparasitaciones.push(record);
         pet.timeline.push(construirDesparasitacionTimelineDesdeFila(record));
+      });
+
+      cirugiaRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const record = construirCirugiaDesdeFila(r);
+        pet.cirugias.push(record);
+        pet.timeline.push(construirCirugiaTimelineDesdeFila(record));
+      });
+
+      tareaPendienteRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (pet) pet.tareasPendientes.push(construirTareaPendienteDesdeFila(r));
+      });
+
+      peluqueriaRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const record = construirPeluqueriaDesdeFila(r);
+        pet.peluquerias.push(record);
+        pet.timeline.push(construirPeluqueriaTimelineDesdeFila(record));
+      });
+
+      guarderiaRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const record = construirGuarderiaDesdeFila(r);
+        pet.guarderias.push(record);
+        pet.timeline.push(construirGuarderiaTimelineDesdeFila(record));
+      });
+
+      seguimientoRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const record = construirSeguimientoDesdeFila(r);
+        pet.seguimientos.push(record);
+        pet.timeline.push(construirSeguimientoTimelineDesdeFila(record));
+      });
+
+      remisionRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const record = construirRemisionDesdeFila(r);
+        pet.remisiones.push(record);
+        pet.timeline.push(construirRemisionTimelineDesdeFila(record));
+      });
+
+      mensajeRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const record = construirMensajeDesdeFila(r);
+        pet.mensajes.push(record);
+        pet.timeline.push(construirMensajeTimelineDesdeFila(record));
       });
 
       Object.values(patientData).forEach(pet => {
@@ -24091,7 +24704,7 @@
       </div>
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeSeguimientoFormModal()">Cerrar</button>
-        <button class="btn-primary" onclick="guardarSeguimiento()">Guardar seguimiento</button>
+        <button class="btn-primary" id="seg-save-btn" onclick="guardarSeguimiento()">Guardar seguimiento</button>
       </div>
     </div>
   </div>

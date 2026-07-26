@@ -422,6 +422,85 @@ entrada en ese nav acotado de 10 módulos durante una consulta activa;
 si se necesita volver a él desde ahí, es vía "Ver órdenes completo"
 saliendo del Tablero, no hay atajo directo.
 
+**Cirugías/procedimientos y Tareas Pendientes SÍ persisten en Supabase**
+(tablas `cirugias`/`tareas_pendientes`, ver `supabase/schema.sql`) —
+mismo criterio que vacunaciones/desparasitaciones: `guardarCirugia()`/
+`guardarTareaPendiente()` son `async` y hacen insert/update BLOQUEANTE
+antes de tocar `patientData[petKey].cirugias`/`.tareasPendientes` (si
+falla la escritura remota no se aplica el cambio local),
+`eliminarCirugiaReal()`/`eliminarTareaPendienteReal()` borran de forma
+optimista, `toggleEstadoTareaPendiente()` también persiste el cambio
+de estado, y `cargarDatosClinicaDesdeSupabase()` reconstruye ambos
+arrays (más las entradas de timeline de Cirugías, vía
+`construirCirugiaTimelineDesdeFila()`) al iniciar sesión. Antes vivían
+solo en memoria y se perdían al refrescar la página o volver a
+iniciar sesión. `medico_responsable`/`auxiliar_asignado` (Cirugías) se
+guardan como texto (nombre), no como id, porque el modal ya los llena
+así. `responsable_id` (Tareas Pendientes) tiene la misma limitación
+que `agenda_eventos.encargado_id`: es el id LOCAL numérico de
+`USUARIOS_SISTEMA`, que se regenera 1..N en cada sesión — no un uuid
+estable — por eso el registro también guarda `responsable_nombre`
+aparte.
+
+**Seguimientos y Remisiones SÍ persisten en Supabase** (tablas
+`seguimientos`/`remisiones`, ver `supabase/schema.sql`) — mismo
+criterio que Cirugías/Tareas Pendientes arriba: `guardarSeguimiento()`/
+`guardarRemision()` son `async` y hacen insert/update BLOQUEANTE antes
+de tocar `patientData[petKey].seguimientos`/`.remisiones` (si falla la
+escritura remota no se aplica el cambio local),
+`eliminarSeguimientoReal()`/`eliminarRemisionReal()` borran de forma
+optimista, y `cargarDatosClinicaDesdeSupabase()` reconstruye ambos
+arrays (más sus entradas de timeline, vía
+`construirSeguimientoTimelineDesdeFila()`/`construirRemisionTimelineDesdeFila()`,
+mismo patrón que Cirugías) al iniciar sesión. Antes vivían solo en
+memoria y se perdían al refrescar la página o volver a iniciar sesión.
+`seguimientos.origen_modulo`/`origen_referencia_id` reemplazan al
+objeto `origen` en memoria (`{modulo, referenciaId}`); `referenciaId`
+sigue siendo `${hospId}:${diaIndex}` y `hospId` ya es el uuid real de
+`hospitalizaciones.id`, así que el enlace al Kardex sigue siendo
+válido tras recargar. `seguimientos.adjuntos` solo guarda `{nombre}`
+por elemento (jsonb) — el archivo nunca se sube a Storage, mismo
+criterio que `desparasitaciones.archivo_adjunto_nombre`, así que el
+adjunto no es descargable tras recargar, solo se conserva su nombre.
+`registrado_por` (Seguimientos) tiene la misma limitación que
+`responsable_id` (Tareas Pendientes): id LOCAL numérico de
+`USUARIOS_SISTEMA`, no un uuid estable — por eso también guarda
+`registrado_por_nombre` aparte, y `seguimientoUsuarioNombre()` cae a
+ese nombre guardado si el id ya no resuelve contra el roster actual.
+`remisiones.profesional` se guarda como texto (nombre), no como id,
+mismo criterio que `cirugias.medico_responsable`.
+
+**Peluquería y spa y Guardería SÍ persisten en Supabase** (tablas
+`peluquerias`/`guarderias`, ver `supabase/schema.sql`) — mismo criterio
+que Seguimientos/Remisiones arriba: `guardarPeluqueria()`/
+`guardarGuarderia()` son `async` y hacen insert/update BLOQUEANTE antes
+de tocar `patientData[petKey].peluquerias`/`.guarderias` (si falla la
+escritura remota no se aplica el cambio local),
+`eliminarPeluqueriaReal()`/`eliminarGuarderiaReal()` borran de forma
+optimista, y `cargarDatosClinicaDesdeSupabase()` reconstruye ambos
+arrays (más sus entradas de timeline, vía
+`construirPeluqueriaTimelineDesdeFila()`/`construirGuarderiaTimelineDesdeFila()`)
+al iniciar sesión. Antes vivían solo en memoria y se perdían al
+refrescar la página o volver a iniciar sesión.
+`peluquerias.fotos_antes`/`.fotos_despues` solo guardan `{nombre}` por
+elemento (jsonb) — mismo criterio que `seguimientos.adjuntos`: el
+archivo en sí nunca se sube a Storage (la URL de blob local del
+`<input type="file">` no sobrevive al refresco de todas formas), así
+que las fotos no son descargables tras recargar, solo se conserva el
+nombre de cada una.
+
+**Mensajes al propietario SÍ persiste en Supabase** (tabla `mensajes`,
+ver `supabase/schema.sql`) — `enviarMensaje()` ya era `async` e
+insertaba en Supabase antes de tocar `patientData[petKey].mensajes`,
+pero `cargarDatosClinicaDesdeSupabase()` no reconstruía el array (se
+perdía al refrescar igual) y "Eliminar" desde el menú "..." solo
+spliceaba local sin borrar en el servidor — ambos huecos ya se
+completaron (`construirMensajeDesdeFila()`/
+`construirMensajeTimelineDesdeFila()` + `eliminarMensajeReal()`, mismo
+patrón que el resto). Sin patrón de edición (un mensaje enviado no se
+edita) — por eso no hay `updated_at` ni política de update en esa
+tabla, a diferencia de vacunaciones/desparasitaciones.
+
 ## Al recibir un prompt nuevo de módulo
 1. Lee solo la sección del sidebar/JS relevante al módulo pedido, no
    todo el archivo.

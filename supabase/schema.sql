@@ -991,6 +991,45 @@ create policy "desparasitaciones_delete_member"
   on public.desparasitaciones for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── TABLA: mensajes (Mensajes al propietario) ────────────────────
+-- Sin patrón de edición (un mensaje ya enviado no se edita, solo se ve o
+-- se elimina) — por eso no hay `updated_at` ni política de update, a
+-- diferencia de vacunaciones/desparasitaciones. `fecha` es `timestamp`
+-- sin zona horaria a propósito, mismo criterio que `agenda_eventos.start_iso`
+-- (ver CLAUDE.md): el valor se genera y se lee siempre como cadena
+-- ingenua, nunca se parsea con offset.
+create table if not exists public.mensajes (
+  id                   uuid primary key default gen_random_uuid(),
+  establecimiento_id   uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id           uuid not null references public.mascotas (id) on delete cascade,
+  fecha                timestamp not null,
+  texto                text not null,
+  metodos              text[] not null default '{}',
+  usuario              text,
+  created_by           uuid references auth.users (id) on delete set null,
+  created_at           timestamptz not null default now()
+);
+
+create index if not exists mensajes_establecimiento_id_idx on public.mensajes (establecimiento_id);
+create index if not exists mensajes_mascota_id_idx on public.mensajes (mascota_id);
+
+alter table public.mensajes enable row level security;
+
+drop policy if exists "mensajes_select_member" on public.mensajes;
+create policy "mensajes_select_member"
+  on public.mensajes for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mensajes_insert_member" on public.mensajes;
+create policy "mensajes_insert_member"
+  on public.mensajes for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mensajes_delete_member" on public.mensajes;
+create policy "mensajes_delete_member"
+  on public.mensajes for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── STORAGE: bucket `avatars` (foto de perfil de usuario) ───────
 -- Público (igual que `fotos-mascotas`) — a diferencia de ese bucket, que
 -- es por establecimiento ("clinica/<estab>/..."), este es por usuario
@@ -1354,4 +1393,325 @@ create policy "agenda_eventos_update_member"
 drop policy if exists "agenda_eventos_delete_member" on public.agenda_eventos;
 create policy "agenda_eventos_delete_member"
   on public.agenda_eventos for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: cirugias (Cirugías/procedimientos) ────────────────────
+-- Antes vivía solo en memoria (patientData[petKey].cirugias, mock) y se
+-- perdía al refrescar — mismo criterio de columnas planas que
+-- vacunaciones/desparasitaciones. medico_responsable/auxiliar_asignado
+-- se guardan como texto (nombre), no como id: el modal ya los llena así
+-- (renderCirugiaMedicoOptions/renderCirugiaAuxiliarOptions usan
+-- u.nombre como value), mismo criterio que usuario.
+create table if not exists public.cirugias (
+  id                       uuid primary key default gen_random_uuid(),
+  establecimiento_id       uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id               uuid not null references public.mascotas (id) on delete cascade,
+  grupo                    text not null,
+  tipo                     text not null,
+  fecha                    date not null,
+  hora                     text not null,
+  medico_responsable       text,
+  auxiliar_asignado        text,
+  anestesia                text,
+  estado                   text not null default 'programado',
+  notas_preop              text,
+  notas_postop             text,
+  consentimiento_firmado   boolean not null default false,
+  consentimiento_fecha     date,
+  usuario                  text,
+  created_by               uuid references auth.users (id) on delete set null,
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
+);
+
+create index if not exists cirugias_establecimiento_id_idx on public.cirugias (establecimiento_id);
+create index if not exists cirugias_mascota_id_idx on public.cirugias (mascota_id);
+
+alter table public.cirugias enable row level security;
+
+drop policy if exists "cirugias_select_member" on public.cirugias;
+create policy "cirugias_select_member"
+  on public.cirugias for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "cirugias_insert_member" on public.cirugias;
+create policy "cirugias_insert_member"
+  on public.cirugias for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "cirugias_update_member" on public.cirugias;
+create policy "cirugias_update_member"
+  on public.cirugias for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "cirugias_delete_member" on public.cirugias;
+create policy "cirugias_delete_member"
+  on public.cirugias for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: tareas_pendientes ──────────────────────────────────────
+-- Antes vivía solo en memoria (patientData[petKey].tareasPendientes,
+-- mock) y se perdía al refrescar. responsable_id es el id LOCAL
+-- numérico de USUARIOS_SISTEMA (mismo criterio, y misma limitación,
+-- que agenda_eventos.encargado_id — no es un uuid de auth.users);
+-- responsable_nombre se guarda aparte para no depender de que ese id
+-- siga apuntando al mismo usuario tras recargar.
+create table if not exists public.tareas_pendientes (
+  id                  uuid primary key default gen_random_uuid(),
+  establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id          uuid not null references public.mascotas (id) on delete cascade,
+  descripcion         text not null,
+  responsable_id      integer,
+  responsable_nombre  text,
+  prioridad           text not null default 'media',
+  fecha_limite        date,
+  notas               text,
+  estado              text not null default 'pendiente' check (estado in ('pendiente','completada')),
+  usuario             text,
+  created_by          uuid references auth.users (id) on delete set null,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create index if not exists tareas_pendientes_establecimiento_id_idx on public.tareas_pendientes (establecimiento_id);
+create index if not exists tareas_pendientes_mascota_id_idx on public.tareas_pendientes (mascota_id);
+
+alter table public.tareas_pendientes enable row level security;
+
+drop policy if exists "tareas_pendientes_select_member" on public.tareas_pendientes;
+create policy "tareas_pendientes_select_member"
+  on public.tareas_pendientes for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "tareas_pendientes_insert_member" on public.tareas_pendientes;
+create policy "tareas_pendientes_insert_member"
+  on public.tareas_pendientes for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "tareas_pendientes_update_member" on public.tareas_pendientes;
+create policy "tareas_pendientes_update_member"
+  on public.tareas_pendientes for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "tareas_pendientes_delete_member" on public.tareas_pendientes;
+create policy "tareas_pendientes_delete_member"
+  on public.tareas_pendientes for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: seguimientos ──────────────────────────────────────────
+-- Antes vivía solo en memoria (patientData[petKey].seguimientos, mock) y
+-- se perdía al refrescar/reiniciar sesión. `fecha` es `timestamp` SIN
+-- zona horaria a propósito, mismo criterio que agenda_eventos.start_iso
+-- (el campo del formulario es un <input type="datetime-local"> y el
+-- frontend trabaja con esa cadena local ingenua tal cual). `adjuntos`
+-- es jsonb con solo {nombre} por elemento -- el archivo en sí nunca se
+-- sube a Storage (mismo criterio que desparasitaciones.archivo_adjunto_nombre),
+-- así que la URL de blob local no sobrevive al refresco y no se guarda.
+-- `origen_modulo`/`origen_referencia_id` reemplazan al objeto `origen`
+-- en memoria ({modulo, referenciaId}) -- referenciaId sigue siendo
+-- `${hospId}:${diaIndex}` y hospId ya es el uuid real de
+-- hospitalizaciones.id, así que el enlace sigue siendo válido tras
+-- recargar. `registrado_por` tiene la misma limitación que
+-- tareas_pendientes.responsable_id (id LOCAL numérico de
+-- USUARIOS_SISTEMA, no un uuid) -- por eso también se guarda
+-- `registrado_por_nombre` aparte.
+create table if not exists public.seguimientos (
+  id                    uuid primary key default gen_random_uuid(),
+  establecimiento_id    uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id            uuid not null references public.mascotas (id) on delete cascade,
+  fecha                 timestamp not null,
+  tipo                  text not null,
+  motivo                text,
+  detalles              text,
+  adjuntos              jsonb not null default '[]'::jsonb,
+  proximo_control       date,
+  examen_fisico         text,
+  mensaje_enviar        boolean not null default false,
+  mensaje_texto         text,
+  origen_modulo         text not null,
+  origen_referencia_id  text,
+  registrado_por        integer,
+  registrado_por_nombre text,
+  created_by            uuid references auth.users (id) on delete set null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now()
+);
+
+create index if not exists seguimientos_establecimiento_id_idx on public.seguimientos (establecimiento_id);
+create index if not exists seguimientos_mascota_id_idx on public.seguimientos (mascota_id);
+
+alter table public.seguimientos enable row level security;
+
+drop policy if exists "seguimientos_select_member" on public.seguimientos;
+create policy "seguimientos_select_member"
+  on public.seguimientos for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "seguimientos_insert_member" on public.seguimientos;
+create policy "seguimientos_insert_member"
+  on public.seguimientos for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "seguimientos_update_member" on public.seguimientos;
+create policy "seguimientos_update_member"
+  on public.seguimientos for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "seguimientos_delete_member" on public.seguimientos;
+create policy "seguimientos_delete_member"
+  on public.seguimientos for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: remisiones ─────────────────────────────────────────────
+-- Antes vivía solo en memoria (patientData[petKey].remisiones, mock) y
+-- se perdía al refrescar/reiniciar sesión. Mismo criterio de columnas
+-- planas que cirugias -- `fecha` es `timestamp` sin zona horaria (mismo
+-- motivo que seguimientos.fecha: viene de un <input type="datetime-local">).
+-- `profesional` se guarda como texto (nombre), no como id -- el modal ya
+-- lo llena así (renderRemisionProfesionalOptions usa u.nombre como value).
+create table if not exists public.remisiones (
+  id                  uuid primary key default gen_random_uuid(),
+  establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id          uuid not null references public.mascotas (id) on delete cascade,
+  fecha               timestamp not null,
+  profesional         text not null,
+  centro_destino      text not null,
+  procedimiento       text,
+  observaciones       text,
+  usuario             text,
+  created_by          uuid references auth.users (id) on delete set null,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create index if not exists remisiones_establecimiento_id_idx on public.remisiones (establecimiento_id);
+create index if not exists remisiones_mascota_id_idx on public.remisiones (mascota_id);
+
+alter table public.remisiones enable row level security;
+
+drop policy if exists "remisiones_select_member" on public.remisiones;
+create policy "remisiones_select_member"
+  on public.remisiones for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "remisiones_insert_member" on public.remisiones;
+create policy "remisiones_insert_member"
+  on public.remisiones for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "remisiones_update_member" on public.remisiones;
+create policy "remisiones_update_member"
+  on public.remisiones for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "remisiones_delete_member" on public.remisiones;
+create policy "remisiones_delete_member"
+  on public.remisiones for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: peluquerias (Peluquería y spa) ────────────────────────
+-- Antes vivía solo en memoria (patientData[petKey].peluquerias, mock) y
+-- se perdía al refrescar/reiniciar sesión. `fecha` es `timestamp` sin
+-- zona horaria a propósito, mismo criterio que remisiones/seguimientos
+-- (viene de un <input type="datetime-local">). `servicios` es jsonb
+-- (mismo criterio que mascotas.peso_historico) porque el modal permite
+-- varios bloques repetibles de {tipoServicio, encargado, motivo,
+-- detalles}. `fotos_antes`/`fotos_despues` son jsonb con solo {nombre}
+-- por elemento -- el archivo en sí nunca se sube a Storage (mismo
+-- criterio que seguimientos.adjuntos/desparasitaciones.archivo_adjunto_nombre),
+-- así que la URL de blob local no sobrevive al refresco y no se guarda.
+create table if not exists public.peluquerias (
+  id                        uuid primary key default gen_random_uuid(),
+  establecimiento_id        uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id                uuid not null references public.mascotas (id) on delete cascade,
+  fecha                     timestamp not null,
+  servicios                 jsonb not null default '[]'::jsonb,
+  observaciones             text,
+  fotos_antes               jsonb not null default '[]'::jsonb,
+  fotos_despues             jsonb not null default '[]'::jsonb,
+  proxima_cita              date,
+  vacunacion_antirrabica    text,
+  usuario                   text,
+  created_by                uuid references auth.users (id) on delete set null,
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now()
+);
+
+create index if not exists peluquerias_establecimiento_id_idx on public.peluquerias (establecimiento_id);
+create index if not exists peluquerias_mascota_id_idx on public.peluquerias (mascota_id);
+
+alter table public.peluquerias enable row level security;
+
+drop policy if exists "peluquerias_select_member" on public.peluquerias;
+create policy "peluquerias_select_member"
+  on public.peluquerias for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "peluquerias_insert_member" on public.peluquerias;
+create policy "peluquerias_insert_member"
+  on public.peluquerias for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "peluquerias_update_member" on public.peluquerias;
+create policy "peluquerias_update_member"
+  on public.peluquerias for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "peluquerias_delete_member" on public.peluquerias;
+create policy "peluquerias_delete_member"
+  on public.peluquerias for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: guarderias (Guardería) ─────────────────────────────────
+-- Antes vivía solo en memoria (patientData[petKey].guarderias, mock) y
+-- se perdía al refrescar/reiniciar sesión. `fecha_ingreso`/`fecha_salida`
+-- son `timestamp` sin zona horaria, mismo criterio que peluquerias.fecha
+-- -- `fecha_salida` null significa "En curso" (ver enCurso en
+-- renderGuarderiaTable/guarderiaViewContentHTML).
+create table if not exists public.guarderias (
+  id                  uuid primary key default gen_random_uuid(),
+  establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id          uuid not null references public.mascotas (id) on delete cascade,
+  fecha_ingreso       timestamp not null,
+  fecha_salida        timestamp,
+  tipo                text not null,
+  tipo_comida         text,
+  cantidad_comida     text,
+  objetos             text,
+  observaciones       text,
+  usuario             text,
+  created_by          uuid references auth.users (id) on delete set null,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create index if not exists guarderias_establecimiento_id_idx on public.guarderias (establecimiento_id);
+create index if not exists guarderias_mascota_id_idx on public.guarderias (mascota_id);
+
+alter table public.guarderias enable row level security;
+
+drop policy if exists "guarderias_select_member" on public.guarderias;
+create policy "guarderias_select_member"
+  on public.guarderias for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "guarderias_insert_member" on public.guarderias;
+create policy "guarderias_insert_member"
+  on public.guarderias for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "guarderias_update_member" on public.guarderias;
+create policy "guarderias_update_member"
+  on public.guarderias for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "guarderias_delete_member" on public.guarderias;
+create policy "guarderias_delete_member"
+  on public.guarderias for delete
   using (public.user_is_member_of(establecimiento_id));
