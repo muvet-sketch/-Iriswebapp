@@ -1613,6 +1613,13 @@
     .owner-popover-label { font-size: 10px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.4px; }
     .owner-popover-value { font-size: 12.5px; color: var(--text-1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .owner-popover-profile-btn { display: flex; width: 100%; justify-content: center; margin-top: 8px; padding: 6px 10px; font-size: 12px; }
+    .owner-popover-pets-section { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .owner-popover-pet-item { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 6px; cursor: pointer; margin-top: 2px; }
+    .owner-popover-pet-item:hover { background-color: var(--surface-container-low); }
+    .owner-popover-pet-item.current { cursor: default; }
+    .owner-popover-pet-item.current:hover { background-color: transparent; }
+    .owner-popover-pet-name { font-size: 12.5px; font-weight: 500; color: var(--text-1); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .owner-popover-pet-current-tag { font-size: 10px; color: var(--clinic-accent); font-weight: 600; flex-shrink: 0; }
 
     .pet-header-right {
       display: flex;
@@ -6957,12 +6964,37 @@
           </div>
           ${copyIconHTML(value)}
         </div>` : '';
+      // Sección "Mascotas" — mismas mascotas del propietario que ya usa el
+      // chip del buscador (Parte B.1, ver getMascotasDePropietario), para
+      // poder saltar de una mascota a otra sin volver al buscador.
+      const mascotasHTML = p ? (() => {
+        const mascotas = getMascotasDePropietario(p.id);
+        if (!mascotas.length) return '';
+        const items = mascotas.map(([petKey, d]) => {
+          const isCurrent = petKey === selectedPetKey;
+          const avatar = d.fotoUrl
+            ? `<span class="pet-chip-photo"><img src="${d.fotoUrl}" alt="${d.name}"></span>`
+            : `<span class="pet-chip-photo"><i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:11px;height:11px;"></i></span>`;
+          return `
+            <div class="owner-popover-pet-item${isCurrent ? ' current' : ''}" ${isCurrent ? '' : `onclick="event.stopPropagation(); selectPet('${petKey}')"`}>
+              ${avatar}
+              <span class="owner-popover-pet-name">${d.name}</span>
+              ${isCurrent ? '<span class="owner-popover-pet-current-tag">Actual</span>' : ''}
+            </div>`;
+        }).join('');
+        return `
+          <div class="owner-popover-pets-section">
+            <span class="owner-popover-label">Mascotas</span>
+            ${items}
+          </div>`;
+      })() : '';
       document.getElementById('pet-owner-popover').innerHTML = `
         <div class="owner-popover-header">${nombre}</div>
         ${row('Documento', doc)}
         ${row('Teléfono', tel)}
         ${row('Email', email)}
         ${row('Dirección', direccion)}
+        ${mascotasHTML}
         ${p ? `<button type="button" class="btn-outline owner-popover-profile-btn" onclick="event.stopPropagation(); closeOwnerPopoverPin(); abrirPerfilPropietario('${p.id}')"><i data-lucide="user" style="width:13px;height:13px;"></i> Ver perfil completo</button>` : ''}
       `;
       lucide.createIcons();
@@ -9531,6 +9563,9 @@
       if (!data) return;
       editingMascotaPetKey = petKey;
 
+      const nombreEl = document.getElementById('mascota-nombre');
+      nombreEl.value = data.name || '';
+      nombreEl.classList.remove('field-error');
       document.getElementById('mascota-especie').value = data.species || '';
       document.getElementById('mascota-raza').value = data.breed || '';
       document.getElementById('mascota-color').value = data.color || '';
@@ -9570,6 +9605,15 @@
       const data = patientData[petKey];
       if (!data) return;
 
+      const nombreEl = document.getElementById('mascota-nombre');
+      const name = nombreEl.value.trim();
+      if (!name) {
+        nombreEl.classList.add('field-error');
+        showToast('El nombre de la mascota es obligatorio');
+        return;
+      }
+      nombreEl.classList.remove('field-error');
+
       const species = document.getElementById('mascota-especie').value.trim();
       const breed = document.getElementById('mascota-raza').value.trim();
       const color = document.getElementById('mascota-color').value.trim();
@@ -9590,7 +9634,7 @@
 
       if (window.supabase && data.mascotaId) {
         const { error } = await window.supabase.from('mascotas').update({
-          especie: species || null, raza: breed || null, color: color || null, genero: genero || null,
+          nombre: name, especie: species || null, raza: breed || null, color: color || null, genero: genero || null,
           peso: weight || null, talla: talla || null, estado_reproductivo: estadoReproductivo || null,
           fecha_nacimiento: fechaNacimiento || null, chip: chip || null, alimentacion: alimentacion || null,
           frecuencia_bano: frecuenciaBano || null, animal_servicio: animalServicio, fallecido,
@@ -9605,13 +9649,14 @@
       }
       if (btn) btn.disabled = false;
 
-      data.species = species; data.breed = breed; data.color = color; data.genero = genero;
+      data.name = name; data.species = species; data.breed = breed; data.color = color; data.genero = genero;
       data.weight = weight; data.talla = talla; data.estadoReproductivo = estadoReproductivo;
       data.fechaNacimiento = fechaNacimiento; data.chip = chip; data.alimentacion = alimentacion; data.frecuenciaBano = frecuenciaBano;
       data.animalServicio = animalServicio; data.fallecido = fallecido;
 
       // Refrescar cabeceras/tablas que muestran estos datos
       if (selectedPetKey === petKey) {
+        document.getElementById('pet-profile-name').textContent = data.name;
         document.getElementById('pet-profile-species').textContent = data.species;
         document.getElementById('pet-profile-breed').textContent = data.breed;
         document.getElementById('pet-profile-age').textContent = edadTextoParaMostrar(data);
@@ -9694,9 +9739,19 @@
       data.pesoHistorico = nuevoPesoHistorico;
       data.weight = nuevoWeight;
 
+      const usuarioNombre = (currentSession && currentSession.user && (currentSession.user.nombre || currentSession.user.email)) || '';
+      data.timeline.unshift({
+        type: 'Peso', icon: 'scale',
+        date: fecha, dateSortKey: fechaISO,
+        title: `Peso actualizado — ${pesoNum} kg`,
+        summary: 'Nuevo registro en el histórico de peso.',
+        vet: usuarioNombre
+      });
+
       if (selectedPetKey === petKey) {
         document.getElementById('pet-profile-weight').textContent = data.weight;
         mountPetGeneralCard('historia-pet-general', petKey);
+        renderHistoriaTimeline(data);
       }
       if (kardexContext && kardexContext.petKey === petKey) {
         renderWeightChartSVG('kardex-weight-chart', data.pesoHistorico);
@@ -9707,7 +9762,7 @@
     }
 
     // ── MODAL: REGISTRAR MASCOTA (Parte B.4) — reutiliza el mismo set de
-    // campos de #editar-mascota-modal + "Nombre" (que falta ahí), vinculada
+    // campos de #editar-mascota-modal (incluyendo "Nombre"), vinculada
     // a un propietario ya definido por contexto (no editable en este modal).
     let registrandoMascotaPropietarioId = null;
     // La mascota todavía no existe en Supabase mientras se llena este modal
@@ -23596,6 +23651,203 @@
       }
     }
 
+    // ── PERSISTENCIA DE BORRADORES DE FORMULARIO (localStorage) ──────────
+    // Objetivo: cerrar un modal (X / overlay / "Cancelar") o refrescar la
+    // página no debe perder lo que el usuario ya escribió en un formulario
+    // que no llegó a guardar. Motor genérico: no reimplementa el guardado
+    // de cada módulo, solo observa los inputs/selects/textareas con id
+    // dentro de cada `.modal-overlay` existente y su clase "show" — no hay
+    // que tocar abrir/guardar/cerrar de cada modal para que quede cubierto.
+    // Cuando el MISMO modal edita distintos registros (ej. Editar mascota
+    // de la mascota A vs B) hace falta saber "de cuál registro es este
+    // borrador" para no mezclarlos: MODAL_DRAFT_CONTEXT reutiliza las
+    // variables editingXxxContext/editingXxxId que cada módulo ya
+    // mantiene (no crea un mecanismo paralelo de identificación). Los
+    // modales sin entrada registrada caen a un único slot "default" — un
+    // riesgo aceptado para modales sin variable de edición propia (ej.
+    // Mensaje al propietario, que nunca se edita, solo se redacta).
+    // FORM_DRAFT_EXCLUDE cubre modales de solo lectura/confirmación sin
+    // datos que valga la pena recuperar.
+    const FORM_DRAFT_EXCLUDE = new Set([
+      'record-view-modal', 'delete-confirm-modal', 'link-modal',
+      'agenda-notif-modal', 'siigo-sync-modal'
+    ]);
+
+    const MODAL_DRAFT_CONTEXT = {
+      'editar-mascota-modal': () => editingMascotaPetKey,
+      'registrar-mascota-modal': () => registrandoMascotaPropietarioId != null ? `owner:${registrandoMascotaPropietarioId}` : 'new',
+      'trasladar-mascota-modal': () => trasladandoPetKey,
+      'actualizar-peso-modal': () => actualizandoPesoPetKey,
+      'registrar-propietario-modal': () => editingPropietarioId != null ? `edit:${editingPropietarioId}` : 'new',
+      'nueva-consulta-modal': () => editingConsultaContext ? `${editingConsultaContext.petKey}:${editingConsultaContext.dbId}` : `${selectedPetKey}:new`,
+      'formula-modal': () => editingFormulaContext ? `${editingFormulaContext.petKey}:${editingFormulaContext.index}` : `${selectedPetKey}:new`,
+      'vacunacion-modal': () => editingVacunacionContext ? `${editingVacunacionContext.petKey}:${editingVacunacionContext.index}` : `${selectedPetKey}:new`,
+      'desparasitacion-modal': () => editingDesparasitacionContext ? `${editingDesparasitacionContext.petKey}:${editingDesparasitacionContext.index}` : `${selectedPetKey}:new`,
+      'tarea-pendiente-modal': () => editingTareaPendienteContext ? `${editingTareaPendienteContext.petKey}:${editingTareaPendienteContext.index}` : `${selectedPetKey}:new`,
+      'peluqueria-modal': () => editingPeluqueriaContext ? `${editingPeluqueriaContext.petKey}:${editingPeluqueriaContext.index}` : `${selectedPetKey}:new`,
+      'guarderia-modal': () => editingGuarderiaContext ? `${editingGuarderiaContext.petKey}:${editingGuarderiaContext.index}` : `${selectedPetKey}:new`,
+      'remision-modal': () => editingRemisionContext ? `${editingRemisionContext.petKey}:${editingRemisionContext.index}` : `${selectedPetKey}:new`,
+      'mensaje-modal': () => `${selectedPetKey}:new`,
+      'cirugia-modal': () => editingCirugiaContext ? `${editingCirugiaContext.petKey}:${editingCirugiaContext.index}` : `${selectedPetKey}:new`,
+      'orden-modal': () => editingOrdenContext ? `${editingOrdenContext.petKey}:${editingOrdenContext.index}` : `${selectedPetKey}:new`,
+      'resultado-modal': () => editingResultadoContext ? `${editingResultadoContext.petKey}:${editingResultadoContext.index}` : `${selectedPetKey}:new`,
+      'examen-modal': () => editingExamenContext ? `${editingExamenContext.petKey}:${editingExamenContext.index}` : `${selectedPetKey}:new`,
+      'documento-modal': () => editingDocumentoContext ? `${editingDocumentoContext.petKey}:${editingDocumentoContext.index}` : `${selectedPetKey}:new`,
+      'hospitalizacion-modal': () => editingHospitalizacionContext ? `${editingHospitalizacionContext.petKey}:${editingHospitalizacionContext.index}` : `${selectedPetKey}:new`,
+      'tratamiento-modal': () => {
+        const base = kardexContext ? `${kardexContext.petKey}:${kardexContext.hospIndex}:${activeTratamientoDiaIndex}` : 'sin-kardex';
+        return editingTratamientoContext ? `${base}:${editingTratamientoContext.tratIndex}` : `${base}:new`;
+      },
+      'seguimiento-form-modal': () => editingSeguimientoContext ? `${editingSeguimientoContext.petKey}:${editingSeguimientoContext.idx}` : `${selectedPetKey}:new`,
+      'doc-venta-modal': () => (typeof docVentaState !== 'undefined' && docVentaState) ? `${docVentaState.tipo}:${docVentaState.editId || 'new'}` : 'default',
+      'cerrar-cuenta-modal': () => cerrarCuentaFacturaId,
+      'movimiento-modal': () => editingMovimientoId != null ? `edit:${editingMovimientoId}` : 'new',
+      'proveedor-modal': () => editingProveedorId != null ? `edit:${editingProveedorId}` : 'new',
+      'producto-modal': () => editingProductoId != null ? `edit:${editingProductoId}` : 'new',
+      'categoria-modal': () => editingCategoriaOriginal != null ? `edit:${editingCategoriaOriginal}` : 'new',
+      'orden-compra-modal': () => (typeof ocState !== 'undefined' && ocState && ocState.editId) ? `edit:${ocState.editId}` : 'new',
+      'compra-modal': () => (typeof compraState !== 'undefined' && compraState && compraState.editId) ? `edit:${compraState.editId}` : 'new',
+      'usuario-modal': () => editingUsuarioId != null ? `edit:${editingUsuarioId}` : 'new',
+      'usuario-detalle-modal': () => editingUsuarioDetalleId,
+      'variable-modal': () => editingVariableId != null ? `edit:${editingVariableId}` : 'new',
+      'propietario-facturacion-modal': () => facturacionPropietarioId,
+      'agenda-evento-modal': () => agendaEditingId != null ? `edit:${agendaEditingId}` : 'new',
+      // Wizards de archivo (Importar clientes/Excel): sin campo de texto
+      // que valga la pena recuperar, y el <input type="file"> nunca se
+      // puede restaurar por seguridad del navegador.
+      'importar-clientes-modal': () => null,
+      'importar-excel-modal': () => null
+    };
+
+    const formDraftOpenState = new Set();
+    const formDraftActiveContext = {};
+    const formDraftLastActionWasSave = {};
+    const formDraftSaveTimers = {};
+
+    function formDraftKey(modalId, ctxKey) {
+      return `iris_form_draft::${modalId}::${ctxKey}`;
+    }
+
+    function formDraftIsSkippableField(el) {
+      return el.type === 'file' || el.type === 'password' || el.type === 'hidden' || el.disabled;
+    }
+
+    function saveFormDraft(modalId) {
+      const overlay = document.getElementById(modalId);
+      if (!overlay) return;
+      const ctxKey = formDraftActiveContext[modalId] || 'default';
+      const fields = {};
+      let hasValue = false;
+      overlay.querySelectorAll('input[id], select[id], textarea[id]').forEach(el => {
+        if (formDraftIsSkippableField(el)) return;
+        if (el.type === 'checkbox' || el.type === 'radio') {
+          fields[el.id] = { checked: el.checked };
+          if (el.checked) hasValue = true;
+        } else {
+          fields[el.id] = { value: el.value };
+          if (el.value) hasValue = true;
+        }
+      });
+      const key = formDraftKey(modalId, ctxKey);
+      try {
+        if (!hasValue) { localStorage.removeItem(key); return; }
+        localStorage.setItem(key, JSON.stringify({ fields, savedAt: Date.now() }));
+      } catch (err) { /* localStorage lleno o no disponible — se ignora */ }
+    }
+
+    function restoreFormDraft(modalId, ctxKey) {
+      const overlay = document.getElementById(modalId);
+      if (!overlay) return;
+      let raw;
+      try { raw = localStorage.getItem(formDraftKey(modalId, ctxKey)); } catch (err) { return; }
+      if (!raw) return;
+      let draft;
+      try { draft = JSON.parse(raw); } catch (err) { return; }
+      if (!draft || !draft.fields) return;
+
+      const changedEls = [];
+      Object.keys(draft.fields).forEach(id => {
+        const el = overlay.querySelector(`#${CSS.escape(id)}`);
+        if (!el || formDraftIsSkippableField(el)) return;
+        const stored = draft.fields[id];
+        if (el.type === 'checkbox' || el.type === 'radio') {
+          if (!!el.checked !== !!stored.checked) { el.checked = stored.checked; changedEls.push(el); }
+        } else if (el.value !== stored.value) {
+          el.value = stored.value;
+          changedEls.push(el);
+        }
+      });
+      if (changedEls.length) {
+        changedEls.forEach(el => {
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        showToast('Se recuperó un borrador sin guardar');
+      }
+    }
+
+    function clearFormDraft(modalId, ctxKey) {
+      try { localStorage.removeItem(formDraftKey(modalId, ctxKey)); } catch (err) { /* noop */ }
+    }
+
+    function onModalDraftOpened(modalId) {
+      if (FORM_DRAFT_EXCLUDE.has(modalId)) return;
+      const ctxFn = MODAL_DRAFT_CONTEXT[modalId];
+      let ctxKey = 'default';
+      try {
+        const v = ctxFn ? ctxFn() : null;
+        if (v !== null && v !== undefined) ctxKey = String(v);
+      } catch (err) { /* variable de contexto no disponible aún — usa 'default' */ }
+      formDraftActiveContext[modalId] = ctxKey;
+      restoreFormDraft(modalId, ctxKey);
+    }
+
+    function onModalDraftClosed(modalId) {
+      if (FORM_DRAFT_EXCLUDE.has(modalId)) return;
+      if (formDraftLastActionWasSave[modalId]) {
+        clearFormDraft(modalId, formDraftActiveContext[modalId] || 'default');
+      }
+      formDraftLastActionWasSave[modalId] = false;
+    }
+
+    // Clic en el botón primario ("Guardar"/"Guardar cambios") del modal
+    // abierto -> si tras el clic el modal termina cerrándose, se asume
+    // guardado con éxito y se limpia el borrador (ver onModalDraftClosed).
+    // Si el guardado falla con validación, el modal se queda abierto y no
+    // pasa nada. Captura en fase de "capture": el propio modal-card llama
+    // event.stopPropagation() en su onclick para no cerrar el overlay al
+    // click interno, lo que bloquearía un listener en fase de burbuja.
+    document.addEventListener('click', e => {
+      const overlay = e.target.closest && e.target.closest('.modal-overlay.show');
+      if (!overlay) return;
+      formDraftLastActionWasSave[overlay.id] = !!e.target.closest('.btn-primary');
+    }, true);
+
+    document.addEventListener('input', e => {
+      const el = e.target;
+      if (!el || !el.id) return;
+      const overlay = el.closest && el.closest('.modal-overlay.show');
+      if (!overlay || FORM_DRAFT_EXCLUDE.has(overlay.id) || formDraftIsSkippableField(el)) return;
+      clearTimeout(formDraftSaveTimers[overlay.id]);
+      formDraftSaveTimers[overlay.id] = setTimeout(() => saveFormDraft(overlay.id), 400);
+    }, true);
+
+    document.querySelectorAll('.modal-overlay[id]').forEach(overlay => {
+      new MutationObserver(mutations => {
+        mutations.forEach(() => {
+          const isShown = overlay.classList.contains('show');
+          const wasShown = formDraftOpenState.has(overlay.id);
+          if (isShown && !wasShown) {
+            formDraftOpenState.add(overlay.id);
+            onModalDraftOpened(overlay.id);
+          } else if (!isShown && wasShown) {
+            formDraftOpenState.delete(overlay.id);
+            onModalDraftClosed(overlay.id);
+          }
+        });
+      }).observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    });
+
     // Llamada real (ver nota junto a mostrarShellSegunSesion()) — debe
     // ser lo último del script. bootstrapSession() reemplaza al viejo
     // interruptor puramente local por una sesión real de Supabase, y
@@ -24546,6 +24798,10 @@
       </div>
       <div class="soap-modal-body">
         <div class="med-block-grid">
+          <div class="input-group">
+            <label class="input-label">Nombre</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="mascota-nombre">
+          </div>
           <div class="input-group">
             <label class="input-label">Especie</label>
             <select class="soap-select-control" id="mascota-especie">
@@ -26104,7 +26360,7 @@
   </div>
 
   <!-- Modal: Registrar mascota (Parte B.4) — reutiliza el set de campos de
-       #editar-mascota-modal + "Nombre" (que falta ahí) -->
+       #editar-mascota-modal (incluyendo "Nombre") -->
   <div class="modal-overlay" id="registrar-mascota-modal" onclick="handleRegistrarMascotaOverlayClick(event)">
     <div class="soap-modal-card" style="width:640px;" onclick="event.stopPropagation()">
       <div class="soap-modal-header">
