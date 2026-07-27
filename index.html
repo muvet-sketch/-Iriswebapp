@@ -1292,7 +1292,7 @@
     .pet-chip-badge {
       background-color: #F1F5F9;
       border: 1px solid var(--border);
-      padding: 4px 8px;
+      padding: 3px 6px 3px 3px;
       border-radius: 20px;
       font-size: 11px;
       display: inline-flex;
@@ -1300,6 +1300,27 @@
       gap: 5px;
       font-weight: 500;
     }
+
+    .pet-chip-photo {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      overflow: hidden;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(255, 255, 255, 0.7);
+    }
+
+    .pet-chip-photo img { width: 100%; height: 100%; object-fit: cover; }
+
+    .pet-chip-consulta-btn {
+      padding: 3px;
+      border-radius: 50%;
+      background-color: rgba(255, 255, 255, 0.6);
+    }
+    .pet-chip-consulta-btn:hover { background-color: rgba(255, 255, 255, 0.95); }
 
     .pet-chip-badge.cat {
       background-color: #F0FDF4;
@@ -4194,12 +4215,12 @@
             <table class="results-table">
               <thead>
                 <tr>
+                  <th></th>
                   <th>Nombre propietario</th>
                   <th>Documento</th>
                   <th>Teléfono</th>
                   <th>Mascotas (Chip)</th>
                   <th>Última gestión</th>
-                  <th style="text-align: right;">Acciones</th>
                 </tr>
               </thead>
               <tbody id="propietarios-tbody">
@@ -6754,8 +6775,46 @@
       return propietarios.find(x => x.nombre === data.owner) || null;
     }
 
+    // Texto relativo tipo "Hace 2 horas"/"Ayer"/"Hace 3 días" a partir de un
+    // timestamp en ms — usado por getUltimaGestionPropietario().
+    function formatearTiempoRelativo(ms) {
+      const diffMin = Math.floor((Date.now() - ms) / 60000);
+      if (diffMin < 1) return 'Hace un momento';
+      if (diffMin < 60) return `Hace ${diffMin} minuto${diffMin === 1 ? '' : 's'}`;
+      const diffHoras = Math.floor(diffMin / 60);
+      if (diffHoras < 24) return `Hace ${diffHoras} hora${diffHoras === 1 ? '' : 's'}`;
+      const diffDias = Math.floor(diffHoras / 24);
+      if (diffDias === 1) return 'Ayer';
+      if (diffDias < 7) return `Hace ${diffDias} días`;
+      if (diffDias < 30) { const s = Math.floor(diffDias / 7); return `Hace ${s} semana${s === 1 ? '' : 's'}`; }
+      if (diffDias < 365) { const m = Math.floor(diffDias / 30); return `Hace ${m} mes${m === 1 ? '' : 'es'}`; }
+      const a = Math.floor(diffDias / 365);
+      return `Hace ${a} año${a === 1 ? '' : 's'}`;
+    }
+
+    // "Última gestión" se calcula EN VIVO a partir del evento más reciente en
+    // data.timeline (misma fuente que la Línea de Tiempo de Historia) entre
+    // TODAS las mascotas del propietario — antes se leía de
+    // propietario.ultimaGestionTime/Detail, un campo que solo se fijaba al
+    // crear el propietario ('Recién registrado') y ningún módulo volvía a
+    // tocar, así que se quedaba congelado en ese valor para siempre aunque
+    // el paciente tuviera consultas/vacunaciones/etc. días después. Depende
+    // de que cada entrada de timeline traiga dateSortKey (ISO) — ya lo traen
+    // las que vienen de Supabase y las que se crean en vivo vía
+    // construirXTimelineDesdeFila(); las que arman el objeto de timeline a
+    // mano (Citas/Consultas/Fórmulas/Resultados/Exámenes/Hospitalizaciones/
+    // Documentos) también lo agregan explícitamente.
     function getUltimaGestionPropietario(propietario) {
-      return { time: propietario.ultimaGestionTime || 'Recién registrado', detail: propietario.ultimaGestionDetail || '' };
+      let masReciente = null;
+      getMascotasDePropietario(propietario.id).forEach(([, data]) => {
+        const item = (data.timeline || [])[0];
+        if (!item) return;
+        const ms = new Date(item.dateSortKey || item.date).getTime();
+        if (isNaN(ms)) return;
+        if (!masReciente || ms > masReciente.ms) masReciente = { ms, item };
+      });
+      if (!masReciente) return { time: 'Recién registrado', detail: '' };
+      return { time: formatearTiempoRelativo(masReciente.ms), detail: masReciente.item.type || masReciente.item.title || '' };
     }
 
     // ── COPIAR AL PORTAPAPELES (Parte B.3) ──────────────────────────
@@ -6804,8 +6863,14 @@
         const mascotas = getMascotasDePropietario(p.id);
         const chips = mascotas.length
           ? mascotas.map(([petKey, d]) => `
-              <span class="pet-chip-badge ${d.avatarClass}" style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')">
-                <i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width: 12px; height: 12px;"></i> ${d.name} <span class="chip-number">${d.chip}</span>
+              <span class="pet-chip-badge ${d.avatarClass}">
+                <span class="pet-chip-photo" style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')" title="Ver historia clínica">
+                  ${d.fotoUrl ? `<img src="${d.fotoUrl}" alt="${d.name}">` : `<i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width: 11px; height: 11px;"></i>`}
+                </span>
+                <span style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')">${d.name} <span class="chip-number">${d.chip}</span></span>
+                <button class="row-actions-btn propietarios-consulta-btn pet-chip-consulta-btn" title="Iniciar consulta" onclick="event.stopPropagation(); iniciarConsultaMascotaDesdeBusqueda('${petKey}')">
+                  <i data-lucide="clipboard-plus" style="width: 12px; height: 12px;"></i>
+                </button>
               </span>
             `).join('')
           : '<span class="gestion-detail">Sin mascotas registradas</span>';
@@ -6813,6 +6878,11 @@
         const initials = p.nombre.split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('');
         return `
           <tr>
+            <td>
+              <button class="row-actions-btn" title="Estado de cuenta / Facturación" onclick="event.stopPropagation(); abrirFacturacionPropietario('${p.id}')">
+                <i data-lucide="credit-card" style="width:16px;height:16px;"></i>
+              </button>
+            </td>
             <td>
               <div class="owner-cell">
                 <div class="owner-avatar-placeholder">${initials || '—'}</div>
@@ -6828,67 +6898,26 @@
                 ${gestion.detail ? `<span class="gestion-detail">${gestion.detail}</span>` : ''}
               </span>
             </td>
-            <td style="text-align: right;">
-              <div style="display:flex; gap:2px; justify-content:flex-end;">
-                <button class="row-actions-btn" title="Perfil Tutor" onclick="event.stopPropagation(); abrirPerfilPropietario('${p.id}')">
-                  <i data-lucide="user" style="width:16px;height:16px;"></i>
-                </button>
-                <button class="row-actions-btn" title="Historia clínica paciente" onclick="event.stopPropagation(); irAHistoriaClinicaDesdeBusqueda('${p.id}')">
-                  <i data-lucide="stethoscope" style="width:16px;height:16px;"></i>
-                </button>
-                <button class="row-actions-btn propietarios-consulta-btn" title="Iniciar consulta" onclick="event.stopPropagation(); iniciarConsultaDesdeBusqueda('${p.id}')">
-                  <i data-lucide="clipboard-plus" style="width:16px;height:16px;"></i>
-                </button>
-                <button class="row-actions-btn" title="Facturación / estado de cuenta" onclick="event.stopPropagation(); abrirFacturacionPropietario('${p.id}')">
-                  <i data-lucide="credit-card" style="width:16px;height:16px;"></i>
-                </button>
-              </div>
-            </td>
           </tr>
         `;
       }).join('');
       lucide.createIcons();
     }
 
-    // Acciones de la columna ACCIONES del buscador de propietarios (Parte
-    // B.1) — reutilizan getMascotasDePropietario()/irAHistoriaDesdePerfil()/
-    // abrirTableroTrabajo() en vez de duplicar su lógica. Si el propietario
-    // tiene varias mascotas se usa la primera (mismo criterio simplificado
-    // que el resto del buscador, que no distingue mascota antes de entrar
-    // al perfil de Historia).
-    // Un propietario sin mascotas (típico justo después de importar el CSV
-    // de clientes, que solo crea el propietario) ya no es un callejón sin
-    // salida: en vez de solo avisar, abre "Registrar mascota" directo — y
-    // postRegistroMascotaAccion (ver guardarMascotaRegistro) retoma la
-    // acción original (ir a Historia / iniciar consulta) apenas se guarda.
+    // postRegistroMascotaAccion (ver guardarMascotaRegistro) retoma una
+    // acción pendiente apenas se registra una mascota nueva desde el modal
+    // "Registrar mascota" (ej. desde el Perfil de propietario).
     let postRegistroMascotaAccion = null;
 
-    function irAHistoriaClinicaDesdeBusqueda(propietarioId) {
-      const mascotas = getMascotasDePropietario(propietarioId);
-      if (!mascotas.length) {
-        showToast('Este propietario no tiene mascotas — regístrala para continuar');
-        openRegistrarMascotaModal(propietarioId);
-        postRegistroMascotaAccion = (petKey) => irAHistoriaDesdePerfil(petKey);
-        return;
-      }
-      irAHistoriaDesdePerfil(mascotas[0][0]);
-    }
-
-    function iniciarConsultaDesdeBusqueda(propietarioId) {
+    // Inicia consulta para UNA mascota puntual — cada chip del buscador de
+    // propietarios (Parte B.1) trae su propio botón "Iniciar consulta" que
+    // llama esto con su propio petKey, así funciona igual sin importar
+    // cuántas mascotas tenga el propietario (antes el único botón de la
+    // columna Acciones siempre usaba la primera mascota del propietario).
+    function iniciarConsultaMascotaDesdeBusqueda(petKey) {
       if (!ROLES[currentSimRole].canNewConsult) return; // botón ya oculto para este rol vía applySimRole()
-      const mascotas = getMascotasDePropietario(propietarioId);
-      if (!mascotas.length) {
-        showToast('Este propietario no tiene mascotas — regístrala para continuar');
-        openRegistrarMascotaModal(propietarioId);
-        postRegistroMascotaAccion = (petKey) => {
-          document.querySelector('.nav-tabs-bar .tab-btn[data-tab="consultorio"]').click();
-          selectPet(petKey);
-          abrirTableroTrabajo();
-        };
-        return;
-      }
       document.querySelector('.nav-tabs-bar .tab-btn[data-tab="consultorio"]').click();
-      selectPet(mascotas[0][0]);
+      selectPet(petKey);
       abrirTableroTrabajo();
     }
 
@@ -8691,6 +8720,7 @@
         dataDeCita.timeline.unshift({
           type: 'Cita',
           date: formatearFechaHoraAgenda(evento),
+          dateSortKey: evento.startISO,
           title: `Cita completada — ${AGENDA_TIPO_LABELS[evento.tipo] || evento.tipo}`,
           summary: evento.descripcion || '—',
           vet: (USUARIOS_SISTEMA.find(u => u.id === evento.encargadoId) || {}).nombre || '—'
@@ -10266,6 +10296,7 @@
           if (tItem) Object.assign(tItem, {
             type: motivo,
             date: formatFechaHoraCorta(fechaHoraISO),
+            dateSortKey: fechaHoraISO,
             title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
             summary,
             vet: usuario
@@ -10282,6 +10313,7 @@
             dbId,
             type: motivo,
             date: formatFechaConsulta(fechaValue),
+            dateSortKey: fechaHoraISO,
             title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
             summary: summary,
             vet: usuario
@@ -11959,6 +11991,7 @@
             dbId: record.dbId,
             type: 'Fórmula médica',
             date: record.fecha,
+            dateSortKey: record.fecha,
             title: `Fórmula médica — ${record.diagnostico || 'Sin diagnóstico'}`,
             summary: medSummary(record.medicamentos),
             vet: record.usuario
@@ -14525,6 +14558,7 @@
         data.timeline.unshift({
           type: esLab ? 'Prueba/Examen' : 'Imagen diagnóstica',
           date: formatFechaConsulta(),
+          dateSortKey: new Date().toISOString(),
           title: `Resultado registrado — ${orden.detalle}`,
           summary: esLab
             ? (record.observacionesLab || `${record.parametros.length} parámetro(s) registrados.`)
@@ -14956,6 +14990,7 @@
           data.timeline.unshift({
             type: getExamenTitulo(tipo),
             date: record.fecha,
+            dateSortKey: record.fechaISO,
             title: `${getExamenTitulo(tipo)} — ${bloquesInfo.map(b => b.prueba).join(', ')}`,
             summary: diagnosticoPresuntivo || '—',
             vet: usuarioNombre
@@ -15722,6 +15757,7 @@
           data.timeline.unshift({
             type: tipo,
             date: formatFechaCorta(fechaIngresoISO),
+            dateSortKey: fechaIngresoISO,
             title: `Ingreso — ${razon}`,
             summary: observaciones || `Tipo: ${tipo}`,
             vet: usuarioNombre
@@ -17029,6 +17065,7 @@
             dbId: record.dbId,
             type: 'Documento',
             date: record.fecha,
+            dateSortKey: record.fechaISO,
             title: `Documento — ${record.nombre}`,
             summary: record.estado === 'pendiente' ? 'Enviado para firma' : 'Guardado como borrador',
             vet: record.usuario
