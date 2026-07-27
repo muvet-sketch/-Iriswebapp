@@ -164,6 +164,10 @@ alter table public.profiles add column if not exists foto_url text;
 -- el número de matrícula bajo el nombre del médico en la fórmula generada.
 alter table public.profiles add column if not exists matricula text;
 alter table public.profiles add column if not exists firma_url text;
+-- tema_color: preferencia de tema de color de la cuenta (Mi perfil >
+-- Tema), una de las claves de CLINIC_THEMES en index.html
+-- ('teal'/'indigo'/'esmeralda'/'violeta'/'rosa'). null = Teal (defecto).
+alter table public.profiles add column if not exists tema_color text;
 
 -- ── TABLA: establecimientos (clínicas) ─────────────────────────
 create table if not exists public.establecimientos (

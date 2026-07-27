@@ -2225,33 +2225,7 @@
       line-height: 1.4;
     }
 
-    /* FLOATING COLOR PICKER (Selector de Color de Clínica) */
-    .theme-picker-widget {
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background-color: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 6px 12px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      box-shadow: var(--shadow-lg);
-      z-index: 200;
-      border: 1px solid rgba(226, 232, 240, 0.8);
-      backdrop-filter: blur(8px);
-    }
-
-    .theme-picker-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-2);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      user-select: none;
-    }
-
+    /* SELECTOR DE COLOR DE CLÍNICA (Mi perfil > Tema) */
     .theme-colors-list {
       display: flex;
       gap: 6px;
@@ -3092,6 +3066,27 @@
       display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;
     }
   </style>
+  <!-- Aplica el tema de color guardado ANTES de pintar el shell, para
+       evitar el parpadeo del Teal por defecto en cada refresh/login.
+       Cachea el objeto de tema COMPLETO (no solo su clave) bajo
+       'iris_tema_color' -- lo escribe seleccionarTemaClinica() (Mi
+       perfil > Tema, script del app shell) -- para que este bloque, que
+       corre mucho antes de que CLINIC_THEMES exista, no necesite
+       duplicar esa tabla de colores. bootstrapSession() vuelve a
+       aplicar el tema real del perfil (Supabase) apenas resuelve la
+       sesión, así que esto es solo una vista previa optimista. -->
+  <script>
+    (function() {
+      try {
+        var t = JSON.parse(localStorage.getItem('iris_tema_color') || 'null');
+        if (!t) return;
+        var root = document.documentElement.style;
+        root.setProperty('--clinic-accent', t.primary);
+        root.setProperty('--clinic-accent-light', t.light);
+        root.setProperty('--clinic-accent-rgb', t.rgb);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
 
@@ -3920,6 +3915,14 @@
             </div>
             <span class="field-error" id="perfil-tab-error" style="display:none;"></span>
             <button class="btn-primary" style="width:auto;align-self:flex-end;" onclick="guardarPerfilTab()">Guardar cambios</button>
+          </div>
+        </div>
+
+        <div class="card" style="max-width:640px;margin-top:20px;">
+          <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+            <span class="card-title">Tema</span>
+            <p style="font-size:12px;color:var(--text-2);margin:-8px 0 0;">Elige el color de acento de tu cuenta. Se guarda en tu perfil y se mantiene al iniciar sesión o refrescar la página.</p>
+            <div class="theme-colors-list" id="perfil-tema-colors"></div>
           </div>
         </div>
 
@@ -6445,18 +6448,6 @@
 
   </main>
 
-  <!-- SELECTOR DE COLOR FLOTANTE (Demostración de personalización de marca) -->
-  <div class="theme-picker-widget" id="theme-picker">
-    <span class="theme-picker-label">Tema Clínica</span>
-    <div class="theme-colors-list">
-      <div class="color-swatch active" style="background-color: #0F766E;" onclick="changeClinicColor('#0F766E', '#14B8A6', '15, 118, 110', this)" title="Teal (Defecto)"></div>
-      <div class="color-swatch" style="background-color: #4F46E5;" onclick="changeClinicColor('#4F46E5', '#6366F1', '79, 70, 229', this)" title="Indigo"></div>
-      <div class="color-swatch" style="background-color: #059669;" onclick="changeClinicColor('#059669', '#10B981', '5, 150, 105', this)" title="Esmeralda"></div>
-      <div class="color-swatch" style="background-color: #7C3AED;" onclick="changeClinicColor('#7C3AED', '#8B5CF6', '124, 58, 237', this)" title="Violeta"></div>
-      <div class="color-swatch" style="background-color: #E11D48;" onclick="changeClinicColor('#E11D48', '#F43F5E', '225, 29, 72', this)" title="Rosa"></div>
-    </div>
-  </div>
-
   </div>
   <!-- FIN APP SHELL -->
 
@@ -7658,6 +7649,13 @@
       localStorage.removeItem('iris_session_active');
       localStorage.removeItem('iris_sim_role');
       localStorage.removeItem('iris_active_estab_id');
+      // Evita que el tema del usuario que cierra sesión se filtre (vía la
+      // vista previa optimista del script temprano en <head>) al login o
+      // a la cuenta siguiente que inicie sesión en este mismo navegador.
+      localStorage.removeItem('iris_tema_color');
+      document.documentElement.style.removeProperty('--clinic-accent');
+      document.documentElement.style.removeProperty('--clinic-accent-light');
+      document.documentElement.style.removeProperty('--clinic-accent-rgb');
       const profileDropdownEl = document.getElementById('profile-dropdown');
       if (profileDropdownEl) profileDropdownEl.classList.remove('show');
       document.querySelectorAll('#auth-shell .screen').forEach(s => s.classList.remove('active'));
@@ -22062,13 +22060,56 @@
       document.getElementById('admin-tab-wrap').classList.remove('show');
     });
 
-    // CAMBIAR COLOR DE LA CLÍNICA DINÁMICAMENTE
-    function changeClinicColor(primaryColor, lightColor, rgbColor, element) {
-      document.documentElement.style.setProperty('--clinic-accent', primaryColor);
-      document.documentElement.style.setProperty('--clinic-accent-light', lightColor);
-      document.documentElement.style.setProperty('--clinic-accent-rgb', rgbColor);
-      document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
-      element.classList.add('active');
+    // ── TEMA DE COLOR DE LA CUENTA (Mi perfil > Tema) — antes era un
+    // selector flotante puramente decorativo (sin persistencia, se
+    // perdía en cada refresh); ahora vive en el perfil, se guarda en
+    // profiles.tema_color (Supabase, columna del usuario logueado, no
+    // de la clínica) y se cachea en localStorage bajo 'iris_tema_color'
+    // (objeto completo, ver script temprano en <head>) para poder
+    // pintarlo antes de que resuelva la sesión.
+    const CLINIC_THEMES = [
+      { key: 'teal', label: 'Teal (Defecto)', primary: '#0F766E', light: '#14B8A6', rgb: '15, 118, 110' },
+      { key: 'indigo', label: 'Indigo', primary: '#4F46E5', light: '#6366F1', rgb: '79, 70, 229' },
+      { key: 'esmeralda', label: 'Esmeralda', primary: '#059669', light: '#10B981', rgb: '5, 150, 105' },
+      { key: 'violeta', label: 'Violeta', primary: '#7C3AED', light: '#8B5CF6', rgb: '124, 58, 237' },
+      { key: 'rosa', label: 'Rosa', primary: '#E11D48', light: '#F43F5E', rgb: '225, 29, 72' },
+    ];
+
+    // Pinta las variables CSS + refresca el swatch activo en Mi perfil
+    // (si esa tarjeta ya está en el DOM) y actualiza la caché local.
+    // No persiste en Supabase -- eso lo hace seleccionarTemaClinica().
+    function aplicarTemaClinica(themeKey) {
+      const theme = CLINIC_THEMES.find(t => t.key === themeKey) || CLINIC_THEMES[0];
+      document.documentElement.style.setProperty('--clinic-accent', theme.primary);
+      document.documentElement.style.setProperty('--clinic-accent-light', theme.light);
+      document.documentElement.style.setProperty('--clinic-accent-rgb', theme.rgb);
+      localStorage.setItem('iris_tema_color', JSON.stringify(theme));
+      document.querySelectorAll('#perfil-tema-colors .color-swatch').forEach(s => {
+        s.classList.toggle('active', s.dataset.themeKey === theme.key);
+      });
+      return theme;
+    }
+
+    // Click en un swatch de Mi perfil > Tema: aplica de inmediato
+    // (como la foto/firma de perfil) y persiste en profiles.tema_color.
+    async function seleccionarTemaClinica(themeKey) {
+      aplicarTemaClinica(themeKey);
+      if (!currentSession || !currentSession.user) return;
+      currentSession.user.temaColor = themeKey;
+      if (window.supabase) {
+        const { error } = await window.supabase.from('profiles').update({ tema_color: themeKey }).eq('id', currentSession.user.id);
+        if (error) { showToast('El tema se ve localmente, pero no se pudo guardar en el servidor: ' + error.message); return; }
+      }
+      showToast('Tema actualizado');
+    }
+
+    function renderPerfilTemaSwatches() {
+      const container = document.getElementById('perfil-tema-colors');
+      if (!container) return;
+      const activeKey = (currentSession && currentSession.user && currentSession.user.temaColor) || 'teal';
+      container.innerHTML = CLINIC_THEMES.map(t => `
+        <div class="color-swatch${t.key === activeKey ? ' active' : ''}" style="background-color:${t.primary};" data-theme-key="${t.key}" title="${t.label}" onclick="seleccionarTemaClinica('${t.key}')"></div>
+      `).join('');
     }
 
     function showToast(msg) {
@@ -22287,6 +22328,7 @@
       document.getElementById('perfil-tab-email').value = currentSession.user.email || '';
       renderPerfilTabFotoPreview();
       renderPerfilTabFirmaPreview();
+      renderPerfilTemaSwatches();
 
       const estabContainer = document.getElementById('perfil-tab-establecimientos');
       if (!currentSession.memberships.length) {
@@ -23815,11 +23857,13 @@
             fotoUrl: profile.foto_url || '',
             matricula: profile.matricula || '',
             firmaUrl: profile.firma_url || '',
+            temaColor: profile.tema_color || 'teal',
             role: profile.role || null
           },
           memberships: finalMemberList,
           activeMembership
         };
+        aplicarTemaClinica(currentSession.user.temaColor);
 
         currentSimRole = activeMembership ? activeMembership.rol : (profile.role || 'medico');
 
