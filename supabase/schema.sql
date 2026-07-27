@@ -843,6 +843,68 @@ create policy "examenes_delete_member"
 -- clínica) -- sin bucket nuevo. Los resultados de examenes van en
 -- "clinica/<establecimiento_id>/examenes/<examen_id>/<n>-<nombre>".
 
+-- ── TABLA: consultas (Consultas Clínicas, formato SOIP) ───────────────
+-- guardarConsulta()/abrirEditarConsultaModal() en index.html leen y
+-- escriben esta tabla directamente (no pasó por el patrón "SÍ persiste
+-- en Supabase" documentado en CLAUDE.md para módulos más nuevos, porque
+-- ya estaba wireada desde antes de que ese patrón se documentara).
+-- interpretacion reemplaza a la columna original `assessment` -- se
+-- renombró junto con el cambio de nomenclatura SOAP -> SOIP (S/O/I/P,
+-- "I" de Interpretación en vez de "A" de Assessment); un rename de
+-- columna conserva los datos existentes, así que las consultas ya
+-- registradas no se perdieron. Los signos vitales (vital_*) solo se
+-- diligencian desde el Tablero de trabajo -- el modal clásico los deja
+-- en null al editar para no pisarlos.
+create table if not exists public.consultas (
+  id                  uuid primary key default gen_random_uuid(),
+  establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id          uuid not null references public.mascotas (id) on delete cascade,
+  fecha_hora          timestamptz not null,
+  motivo              text,
+  subjetivo           text,
+  objetivo            text,
+  interpretacion      text,
+  plan                text,
+  vital_temp          numeric,
+  vital_fc            integer,
+  vital_fr            integer,
+  vital_crt           text,
+  vital_pas           integer,
+  vital_pad           integer,
+  vital_pam           integer,
+  examen_fisico       jsonb not null default '[]'::jsonb,
+  usuario             text,
+  created_by          uuid references auth.users (id) on delete set null,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create index if not exists consultas_establecimiento_id_idx on public.consultas (establecimiento_id);
+create index if not exists consultas_mascota_id_idx on public.consultas (mascota_id);
+
+alter table public.consultas enable row level security;
+
+drop policy if exists "consultas_select_member" on public.consultas;
+create policy "consultas_select_member"
+  on public.consultas for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "consultas_insert_member" on public.consultas;
+create policy "consultas_insert_member"
+  on public.consultas for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "consultas_update_member" on public.consultas;
+create policy "consultas_update_member"
+  on public.consultas for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "consultas_delete_member" on public.consultas;
+create policy "consultas_delete_member"
+  on public.consultas for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── TABLA: hospitalizaciones (Hospitalizaciones/ambulatorios + Kardex) ──
 -- Un registro por ingreso. `dias` es jsonb (mismo criterio que
 -- examenes.pruebas/mascotas.peso_historico) y guarda el árbol completo del

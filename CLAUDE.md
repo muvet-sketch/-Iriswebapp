@@ -73,8 +73,13 @@ cierra el script") en vez del literal `</script>`.
 ## NO hacer
 - No crear archivos nuevos por módulo. Todo módulo nuevo se integra
   DENTRO de index.html, reutilizando el shell existente.
-- No inventar nomenclatura clínica nueva. SOAP es SIEMPRE S/O/A/P
-  (Subjetivo/Objetivo/Assessment/Plan). Nunca S/O/T/P.
+- No inventar nomenclatura clínica nueva. El formato de consulta es
+  SIEMPRE S/O/I/P — SOIP, no SOAP — (Subjetivo/Objetivo/Interpretación/
+  Plan). La letra "I" reemplazó a la "A" de Assessment en toda la app
+  (ids `soap-i`/`tablero-soap-i`, campo `interpretacion` en
+  `patientData[petKey].consultas`/timeline y en la columna Supabase
+  `consultas.interpretacion`) — no reintroduzcas "Assessment"/"A" ni
+  inventes una tercera variante.
 - No conectar a base de datos real todavía — todo está simulado en
   memoria con JS (arrays/objetos mock).
 
@@ -123,7 +128,7 @@ cierra el script") en vez del literal `</script>`.
     registro origen.
   - Al finalizar, se hace `data.timeline.unshift({...})` sobre el
     mismo array que ya pinta `renderHistoriaTimeline()` (el que usan
-    las Consultas SOAP) — no crear un timeline paralelo.
+    las Consultas SOIP) — no crear un timeline paralelo.
   - El punto de entrada es una acción condicional en el menú "..." del
     registro origen (extra action agregada vía el 4º parámetro de
     `renderRowActionsMenu(moduleKey, recordId, extraActions)`),
@@ -133,14 +138,37 @@ cierra el script") en vez del literal `</script>`.
   - Si se elimina el resultado, el registro origen debe volver a su
     estado previo a completado (no queda huérfano en "Completado" sin
     resultado real).
-- Componente reutilizable "Foto + Peso + Datos generales" (construido
-  para Historia, pensado también para Guardería/Peluquería):
-  - `mountPetGeneralCard(containerId, petKey)` — monta el bloque
-    completo (foto circular editable + gráfico de histórico de peso +
-    tabla de datos generales) dentro de cualquier contenedor vacío
-    (`<div id="...">`). Los ids internos se derivan de `containerId`
-    (`${containerId}-photo`, `-table`, `-weight-chart`), así que se
-    puede montar varias veces en la misma página sin colisión de ids.
+- Componente "Foto + Peso + Datos generales": fusionado dentro de
+  `.pet-header-card` (la cabecera del paciente en el Consultorio,
+  visible en TODOS los subtabs — Historia, Consultas, Fórmulas, etc.,
+  no solo Historia). Antes eran dos bloques apilados: la franja de
+  identidad (`.pet-header-card`, foto/nombre/meta/acciones) arriba y
+  una tarjeta `#historia-pet-general` aparte (solo en Historia) con
+  foto+peso+datos generales debajo — se veían como datos repetidos
+  (Especie/Raza/Peso/Edad/Chip aparecían en ambos bloques) y ahora es
+  una sola tarjeta con dos filas (`.pet-header-top-row` con la
+  identidad y `.pet-header-bottom-row` con histórico de peso + datos
+  generales). El avatar de la fila de identidad (`#pet-header-photo`,
+  clase `.pet-photo-circle`, no ya `.pet-profile-avatar`) es ahora la
+  ÚNICA foto de la mascota en esta pantalla y muestra la imagen real
+  (`data.fotoUrl`) con el mismo botón de cámara editable — antes era
+  una tarjeta de foto aparte y el avatar de la cabecera solo mostraba
+  la inicial del nombre. "Editar mascota" vive ahora en
+  `.pet-header-right` junto a "Volver a buscar"/"Nueva Consulta" (antes
+  estaba debajo de la foto). `petDataTableHTML(data)` YA NO repite
+  Especie/Raza/Peso/Edad/Código-Chip (esos siguen en la fila de
+  identidad, `#pet-profile-species/-breed/-weight/-age/-chip`) — solo
+  trae Color/Género/Talla/Estado reproductivo/Animal de servicio/
+  Fallecido; si se agrega un campo nuevo de mascota a esta tabla,
+  verificar primero que no esté ya en la fila de identidad para no
+  reintroducir la misma redundancia.
+  - `mountPetGeneralCard(containerId, petKey)` — con `containerId`
+    fijo `'pet-header'` (ids `pet-header-photo`/`-table`/
+    `-weight-chart`, ya existentes en el HTML de `.pet-header-card`,
+    no un template que la función inyecte). El Kardex de
+    Hospitalizaciones tiene su propio header independiente
+    (`mountKardexHeader`) que replica la misma lógica de foto —
+    no reutiliza esta función ni esta tarjeta.
   - `renderWeightChartSVG(containerId, pesoHistorico)` es la pieza
     atómica reutilizable por separado (usada también en el header del
     Kardex de Hospitalizaciones) — línea de tiempo simple con tooltip

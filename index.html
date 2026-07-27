@@ -499,7 +499,7 @@
     .modal-btn-solic:hover { background:rgba(var(--clinic-accent-rgb),.06); }
     @keyframes slideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
 
-    /* MODAL: NUEVA CONSULTA (SOAP) */
+    /* MODAL: NUEVA CONSULTA (SOIP) */
     .soap-modal-card {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
@@ -788,9 +788,18 @@
        (Configuración de la veterinaria / Usuarios / Tutores / Planes /
        Variables) — ver abrirAdminView(). Independiente de .admin-subview
        (que sigue gobernando el par Usuarios/Privilegios dentro de la
-       vista "Usuarios"). */
+       vista "Usuarios"). display:flex + height:100% en .active es
+       necesario para que .admin-pane (hijo directo, overflow-y:auto)
+       reciba una altura acotada por flex-stretch y pueda scrollear de
+       verdad — sin esto .admin-pane crece sin límite y el excedente
+       queda cortado en silencio por el overflow:hidden de .tab-content,
+       sin scrollbar ni forma de llegar a las filas de más abajo (bug
+       real: tablas largas como Tutores quedaban inalcanzables por mouse
+       wheel). #tab-ventas/#tab-inventario no sufren esto porque ahí
+       .admin-pane es hijo DIRECTO de .tab-content (flex), sin esta capa
+       intermedia.  */
     .admin-outer-view { display: none; }
-    .admin-outer-view.active { display: block; }
+    .admin-outer-view.active { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
     /* Tabs de "Configuración de la veterinaria" y de "Variables" — mismo
        look que .admin-subview-tabs, clases propias para no interferir con
@@ -1501,47 +1510,47 @@
       background-color: var(--bg-app);
     }
 
-    /* Ficha Básica de Mascota (Cabecera del Paciente) */
+    /* Ficha Básica de Mascota (Cabecera del Paciente) — fusiona la
+       identidad (foto/nombre/meta/acciones) con el componente Foto+Peso+
+       Datos generales en una sola tarjeta, visible en todos los módulos
+       del Consultorio (antes la segunda mitad solo vivía en Historia). */
     .pet-header-card {
       background-color: var(--surface);
       border-bottom: 1px solid var(--border);
       padding: 16px 24px;
       display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .pet-header-top-row {
+      display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      flex-shrink: 0;
-      box-shadow: var(--shadow-sm);
+      flex-wrap: wrap;
+    }
+
+    .pet-header-bottom-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 24px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .pet-header-bottom-row .pet-weight-chart-col { flex: 1; }
+    .pet-header-bottom-row .pet-data-table-col { flex: 1.4; }
+
+    @media (max-width: 900px) {
+      .pet-header-bottom-row { flex-direction: column; }
     }
 
     .pet-header-left {
       display: flex;
       align-items: center;
       gap: 16px;
-    }
-
-    .pet-profile-avatar {
-      width: 56px;
-      height: 56px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 20px;
-      border: 1px solid var(--border);
-    }
-
-    .pet-profile-avatar.cat {
-      background-color: #F0FDF4;
-      color: #16A34A;
-      border-color: #BBF7D0;
-    }
-
-    .pet-profile-avatar.dog {
-      background-color: #EFF6FF;
-      color: #2563EB;
-      border-color: #BFDBFE;
     }
 
     .pet-identity {
@@ -2176,7 +2185,7 @@
     }
     @media (max-width: 860px) {
       .tablero-grid { grid-template-columns: 1fr; }
-      /* En una sola columna: nav de módulos, luego SOAP, luego Navegación
+      /* En una sola columna: nav de módulos, luego SOIP, luego Navegación
          rápida/Lista de problemas — mismo criterio de reordenar solo en mobile. */
       .tablero-grid > .tablero-nav-col { grid-column: 1; order: 1; }
       .tablero-grid > .tablero-center-col { grid-column: 1; order: 2; }
@@ -2358,16 +2367,11 @@
       to { opacity: 1; }
     }
 
-    /* ── COMPONENTE REUTILIZABLE: Foto + Peso + Datos generales (Parte 1) ──
-       Usado en Historia y en el header del Kardex (Parte 2). Reutilizar
-       también en Guardería/Peluquería a futuro. */
-    .pet-general-card {
-      display: grid;
-      grid-template-columns: auto 1fr 1.2fr;
-      gap: 24px;
-      align-items: start;
-    }
-    .pet-general-photo-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    /* ── COMPONENTE: Foto + Peso + Datos generales (Parte 1) ── Fusionado
+       dentro de .pet-header-card (foto/nombre/meta + peso/datos generales
+       en una sola tarjeta, ver mountPetGeneralCard). El Kardex de
+       Hospitalizaciones (Parte 2) reutiliza .pet-photo-circle/
+       .pet-photo-circle-wrap para su propio header, pero no esta tarjeta. */
     .pet-photo-circle-wrap { position: relative; width: 96px; height: 96px; flex-shrink: 0; }
     .pet-photo-circle {
       width: 96px; height: 96px; border-radius: 50%; overflow: hidden;
@@ -2385,8 +2389,6 @@
     }
     .pet-photo-edit-btn:hover { background-color: var(--clinic-accent-light); }
     .pet-photo-edit-input { display: none; }
-    .pet-general-edit-btn-wrap { width: 100%; }
-    .pet-general-edit-btn-wrap .btn-outline { width: 100%; justify-content: center; }
 
     .pet-weight-chart-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
     .pet-weight-chart-title { font-size: 12px; font-weight: 600; color: var(--text-2); }
@@ -2437,7 +2439,6 @@
     .pet-data-value { font-size: 13px; color: var(--text-1); font-weight: 500; }
 
     @media (max-width: 1100px) {
-      .pet-general-card { grid-template-columns: 1fr; }
       .pet-data-table { grid-template-columns: repeat(2, 1fr); }
     }
 
@@ -2966,6 +2967,25 @@
     .ventas-pagination-btn:disabled { opacity: .4; cursor: not-allowed; }
     .ventas-pagination-btn:not(:disabled):hover { border-color: var(--clinic-accent); color: var(--clinic-accent); }
     .ventas-pagination-info { font-size: 12px; color: var(--text-2); }
+
+    /* Barra de paginación genérica (selector de cantidad por página +
+       Anterior/Siguiente) — usada por paginarTabla(), reutilizable por
+       cualquier tabla nueva que la necesite (ver Clientes/Tutores/
+       Inventario > Productos y servicios). Mismo look que .ventas-pagination-*
+       pero con nombre sin prefijo de módulo, porque no es exclusiva de Ventas. */
+    .table-pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 10px; flex-wrap: wrap; }
+    .table-pagination-btn {
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-1);
+      border-radius: 6px; padding: 5px 10px; font-size: 12px; font-family: inherit; cursor: pointer;
+      transition: var(--transition);
+    }
+    .table-pagination-btn:disabled { opacity: .4; cursor: not-allowed; }
+    .table-pagination-btn:not(:disabled):hover { border-color: var(--clinic-accent); color: var(--clinic-accent); }
+    .table-pagination-info { font-size: 12px; color: var(--text-2); }
+    .table-pagination-select {
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-1);
+      border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit; cursor: pointer;
+    }
 
     .doc-items-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
     .doc-items-table th {
@@ -4386,56 +4406,88 @@
 
           <!-- Area de Contenido del Paciente -->
           <section class="patient-pane">
-            <!-- Ficha Básica de Mascota (Cabecera) -->
+            <!-- Ficha Básica de Mascota (Cabecera) — fusiona identidad +
+                 Foto/Peso/Datos generales en una sola tarjeta (ver
+                 mountPetGeneralCard/petDataTableHTML). El avatar de arriba
+                 es ahora la ÚNICA foto de la mascota en esta pantalla
+                 (antes había una segunda foto duplicada en la tarjeta de
+                 Historia) y muestra la imagen real si existe, con el mismo
+                 botón de cámara para cambiarla. -->
             <div class="pet-header-card">
-              <div class="pet-header-left">
-                <div class="pet-profile-avatar" id="pet-avatar-placeholder">L</div>
-                <div class="pet-identity">
-                  <div class="pet-name-row">
-                    <span class="pet-name-title" id="pet-profile-name">Luna</span>
-                    <span class="pet-chip-tag" id="pet-profile-chip">900123456789</span>
+              <div class="pet-header-top-row">
+                <div class="pet-header-left">
+                  <div class="pet-photo-circle-wrap" style="width:64px;height:64px;">
+                    <div class="pet-photo-circle" id="pet-header-photo" style="width:64px;height:64px;font-size:20px;">?</div>
+                    <label class="pet-photo-edit-btn" style="width:24px;height:24px;" title="Cambiar foto">
+                      <i data-lucide="camera" style="width:12px;height:12px;"></i>
+                      <input type="file" accept="image/*" class="pet-photo-edit-input" onchange="handleFotoInputChange(this, 'pet-header')">
+                    </label>
                   </div>
-                  <div class="pet-meta-row">
-                    <div class="pet-meta-item"><strong id="pet-profile-species">Felino</strong></div>
-                    <div class="pet-meta-bullet"></div>
-                    <div class="pet-meta-item" id="pet-profile-breed">Siamés</div>
-                    <div class="pet-meta-bullet"></div>
-                    <div class="pet-meta-item">Edad: <span id="pet-profile-age" style="margin-left: 2px;">3 años 2 meses</span></div>
-                    <div class="pet-meta-bullet"></div>
-                    <div class="pet-meta-item">Peso: <span id="pet-profile-weight" style="margin-left: 2px;">4.2 kg</span></div>
-                    <div class="pet-meta-bullet"></div>
-                    <div class="pet-meta-item owner-popover-wrap" id="pet-owner-popover-wrap" onmouseenter="showOwnerPopover()" onmouseleave="hideOwnerPopoverIfNotPinned()">
-                      Propietario:
-                      <span id="pet-profile-owner" class="owner-popover-trigger" style="margin-left: 4px; font-weight: 500; text-decoration: underline; cursor: pointer;" onclick="event.stopPropagation(); toggleOwnerPopoverPin()">Carlos Mendoza</span>
-                      <button class="row-actions-btn" title="Estado de cuenta / Facturación" onclick="event.stopPropagation(); abrirFacturacionDesdeHistoria()">
-                        <i data-lucide="credit-card" style="width: 14px; height: 14px;"></i>
-                      </button>
-                      <div class="owner-popover" id="pet-owner-popover"></div>
+                  <div class="pet-identity">
+                    <div class="pet-name-row">
+                      <span class="pet-name-title" id="pet-profile-name">Luna</span>
+                      <span class="pet-chip-tag" id="pet-profile-chip">900123456789</span>
+                    </div>
+                    <div class="pet-meta-row">
+                      <div class="pet-meta-item"><strong id="pet-profile-species">Felino</strong></div>
+                      <div class="pet-meta-bullet"></div>
+                      <div class="pet-meta-item" id="pet-profile-breed">Siamés</div>
+                      <div class="pet-meta-bullet"></div>
+                      <div class="pet-meta-item">Edad: <span id="pet-profile-age" style="margin-left: 2px;">3 años 2 meses</span></div>
+                      <div class="pet-meta-bullet"></div>
+                      <div class="pet-meta-item">Peso: <span id="pet-profile-weight" style="margin-left: 2px;">4.2 kg</span></div>
+                      <div class="pet-meta-bullet"></div>
+                      <div class="pet-meta-item owner-popover-wrap" id="pet-owner-popover-wrap" onmouseenter="showOwnerPopover()" onmouseleave="hideOwnerPopoverIfNotPinned()">
+                        Propietario:
+                        <span id="pet-profile-owner" class="owner-popover-trigger" style="margin-left: 4px; font-weight: 500; text-decoration: underline; cursor: pointer;" onclick="event.stopPropagation(); toggleOwnerPopoverPin()">Carlos Mendoza</span>
+                        <button class="row-actions-btn" title="Estado de cuenta / Facturación" onclick="event.stopPropagation(); abrirFacturacionDesdeHistoria()">
+                          <i data-lucide="credit-card" style="width: 14px; height: 14px;"></i>
+                        </button>
+                        <div class="owner-popover" id="pet-owner-popover"></div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div class="pet-header-right-col">
-                <div class="role-sim-widget">
-                  <div class="role-sim-select-wrap">
-                    <i data-lucide="eye" style="width:13px;height:13px;"></i>
-                    <span>Viendo como:</span>
-                    <select class="role-sim-select" onchange="setSimRole(this.value)">
-                      <option value="admin">Administrador</option>
-                      <option value="medico" selected>Médico Veterinario</option>
-                      <option value="auxiliar">Auxiliar</option>
-                      <option value="ventas">Ventas</option>
-                    </select>
+                <div class="pet-header-right-col">
+                  <div class="role-sim-widget">
+                    <div class="role-sim-select-wrap">
+                      <i data-lucide="eye" style="width:13px;height:13px;"></i>
+                      <span>Viendo como:</span>
+                      <select class="role-sim-select" onchange="setSimRole(this.value)">
+                        <option value="admin">Administrador</option>
+                        <option value="medico" selected>Médico Veterinario</option>
+                        <option value="auxiliar">Auxiliar</option>
+                        <option value="ventas">Ventas</option>
+                      </select>
+                    </div>
+                    <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
                   </div>
-                  <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
+                  <div class="pet-header-right">
+                    <button class="btn-outline back-btn" onclick="deselectPet()">
+                      <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver a buscar
+                    </button>
+                    <button class="btn-outline" onclick="openEditMascotaModal(selectedPetKey)">
+                      <i data-lucide="pencil" style="width: 14px; height: 14px;"></i> Editar mascota
+                    </button>
+                    <button class="btn-primary" id="btn-nueva-consulta" onclick="abrirTableroTrabajo()">
+                      <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Consulta
+                    </button>
+                  </div>
                 </div>
-                <div class="pet-header-right">
-                  <button class="btn-outline back-btn" onclick="deselectPet()">
-                    <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver a buscar
-                  </button>
-                  <button class="btn-primary" id="btn-nueva-consulta" onclick="abrirTableroTrabajo()">
-                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Consulta
-                  </button>
+              </div>
+
+              <div class="pet-header-bottom-row">
+                <div class="pet-weight-chart-col">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                    <span class="pet-weight-chart-title">Histórico de peso</span>
+                    <button class="row-actions-btn" title="Actualizar peso" onclick="openActualizarPesoModal(selectedPetKey)">
+                      <i data-lucide="scale" style="width:14px;height:14px;"></i>
+                    </button>
+                  </div>
+                  <div id="pet-header-weight-chart"></div>
+                </div>
+                <div class="pet-data-table-col">
+                  <div class="pet-data-table" id="pet-header-table"></div>
                 </div>
               </div>
             </div>
@@ -4445,9 +4497,9 @@
               
               <!-- Subtab: Historia -->
               <div class="module-pane active" id="subtab-historia">
-                <!-- Componente reutilizable: Foto + Peso + Datos generales (ver PET_GENERAL_CARD_HTML) -->
-                <div class="card" id="historia-pet-general"></div>
-
+                <!-- Foto + Peso + Datos generales ahora vive fusionado en
+                     .pet-header-card (arriba, ver mountPetGeneralCard) —
+                     ya no es una tarjeta propia de este subtab. -->
                 <div class="card">
                   <div class="card-header">
                     <span class="card-title"><i data-lucide="book-open" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Línea de Tiempo de Historia Clínica</span>
@@ -5106,7 +5158,7 @@
               </div>
             </div>
 
-            <!-- Columna central: Registro de consulta (SOAP) -->
+            <!-- Columna central: Registro de consulta (SOIP) -->
             <div class="tablero-center-col">
               <div class="card">
                 <div class="card-header">
@@ -5178,10 +5230,10 @@
                 </div>
 
                 <div class="soap-block" style="margin-top:18px;">
-                  <div class="soap-letter">A</div>
+                  <div class="soap-letter">I</div>
                   <div class="soap-block-body">
-                    <label class="soap-block-label">Assessment <span class="soap-required">*</span></label>
-                    <textarea class="soap-textarea" id="tablero-soap-a" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
+                    <label class="soap-block-label">Interpretación <span class="soap-required">*</span></label>
+                    <textarea class="soap-textarea" id="tablero-soap-i" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
                   </div>
                 </div>
 
@@ -5791,6 +5843,7 @@
               <thead><tr><th>Nombre</th><th>Cédula/NIT</th><th>Teléfono</th><th>Total comprado</th><th>Última compra</th><th>Origen</th><th style="text-align:right;">Acciones</th></tr></thead>
               <tbody id="clientes-table-body"></tbody>
             </table>
+            <div class="table-pagination-bar" id="clientes-table-pagination"></div>
           </div>
         </div>
         <div class="admin-subview" id="ventas-view-config-facturacion">
@@ -6002,6 +6055,7 @@
               <thead><tr><th>Nombre</th><th>Categoría</th><th>Tipo</th><th>Precio venta</th><th>Stock actual</th><th>Estado</th><th style="text-align:right;">Acciones</th></tr></thead>
               <tbody id="productos-table-body"></tbody>
             </table>
+            <div class="table-pagination-bar" id="productos-table-pagination"></div>
           </div>
         </div>
 
@@ -6287,6 +6341,12 @@
             <div class="card-header">
               <span class="card-title"><i data-lucide="contact" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Tutores registrados</span>
             </div>
+            <div class="input-group" style="max-width:320px;margin-bottom:14px;">
+              <div class="input-wrapper">
+                <i data-lucide="search" class="input-icon"></i>
+                <input type="text" class="input-control" id="tutores-search-input" placeholder="Buscar tutor..." oninput="filtrarTutoresTabla(this.value)">
+              </div>
+            </div>
             <table class="results-table">
               <thead>
                 <tr>
@@ -6295,12 +6355,14 @@
                   <th>Teléfono</th>
                   <th>Mascotas</th>
                   <th>Última gestión</th>
+                  <th style="text-align:right;">Acciones</th>
                 </tr>
               </thead>
               <tbody id="tutores-table-body">
                 <!-- Dinámico por JS -->
               </tbody>
             </table>
+            <div class="table-pagination-bar" id="tutores-table-pagination"></div>
           </div>
         </div>
       </div>
@@ -6841,6 +6903,52 @@
       const safe = String(value || '').replace(/'/g, "\\'");
       if (!safe) return '';
       return `<button type="button" class="copy-icon-btn" onclick="event.stopPropagation(); copiarAlPortapapeles('${safe}')" title="Copiar"><i data-lucide="copy" style="width:13px;height:13px;"></i></button>`;
+    }
+
+    // ── PAGINACIÓN GENÉRICA DE TABLAS (selector 15/25/50/100, 25 por
+    // defecto) — reutilizable por cualquier render*Table() que liste un
+    // array ya filtrado. El estado (página + tamaño) vive en
+    // TABLE_PAGER_STATE, indexado por una `key` propia de cada tabla (ej.
+    // 'clientes', 'tutores', 'productos'); cada tabla nueva que la use solo
+    // necesita registrar su función de re-render en TABLE_PAGER_RENDERERS.
+    // paginarTabla() corta `rows` a la página actual, pinta la barra en
+    // `containerId` y devuelve el slice ya paginado para que el caller solo
+    // itere sobre eso — el filtrado en sí (búsqueda/categoría/etc.) sigue
+    // siendo responsabilidad de cada render*Table(), esta función no filtra.
+    const TABLE_PAGE_SIZE_OPTIONS = [15, 25, 50, 100];
+    const TABLE_PAGER_STATE = {};
+    const TABLE_PAGER_RENDERERS = {};
+    function getTablePagerState(key) {
+      return TABLE_PAGER_STATE[key] || (TABLE_PAGER_STATE[key] = { page: 1, pageSize: 25 });
+    }
+    function cambiarTamanoPaginaTabla(key, size) {
+      const st = getTablePagerState(key);
+      st.pageSize = Number(size);
+      st.page = 1;
+      if (TABLE_PAGER_RENDERERS[key]) TABLE_PAGER_RENDERERS[key]();
+    }
+    function cambiarPaginaTabla(key, delta) {
+      getTablePagerState(key).page += delta;
+      if (TABLE_PAGER_RENDERERS[key]) TABLE_PAGER_RENDERERS[key]();
+    }
+    function paginarTabla(key, rows, containerId, rerenderFn, etiqueta) {
+      TABLE_PAGER_RENDERERS[key] = rerenderFn;
+      const st = getTablePagerState(key);
+      const totalPages = Math.max(1, Math.ceil(rows.length / st.pageSize));
+      st.page = Math.min(Math.max(1, st.page), totalPages);
+      const start = (st.page - 1) * st.pageSize;
+      const container = document.getElementById(containerId);
+      if (container) {
+        container.innerHTML = `
+          <span class="table-pagination-info">Página ${st.page} de ${totalPages} · ${rows.length} ${etiqueta || 'registros'}</span>
+          <select class="table-pagination-select" onchange="cambiarTamanoPaginaTabla('${key}', this.value)">
+            ${TABLE_PAGE_SIZE_OPTIONS.map(n => `<option value="${n}" ${n === st.pageSize ? 'selected' : ''}>${n} por página</option>`).join('')}
+          </select>
+          <button type="button" class="table-pagination-btn" ${st.page <= 1 ? 'disabled' : ''} onclick="cambiarPaginaTabla('${key}', -1)">Anterior</button>
+          <button type="button" class="table-pagination-btn" ${st.page >= totalPages ? 'disabled' : ''} onclick="cambiarPaginaTabla('${key}', 1)">Siguiente</button>
+        `;
+      }
+      return rows.slice(start, start + st.pageSize);
     }
 
     // ── RENDER ÚNICO DEL BUSCADOR DE PROPIETARIOS (Parte B.1) ───────
@@ -7413,7 +7521,7 @@
     // cambios; hoy es únicamente una vista de referencia visual.
     const MATRIZ_PRIVILEGIOS = [
       { dominio: 'Agenda', admin: 'Ver/crear/editar/cancelar todas', medico: 'Propia', auxiliar: 'Ver/crear/editar todas', ventas: 'Ver' },
-      { dominio: 'Consultorio', admin: 'Ver todo, crear/editar consulta, firmar doc', medico: 'Ver todo, crear/editar propia, firmar doc', auxiliar: 'Ver todo, crear básico (sin SOAP completo)', ventas: 'Ver ficha' },
+      { dominio: 'Consultorio', admin: 'Ver todo, crear/editar consulta, firmar doc', medico: 'Ver todo, crear/editar propia, firmar doc', auxiliar: 'Ver todo, crear básico (sin SOIP completo)', ventas: 'Ver ficha' },
       { dominio: 'Cuentas/Facturación', admin: 'Ver todas, crear, cerrar', medico: 'Ver/crear propias', auxiliar: 'Ver', ventas: 'Ver/crear' },
       { dominio: 'Admin', admin: 'Gestión completa', medico: 'Sin acceso', auxiliar: 'Sin acceso', ventas: 'Sin acceso' },
       { dominio: 'Inventario', admin: 'Gestión completa', medico: 'Ver productos y servicios', auxiliar: 'Sin acceso', ventas: 'Gestión completa' },
@@ -7738,11 +7846,9 @@
 
       closeOwnerPopoverPin();
 
-      // Actualizar cabecera del paciente
-      const avatarPlaceholder = document.getElementById('pet-avatar-placeholder');
-      avatarPlaceholder.textContent = data.avatarText;
-      avatarPlaceholder.className = `pet-profile-avatar ${data.avatarClass}`;
-
+      // Actualizar cabecera del paciente (la foto la resuelve
+      // mountPetGeneralCard más abajo, junto con el resto del componente
+      // fusionado Foto+Peso+Datos generales)
       document.getElementById('pet-profile-name').textContent = data.name;
       document.getElementById('pet-profile-chip').textContent = data.chip;
       document.getElementById('pet-profile-species').textContent = data.species;
@@ -7767,8 +7873,8 @@
       renderCirugiasTable(petKey);
       renderSeguimientosCentralTable(petKey);
 
-      // Componente reutilizable: Foto + Peso + Datos generales
-      mountPetGeneralCard('historia-pet-general', petKey);
+      // Componente fusionado: Foto + Peso + Datos generales (dentro de .pet-header-card)
+      mountPetGeneralCard('pet-header', petKey);
 
       // Re-inicializar iconos lucide en elementos nuevos
       lucide.createIcons();
@@ -8211,6 +8317,7 @@
             Object.values(patientData).forEach(d => { if (d.propietarioId === p.id) d.owner = p.nombre; });
           }
           renderPropietariosTable();
+          renderTutoresTable();
           closeRegistrarPropietarioModal();
           if (document.getElementById('propietario-perfil-modal').classList.contains('show')) renderPerfilPropietarioCard(propietarioPerfilId);
           showToast('Propietario actualizado');
@@ -8231,6 +8338,7 @@
         };
         propietarios.unshift(nuevoPropietario);
         renderPropietariosTable();
+        renderTutoresTable();
 
         closeRegistrarPropietarioModal();
         showToast('Propietario registrado');
@@ -8373,6 +8481,7 @@
 
       closeTrasladarMascotaModal();
       renderPropietariosTable();
+      renderTutoresTable();
       if (propietarioPerfilId) renderPerfilMascotasTable(propietarioPerfilId);
       if (selectedPetKey === trasladandoPetKey) document.getElementById('pet-profile-owner').textContent = destino.nombre;
       showToast('Mascota trasladada');
@@ -9216,47 +9325,18 @@
       lucide.createIcons();
     }
 
-    // ── COMPONENTE REUTILIZABLE: FOTO + PESO + DATOS GENERALES (Parte 1) ──
-    // Usado hoy en Historia y en el header del Kardex de Hospitalizaciones.
-    // Reutilizable a futuro en Guardería/Peluquería: basta con llamar
-    // mountPetGeneralCard('<id-de-un-contenedor-vacío>', petKey).
-    // La foto se sube de verdad al bucket `fotos-mascotas` (ver
-    // handleFotoInputChange/subirFotoMascotaReal más abajo) — el preview
-    // instantáneo vía FileReader se mantiene solo por UX (no esperar red).
-    function PET_GENERAL_CARD_HTML(uid) {
-      return `
-        <div class="pet-general-card">
-          <div class="pet-general-photo-col">
-            <div class="pet-photo-circle-wrap">
-              <div class="pet-photo-circle" id="${uid}-photo">?</div>
-              <label class="pet-photo-edit-btn" title="Cambiar foto">
-                <i data-lucide="camera" style="width:14px;height:14px;"></i>
-                <input type="file" accept="image/*" class="pet-photo-edit-input" onchange="handleFotoInputChange(this, '${uid}')">
-              </label>
-            </div>
-            <div class="pet-general-edit-btn-wrap">
-              <button class="btn-outline" style="font-size:12px;padding:7px 10px;" onclick="openEditMascotaModal(selectedPetKey)">
-                <i data-lucide="pencil" style="width:12px;height:12px;"></i> Editar mascota
-              </button>
-            </div>
-          </div>
-
-          <div class="pet-weight-chart-col">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-              <span class="pet-weight-chart-title">Histórico de peso</span>
-              <button class="row-actions-btn" title="Actualizar peso" onclick="openActualizarPesoModal(selectedPetKey)">
-                <i data-lucide="scale" style="width:14px;height:14px;"></i>
-              </button>
-            </div>
-            <div id="${uid}-weight-chart"></div>
-          </div>
-
-          <div class="pet-data-table-col">
-            <div class="pet-data-table" id="${uid}-table"></div>
-          </div>
-        </div>
-      `;
-    }
+    // ── COMPONENTE: FOTO + PESO + DATOS GENERALES (Parte 1) ──
+    // Fusionado dentro de .pet-header-card (foto/nombre/meta arriba, peso+
+    // datos generales abajo) — ya no es una tarjeta aparte de Historia, así
+    // que sus contenedores (`pet-header-photo`/`-weight-chart`/`-table`) son
+    // ids fijos del HTML del header, no un template inyectado en un
+    // contenedor vacío. mountPetGeneralCard() solo rellena esos ids; el
+    // Kardex de Hospitalizaciones tiene su propio header independiente
+    // (mountKardexHeader) que replica la misma lógica de foto/peso, no
+    // reutiliza esta función. La foto se sube de verdad al bucket
+    // `fotos-mascotas` (ver handleFotoInputChange/subirFotoMascotaReal más
+    // abajo) — el preview instantáneo vía FileReader se mantiene solo por
+    // UX (no esperar red).
 
     // ── Edad del paciente: años/meses/días calculados desde fechaNacimiento ──
     // El formulario de mascota nunca guarda la edad como texto libre: sea
@@ -9334,18 +9414,19 @@
     }
 
     function petDataTableHTML(data) {
+      // Especie, Raza, Peso, Edad y Código/Chip NO se repiten acá: ya se
+      // muestran en la cabecera del paciente (#pet-profile-species/-breed/
+      // -weight/-age/-chip, ver pet-header-card) — mostrarlos también en
+      // esta tabla era la redundancia visual que se reportó (misma
+      // información dos veces en la misma pantalla). Esta tabla solo trae
+      // los campos que la cabecera no cubre.
       const items = [
-        ['Especie', data.species],
-        ['Raza', data.breed],
         ['Color', data.color || '—'],
         ['Género', data.genero || '—'],
-        ['Peso', data.weight],
         ['Talla', data.talla || '—'],
         ['Estado reproductivo', data.estadoReproductivo || '—'],
-        ['Edad', edadTextoParaMostrar(data)],
         ['Animal de servicio', data.animalServicio ? 'Sí' : 'No'],
-        ['Fallecido', data.fallecido ? 'Sí' : 'No'],
-        ['Código/Chip', data.chip]
+        ['Fallecido', data.fallecido ? 'Sí' : 'No']
       ];
       return items.map(([label, value]) => `
         <div class="pet-data-item">
@@ -9359,21 +9440,21 @@
     // componente completo Foto + Peso + Datos generales para un petKey dado.
     function mountPetGeneralCard(containerId, petKey) {
       const data = patientData[petKey];
-      const container = document.getElementById(containerId);
-      if (!data || !container) return;
-
-      container.innerHTML = PET_GENERAL_CARD_HTML(containerId);
+      if (!data) return;
 
       const photoEl = document.getElementById(`${containerId}-photo`);
-      if (data.fotoUrl) {
-        photoEl.innerHTML = `<img src="${data.fotoUrl}" alt="${data.name}">`;
-        photoEl.className = 'pet-photo-circle';
-      } else {
-        photoEl.textContent = data.avatarText;
-        photoEl.className = `pet-photo-circle ${data.avatarClass}`;
+      if (photoEl) {
+        if (data.fotoUrl) {
+          photoEl.innerHTML = `<img src="${data.fotoUrl}" alt="${data.name}">`;
+          photoEl.className = 'pet-photo-circle';
+        } else {
+          photoEl.textContent = data.avatarText;
+          photoEl.className = `pet-photo-circle ${data.avatarClass}`;
+        }
       }
 
-      document.getElementById(`${containerId}-table`).innerHTML = petDataTableHTML(data);
+      const tableEl = document.getElementById(`${containerId}-table`);
+      if (tableEl) tableEl.innerHTML = petDataTableHTML(data);
       renderWeightChartSVG(`${containerId}-weight-chart`, data.pesoHistorico || []);
 
       lucide.createIcons();
@@ -9675,11 +9756,12 @@
         document.getElementById('pet-profile-age').textContent = edadTextoParaMostrar(data);
         document.getElementById('pet-profile-weight').textContent = data.weight;
         document.getElementById('pet-profile-chip').textContent = data.chip;
-        mountPetGeneralCard('historia-pet-general', petKey);
+        mountPetGeneralCard('pet-header', petKey);
         if (kardexContext && kardexContext.petKey === petKey) mountKardexHeader(petKey);
       }
       if (propietarioPerfilId) renderPerfilMascotasTable(propietarioPerfilId);
       renderPropietariosTable();
+      renderTutoresTable();
 
       closeEditMascotaModal();
       showToast('Mascota actualizada');
@@ -9763,7 +9845,7 @@
 
       if (selectedPetKey === petKey) {
         document.getElementById('pet-profile-weight').textContent = data.weight;
-        mountPetGeneralCard('historia-pet-general', petKey);
+        mountPetGeneralCard('pet-header', petKey);
         renderHistoriaTimeline(data);
       }
       if (kardexContext && kardexContext.petKey === petKey) {
@@ -9959,6 +10041,7 @@
 
         renderPerfilMascotasTable(registrandoMascotaPropietarioId);
         renderPropietariosTable();
+        renderTutoresTable();
         renderDashboard();
         // Captura la continuación ANTES de cerrar el modal — closeRegistrarMascotaModal()
         // la limpia asumiendo un cierre sin guardar (ver nota junto a postRegistroMascotaAccion).
@@ -10084,7 +10167,7 @@
       lucide.createIcons();
     }
 
-    // ── MODAL: NUEVA CONSULTA (SOAP) ────────────────────────────
+    // ── MODAL: NUEVA CONSULTA (SOIP) ────────────────────────────
     const EXAM_SYSTEMS = [
       'Cardiovascular', 'Respiratorio', 'Digestivo', 'Urinario', 'Reproductivo',
       'Musculoesquelético', 'Nervioso', 'Piel y anexos', 'Ojos', 'Oídos'
@@ -10151,7 +10234,7 @@
       // Reset de campos
       document.getElementById('soap-fecha').value = getNowDatetimeLocalValue();
       document.getElementById('soap-motivo').value = 'Consulta general';
-      ['soap-s', 'soap-o', 'soap-a', 'soap-p'].forEach(id => {
+      ['soap-s', 'soap-o', 'soap-i', 'soap-p'].forEach(id => {
         const el = document.getElementById(id);
         el.value = '';
         el.classList.remove('field-error');
@@ -10168,7 +10251,7 @@
       lucide.createIcons();
     }
 
-    // Reutiliza el mismo modal de "Nueva Consulta" (SOAP) para editar una
+    // Reutiliza el mismo modal de "Nueva Consulta" (SOIP) para editar una
     // consulta real ya guardada -- guardarConsulta() rama a UPDATE en vez
     // de INSERT mientras editingConsultaContext esté fijado. isoToDatetimeLocalValue
     // es el inverso de getNowDatetimeLocalValue() (misma técnica de
@@ -10223,9 +10306,9 @@
       document.getElementById('soap-motivo').value = record.motivo || 'Consulta general';
       document.getElementById('soap-s').value = record.subjetivo || '';
       document.getElementById('soap-o').value = record.objetivo || '';
-      document.getElementById('soap-a').value = record.assessment || '';
+      document.getElementById('soap-i').value = record.interpretacion || '';
       document.getElementById('soap-p').value = record.plan || '';
-      ['soap-s', 'soap-o', 'soap-a', 'soap-p'].forEach(id => {
+      ['soap-s', 'soap-o', 'soap-i', 'soap-p'].forEach(id => {
         const el = document.getElementById(id);
         el.classList.remove('field-error');
         el.oninput = () => { if (el.value.trim() !== '') el.classList.remove('field-error'); };
@@ -10261,11 +10344,11 @@
 
       const sEl = document.getElementById(idPrefix + 's');
       const oEl = document.getElementById(idPrefix + 'o');
-      const aEl = document.getElementById(idPrefix + 'a');
+      const iEl = document.getElementById(idPrefix + 'i');
       const pEl = document.getElementById(idPrefix + 'p');
 
       let valid = true;
-      [sEl, aEl, pEl].forEach(el => {
+      [sEl, iEl, pEl].forEach(el => {
         const empty = el.value.trim() === '';
         el.classList.toggle('field-error', empty);
         if (empty) valid = false;
@@ -10336,7 +10419,7 @@
         if (parts.length) vitalsLine = ` (${parts.join(' · ')})`;
       }
 
-      let summary = `S: ${sEl.value.trim()}<br>O: ${oEl.value.trim()}${vitalsLine}<br>A: ${aEl.value.trim()}<br>P: ${pEl.value.trim()}`;
+      let summary = `S: ${sEl.value.trim()}<br>O: ${oEl.value.trim()}${vitalsLine}<br>I: ${iEl.value.trim()}<br>P: ${pEl.value.trim()}`;
       if (examFindings.length) {
         summary += `<br>Examen físico por sistema: ${examFindings.join(' · ')}`;
       }
@@ -10357,7 +10440,7 @@
             motivo: motivo || null,
             subjetivo: sEl.value.trim(),
             objetivo: oEl.value.trim(),
-            assessment: aEl.value.trim(),
+            interpretacion: iEl.value.trim(),
             plan: pEl.value.trim(),
             examen_fisico: examFindings,
             usuario
@@ -10387,7 +10470,7 @@
           const registro = data.consultas.find(c => c.dbId === dbId);
           if (registro) Object.assign(registro, {
             fechaISO: fechaHoraISO, fecha: formatFechaHoraCorta(fechaHoraISO), motivo: motivo || 'Consulta general',
-            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), assessment: aEl.value.trim(), plan: pEl.value.trim(),
+            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), interpretacion: iEl.value.trim(), plan: pEl.value.trim(),
             examenFisico: examFindings, usuario
           });
           const tItem = data.timeline.find(t => t.dbId === dbId);
@@ -10395,14 +10478,14 @@
             type: motivo,
             date: formatFechaHoraCorta(fechaHoraISO),
             dateSortKey: fechaHoraISO,
-            title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
+            title: iEl.value.trim().length > 90 ? iEl.value.trim().slice(0, 90) + '…' : iEl.value.trim(),
             summary,
             vet: usuario
           });
         } else {
           data.consultas.unshift({
             dbId, fechaISO: fechaHoraISO, fecha: formatFechaHoraCorta(fechaHoraISO), motivo: motivo || 'Consulta general',
-            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), assessment: aEl.value.trim(), plan: pEl.value.trim(),
+            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), interpretacion: iEl.value.trim(), plan: pEl.value.trim(),
             vitalTemp: vitals.temp, vitalFc: vitals.fc, vitalFr: vitals.fr, vitalCrt: vitals.crt,
             vitalPas: vitals.pas, vitalPad: vitals.pad, vitalPam: vitals.pam,
             examenFisico: examFindings, usuario
@@ -10412,7 +10495,7 @@
             type: motivo,
             date: formatFechaConsulta(fechaValue),
             dateSortKey: fechaHoraISO,
-            title: aEl.value.trim().length > 90 ? aEl.value.trim().slice(0, 90) + '…' : aEl.value.trim(),
+            title: iEl.value.trim().length > 90 ? iEl.value.trim().slice(0, 90) + '…' : iEl.value.trim(),
             summary: summary,
             vet: usuario
           });
@@ -10436,7 +10519,7 @@
 
     // ── TABLERO DE TRABAJO (workspace de consulta, ver botón "Nueva Consulta") ──
     // Punto de entrada: reemplaza a openNuevaConsultaModal() como flujo
-    // principal de captura SOAP (el modal clásico se conserva intacto por si
+    // principal de captura SOIP (el modal clásico se conserva intacto por si
     // se usa desde otro lugar). Reutiliza EXAM_SYSTEMS/renderExamSystems() y
     // guardarConsulta() con un prefijo de ids distinto ('tablero-soap-').
     let tableroActiveModulo = null; // key del módulo seleccionado en .tablero-nav-col (ver TABLERO_QUICKNAV_MODULOS)
@@ -10479,7 +10562,7 @@
 
       document.getElementById('tablero-soap-fecha').value = getNowDatetimeLocalValue();
       document.getElementById('tablero-soap-motivo').value = 'Consulta general';
-      ['tablero-soap-s', 'tablero-soap-o', 'tablero-soap-a', 'tablero-soap-p'].forEach(id => {
+      ['tablero-soap-s', 'tablero-soap-o', 'tablero-soap-i', 'tablero-soap-p'].forEach(id => {
         const el = document.getElementById(id);
         el.value = '';
         el.classList.remove('field-error');
@@ -11047,6 +11130,9 @@
       } else if (moduleKey === 'agenda-evento') {
         abrirEventoAgendaPorId(recordId);
         return;
+      } else if (moduleKey === 'propietario') {
+        abrirPerfilPropietario(recordId);
+        return;
       }
       const data = getRegistroViewData(moduleKey, recordId);
       if (data) openViewModal(data.title, data.html);
@@ -11118,6 +11204,8 @@
         openCompraModal('edit', recordId);
       } else if (moduleKey === 'agenda-evento') {
         abrirEventoAgendaPorId(recordId);
+      } else if (moduleKey === 'propietario') {
+        openEditarPropietarioModal(recordId);
       }
     }
 
@@ -11370,6 +11458,10 @@
         showToast('No se puede eliminar: la categoría tiene productos o servicios asociados');
         return;
       }
+      if (moduleKey === 'propietario' && getMascotasDePropietario(recordId).length > 0) {
+        showToast('No se puede eliminar: el tutor tiene mascotas registradas');
+        return;
+      }
       pendingDelete = { moduleKey, recordId };
       if (moduleKey === 'usuario') {
         document.getElementById('delete-confirm-title').textContent = 'Desactivar usuario';
@@ -11573,6 +11665,8 @@
         eliminarMovimientoReal(recordId);
       } else if (moduleKey === 'producto') {
         eliminarProductoReal(recordId);
+      } else if (moduleKey === 'propietario') {
+        eliminarPropietarioReal(recordId);
       } else if (moduleKey === 'categoria') {
         const idx = VENTAS_CATEGORIAS.indexOf(recordId);
         if (idx > -1) VENTAS_CATEGORIAS.splice(idx, 1);
@@ -11684,6 +11778,25 @@
         showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
       }
     }
+    // `propietario_id` en `mascotas` tiene ON DELETE CASCADE — por eso
+    // rowActionEliminar() bloquea esta acción arriba si el tutor todavía
+    // tiene mascotas registradas (mismo criterio que el bloqueo de
+    // categoría con productos asociados). Sin mascotas, es un delete
+    // simple sin registros dependientes que arrastrar.
+    async function eliminarPropietarioReal(recordId) {
+      const idx = propietarios.findIndex(d => d.id === recordId);
+      if (idx !== -1) propietarios.splice(idx, 1);
+      renderTutoresTable();
+      renderPropietariosTable();
+      if (!window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('propietarios').delete().eq('id', recordId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando propietario en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
 
     // ── MODAL GENÉRICO: VER REGISTRO (SOLO LECTURA) ─────────────
     function openViewModal(title, bodyHTML) {
@@ -11720,8 +11833,8 @@
         <div class="info-value">${record.objetivo || '—'}</div>
         ${vitalsHTML}
         ${examHTML}
-        <div class="info-label">Assessment (diagnóstico)</div>
-        <div class="info-value">${record.assessment || '—'}</div>
+        <div class="info-label">Interpretación (diagnóstico)</div>
+        <div class="info-value">${record.interpretacion || '—'}</div>
         <div class="info-label">Plan</div>
         <div class="info-value">${record.plan || '—'}</div>
         <div class="info-label" style="margin-top:8px;">Usuario</div>
@@ -12011,7 +12124,7 @@
           <tr data-consulta-row="${c.dbId}">
             <td>${c.fecha}</td>
             <td>${c.motivo || '—'}</td>
-            <td>${c.assessment ? (c.assessment.length > 60 ? c.assessment.slice(0, 60) + '…' : c.assessment) : '—'}</td>
+            <td>${c.interpretacion ? (c.interpretacion.length > 60 ? c.interpretacion.slice(0, 60) + '…' : c.interpretacion) : '—'}</td>
             <td>${c.usuario || '—'}</td>
             <td style="text-align: right;">${renderRowActionsMenu('consulta', `${petKey}:${c.dbId}`)}</td>
           </tr>
@@ -17623,9 +17736,20 @@
     }
 
     // ── A.3 — TUTORES (vista administrativa) ───────────────────────
-    function renderTutoresTable() {
+    function renderTutoresTable(filterText) {
       const tbody = document.getElementById('tutores-table-body');
-      tbody.innerHTML = propietarios.map(p => {
+      if (!tbody) return;
+      if (filterText === undefined) {
+        const searchEl = document.getElementById('tutores-search-input');
+        filterText = searchEl ? searchEl.value : '';
+      }
+      filterText = (filterText || '').toLowerCase();
+      const rows = propietarios.filter(p => !filterText
+        || p.nombre.toLowerCase().includes(filterText)
+        || (p.docNumero || '').toLowerCase().includes(filterText)
+        || (p.movil || '').toLowerCase().includes(filterText));
+      const pageRows = paginarTabla('tutores', rows, 'tutores-table-pagination', () => renderTutoresTable(filterText), 'tutores');
+      tbody.innerHTML = pageRows.length ? pageRows.map(p => {
         const mascotas = getMascotasDePropietario(p.id);
         const chips = mascotas.length
           ? mascotas.map(([petKey, d]) => `<span class="pet-chip-badge ${d.avatarClass}" style="cursor:pointer;" onclick="document.querySelector('.nav-tabs-bar .tab-btn[data-tab=\\'consultorio\\']').click(); selectPet('${petKey}');"><i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:12px;height:12px;"></i> ${d.name}</span>`).join(' ')
@@ -17638,10 +17762,15 @@
             <td>${p.movil}${copyIconHTML(p.movil)}</td>
             <td><div class="pet-badge-list">${chips}</div></td>
             <td><span class="gestion-tag"><span class="gestion-time">${gestion.time}</span><span class="gestion-detail">${gestion.detail}</span></span></td>
+            <td style="text-align:right;">${renderRowActionsMenu('propietario', p.id, null, ['ver', 'editar', 'eliminar'])}</td>
           </tr>
         `;
-      }).join('');
+      }).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No se encontraron tutores</td></tr>`;
       lucide.createIcons();
+    }
+    function filtrarTutoresTabla(value) {
+      getTablePagerState('tutores').page = 1;
+      renderTutoresTable(value);
     }
 
     // ── A.5 — VARIABLES (catálogos de nombres por módulo clínico) ──
@@ -20427,7 +20556,8 @@
       filterText = (filterText || '').toLowerCase();
       const { totalPorCliente, ultimaPorCliente } = computeVentasClienteTotales();
       const rows = VENTAS_CLIENTES.filter(c => !filterText || c.nombre.toLowerCase().includes(filterText) || c.cedula.toLowerCase().includes(filterText));
-      document.getElementById('clientes-table-body').innerHTML = rows.length ? rows.map(c => `
+      const pageRows = paginarTabla('clientes', rows, 'clientes-table-pagination', () => renderClientesTable(filterText), 'clientes');
+      document.getElementById('clientes-table-body').innerHTML = pageRows.length ? pageRows.map(c => `
         <tr>
           <td>${c.nombre}${c.propietarioKey ? ` <span style="color:var(--text-2);font-size:11px;">(vinculado en Consultorio)</span>` : ''}</td>
           <td>${c.cedula}</td>
@@ -20440,7 +20570,10 @@
       `).join('') : `<tr><td colspan="7" style="text-align:center;color:var(--text-2);">No se encontraron clientes</td></tr>`;
       lucide.createIcons();
     }
-    function filtrarClientesTabla(value) { renderClientesTable(value); }
+    function filtrarClientesTabla(value) {
+      getTablePagerState('clientes').page = 1;
+      renderClientesTable(value);
+    }
 
     // ── VENTAS — CLIENTES — Exportar (Copiar/PDF/CSV/Excel/Imprimir) ──
     // Exporta exactamente lo que se ve en pantalla (respeta el filtro de
@@ -20799,6 +20932,7 @@
         });
 
         renderPropietariosTable();
+        renderTutoresTable();
         renderClientesTable();
         closeImportarClientesModal();
         showToast(`Importación completa: ${inserted.length} cliente${inserted.length === 1 ? '' : 's'} nuevo${inserted.length === 1 ? '' : 's'}${omitidos ? `, ${omitidos} omitido${omitidos === 1 ? '' : 's'} (ya existían)` : ''}`);
@@ -20981,6 +21115,7 @@
         tipo: document.getElementById('prod-filtro-tipo').value,
         estado: document.getElementById('prod-filtro-estado').value
       };
+      getTablePagerState('productos').page = 1;
       renderProductosServiciosTable();
     }
     function renderProductosServiciosTable() {
@@ -20990,7 +21125,8 @@
         (!productosFiltro.tipo || p.tipo === productosFiltro.tipo) &&
         (!productosFiltro.estado || p.estado === productosFiltro.estado)
       );
-      document.getElementById('productos-table-body').innerHTML = rows.length ? rows.map(p => {
+      const pageRows = paginarTabla('productos', rows, 'productos-table-pagination', renderProductosServiciosTable, 'productos');
+      document.getElementById('productos-table-body').innerHTML = pageRows.length ? pageRows.map(p => {
         const enAlerta = p.tipo === 'producto' && p.stock < p.stockMinimo;
         const stockCell = p.tipo === 'producto'
           ? `${p.stock}${enAlerta ? ` <span class="stock-alert-badge"><i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> Bajo</span>` : ''}`
@@ -22455,6 +22591,7 @@
       renderUsuariosTable();
       renderPrivilegiosMatrix();
       renderPropietariosTable();
+      renderTutoresTable();
       renderVariablesTable();
       renderVetConfigGeneral();
       poblarFiltroAgendaEncargados();
@@ -22726,7 +22863,7 @@
       if (r.vital_pam != null) vitalsParts.push(`PAM ${r.vital_pam} mmHg`);
       const vitalsLine = vitalsParts.length ? ` (${vitalsParts.join(' · ')})` : '';
 
-      let summary = `S: ${r.subjetivo || ''}<br>O: ${r.objetivo || ''}${vitalsLine}<br>A: ${r.assessment || ''}<br>P: ${r.plan || ''}`;
+      let summary = `S: ${r.subjetivo || ''}<br>O: ${r.objetivo || ''}${vitalsLine}<br>I: ${r.interpretacion || ''}<br>P: ${r.plan || ''}`;
       const examFindings = Array.isArray(r.examen_fisico) ? r.examen_fisico : [];
       if (examFindings.length) {
         summary += `<br>Examen físico por sistema: ${examFindings.join(' · ')}`;
@@ -22737,7 +22874,7 @@
         type: r.motivo || 'Consulta general',
         date: formatFechaHoraCorta(r.fecha_hora),
         dateSortKey: r.fecha_hora,
-        title: (r.assessment || '').length > 90 ? r.assessment.slice(0, 90) + '…' : (r.assessment || ''),
+        title: (r.interpretacion || '').length > 90 ? r.interpretacion.slice(0, 90) + '…' : (r.interpretacion || ''),
         summary,
         vet: r.usuario || ''
       };
@@ -22746,7 +22883,7 @@
     // Igual que construirConsultaDesdeFila pero conserva los campos crudos
     // (no solo el resumen ya formateado) -- es lo que alimenta la tabla
     // real de la subtab Consultas y lo que abrirEditarConsultaModal()
-    // necesita para prellenar el formulario SOAP al editar.
+    // necesita para prellenar el formulario SOIP al editar.
     function construirConsultaRegistroDesdeFila(r) {
       return {
         dbId: r.id,
@@ -22755,7 +22892,7 @@
         motivo: r.motivo || 'Consulta general',
         subjetivo: r.subjetivo || '',
         objetivo: r.objetivo || '',
-        assessment: r.assessment || '',
+        interpretacion: r.interpretacion || '',
         plan: r.plan || '',
         vitalTemp: r.vital_temp, vitalFc: r.vital_fc, vitalFr: r.vital_fr, vitalCrt: r.vital_crt,
         vitalPas: r.vital_pas, vitalPad: r.vital_pad, vitalPam: r.vital_pam,
@@ -23905,7 +24042,7 @@
     <span id="toast-text">Cambiando...</span>
   </div>
 
-  <!-- Modal: Nueva Consulta (SOAP) -->
+  <!-- Modal: Nueva Consulta (SOIP) -->
   <div class="modal-overlay" id="nueva-consulta-modal" onclick="handleSoapModalOverlayClick(event)">
     <div class="soap-modal-card" onclick="event.stopPropagation()">
       <div class="soap-modal-header">
@@ -23955,10 +24092,10 @@
         </div>
 
         <div class="soap-block">
-          <div class="soap-letter">A</div>
+          <div class="soap-letter">I</div>
           <div class="soap-block-body">
-            <label class="soap-block-label">Assessment <span class="soap-required">*</span></label>
-            <textarea class="soap-textarea" id="soap-a" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
+            <label class="soap-block-label">Interpretación <span class="soap-required">*</span></label>
+            <textarea class="soap-textarea" id="soap-i" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
           </div>
         </div>
 
