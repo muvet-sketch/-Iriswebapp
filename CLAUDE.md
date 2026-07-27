@@ -558,6 +558,150 @@ patrón que el resto). Sin patrón de edición (un mensaje enviado no se
 edita) — por eso no hay `updated_at` ni política de update en esa
 tabla, a diferencia de vacunaciones/desparasitaciones.
 
+**RED IRIS — identidad de tutores/mascotas compartida entre
+establecimientos.** Son DOS mecanismos separados, con niveles de
+acceso distintos; no los mezcles:
+
+1. **Vincular tutor (solo ficha).** Cada propietario con documento se
+   publica automáticamente en un directorio global
+   (`red_personas` + `red_persona_moviles` + `red_mascotas`, ver
+   `supabase/schema.sql`) mediante triggers `before insert or update`
+   sobre `propietarios`/`mascotas`, condicionados a
+   `propietarios.consentimiento_red` (default true, viene de los
+   términos y condiciones). Al guardar un propietario NUEVO,
+   `guardarPropietario()` llama primero a `redDetectarCoincidencia()`
+   (RPC `red_buscar_persona`), que devuelve solo un "hint" — nombre
+   enmascarado (`Pe*** Gó***`) y contadores, nunca datos usables. Si
+   hay coincidencia se abre `#red-vincular-modal` y el guardado se
+   ABORTA; de ahí solo se sale verificando identidad (cédula **y**
+   celular deben coincidir con la misma persona, RPC
+   `red_verificar_identidad`) o pulsando "Registrar como nuevo de
+   todas formas" (fija `redOmitirDeteccion` y reentra a
+   `guardarPropietario()`). La verificación devuelve un token de 10
+   min (`red_verificaciones`) que `red_vincular_con_token()` consume
+   para copiar la ficha del tutor y las fichas de mascota
+   seleccionadas. **Por acá no viaja NADA de historia clínica** — ni
+   consultas, ni documentos, ni registros.
+2. **Solicitar información (historia).** Desde el header del paciente
+   ("Solicitar a otra clínica" → `#red-solicitud-modal`) se pide a un
+   establecimiento concreto uno o más de 7 tipos
+   (documentos/consultas/vacunaciones/desparasitaciones/examenes/
+   formulas/cirugias). La clínica destino aprueba o rechaza en
+   **Admin > Red IRIS** (`#admin-outer-red`, `renderRedSolicitudes()`).
+   Aprobar **no copia ni duplica nada**: agrega lectura sobre las filas
+   originales vía las policies `*_select_red` (que llaman a
+   `red_puede_ver_registro`), y "Revocar acceso" la corta de
+   inmediato. Los PDFs se leen en su ruta original del bucket `pdfs`
+   (policy `pdfs_select_red_compartido` + `red_puede_ver_pdf`), que es
+   justamente el "no volver a subir cada documento en cada módulo".
+
+Detalles que hay que respetar al tocar esto:
+- Las tablas del directorio tienen RLS **habilitada y cero policies a
+  propósito**: nada de PostgREST las lee. Todo pasa por funciones
+  `security definer`. Si necesitas un campo nuevo de la red, agrégalo
+  al jsonb que devuelve la RPC correspondiente — no abras un select
+  sobre `red_personas`/`red_mascotas`.
+- `red_persona_moviles` ACUMULA celulares, nunca los pisa: la gente
+  cambia de número y, sobre todo, así una clínica no puede
+  "secuestrar" la verificación de otra sobreescribiendo el segundo
+  factor.
+- Toda función nueva `red_*` nace con EXECUTE para `anon` y
+  `authenticated` (default privileges de Supabase) y PostgREST la
+  expone en `/rest/v1/rpc/...`. Al final de esa sección del schema hay
+  un bloque de `revoke`/`grant` que hay que MANTENER: sin él,
+  `red_upsert_persona` (definer, sin validaciones porque solo la usan
+  los triggers) queda invocable por un anónimo. `revoke from public`
+  no basta — hay que nombrar a `anon` y `authenticated`.
+- Los registros que llegan compartidos se mezclan en
+  `patientData[petKey]` con `cargarCompartidosDeLaRed()` (al final de
+  `cargarDatosClinicaDesdeSupabase`) y se marcan con
+  `redMarcarCompartido()`: además de la bandera `compartidoDe`,
+  reescribe la columna `usuario`/`vet` con "Compartido · <clínica>"
+  para que el origen se vea sin tocar el render de los 7 módulos.
+  El menú "..." se recorta solo a Ver/Imprimir dentro de
+  `renderRowActionsMenu()` vía `registroCompartidoDeFila()`, que
+  resuelve el `recordId` (`petKey:indice`, o `petKey:dbId` en
+  Consultas) contra el array real — no hay un set de ids porque los
+  índices se corren al eliminar registros.
+- Una aprobación recién dada solo aparece en la clínica solicitante
+  tras recargar/reiniciar sesión (los compartidos se leen una vez al
+  cargar los datos de la clínica).
+- Rate limiting real y auditado en `red_intentos`: 60 búsquedas/hora y
+  5 verificaciones fallidas por 15 min y después bloqueo. No los
+  quites — son lo único que impide barrer el directorio de cédulas con
+  un script. El mensaje de error de la verificación es genérico a
+  propósito (no dice si falló la cédula o el celular).
+
+## RESPALDOS — hay datos de producción reales, no es un prototipo más
+Ya hay un establecimiento usando la plataforma con información
+clínica real (tutores, mascotas, consultas, inventario, caja). La
+organización de Supabase está en plan **free**, que **no incluye
+ningún respaldo administrado** (ni diario ni PITR), así que lo único
+que existe es lo de abajo. Dos mecanismos, no se reemplazan:
+
+1. **Respaldo automático diario** —
+   `.github/workflows/respaldo-supabase.yml` +
+   `scripts/respaldo/{dump-db.sh,descargar-storage.mjs,verificar-respaldo.mjs}`.
+   Corre 02:10 Colombia y a demanda (`workflow_dispatch`). Vuelca la
+   base COMPLETA con `pg_dump` (custom + SQL plano con un INSERT por
+   fila + estructura), descarga TODOS los objetos de Storage (los
+   archivos no están en Postgres: sin ese paso el respaldo tendría las
+   filas que apuntan a los PDFs pero no los PDFs), cifra el zip con
+   GPG AES-256 y lo sube como artifact con 90 días de retención.
+   Runbook completo de restauración en `scripts/respaldo/README.md`.
+   Cosas que hay que respetar al tocarlo:
+   - **El cifrado no es opcional.** El repo de GitHub es PÚBLICO y los
+     artifacts de un repo público los puede bajar cualquiera. Lo mismo
+     vale para el `.gitignore`: las entradas `iris-respaldo-*`/`*.dump`
+     están para que un respaldo local no termine en un commit.
+   - `pg_dump` usa `--no-owner` pero **NO** `--no-privileges`: los
+     GRANT a `anon`/`authenticated` son lo que permite que PostgREST
+     lea las tablas, y los `revoke`/`grant` de las funciones `red_*`
+     son parte del modelo de seguridad (ver sección RED IRIS). Sin
+     ellos, un proyecto restaurado tendría todos los datos y la app
+     los vería vacíos.
+   - Hace falta el cliente de PostgreSQL **17** (el servidor es 17.x y
+     `pg_dump` aborta si es más viejo), y la conexión va por el
+     **Session pooler** porque en free la conexión directa solo
+     resuelve por IPv6 y los runners de GitHub son IPv4.
+   - `verificar-respaldo.mjs` compara el conteo exacto de filas del
+     servidor contra los INSERT del volcado y **falla el job** si una
+     tabla con datos quedó vacía en el respaldo. No lo relajes: el modo
+     de falla peligroso no es que truene, es que suba vacío durante
+     meses sin que nadie lo note.
+   - Efecto secundario deliberado: conectarse a diario evita que
+     Supabase pause el proyecto por inactividad (riesgo real del free).
+2. **Respaldo manual desde la app** — Admin > Respaldo de datos
+   (`#admin-outer-respaldo`, `descargarRespaldoEstablecimiento()`).
+   Descarga un `.json` con las filas reales de las 26 tablas por
+   establecimiento (`RESPALDO_TABLAS`), no el modelo en memoria: el
+   objetivo es poder volver a insertar. Si agregas una tabla nueva por
+   establecimiento, **agrégala a `RESPALDO_TABLAS`** o el respaldo
+   manual la omite en silencio (el automático no necesita cambios,
+   vuelca el schema entero). No incluye los archivos binarios, solo el
+   inventario de rutas (`respaldoInventarioArchivos()`, genérico sobre
+   campos `*_path`/`*_url` y arrays `fotos_*`).
+   - `respaldoLeerTablaCompleta()` pagina de 1000 en 1000 **con
+     `.order('id')`**. Las dos cosas son obligatorias: PostgREST
+     devuelve máximo 1000 filas y no avisa que truncó, y sin un orden
+     estable dos páginas consecutivas pueden repetir y omitir filas.
+     `productos` ya tiene 2000+ filas en producción.
+
+**Hueco conocido:** `supabase/schema.sql` NO tiene el `create table` de
+`formulas_medicas`, `ventas_facturas` ni `ventas_cotizaciones`, aunque
+las tres existen en la base y tienen datos. El respaldo automático sí
+las cubre (vuelca la estructura viva del servidor), pero si alguien
+intenta reconstruir el proyecto solo desde `schema.sql` le van a
+faltar. Al tocar esas tablas, agrega su definición al archivo.
+
+**Trampa de PostgREST, aplica a todo el archivo:**
+`cargarDatosClinicaDesdeSupabase()` hace `select('*')` sin `.range()`,
+así que en el establecimiento con 2025 productos la app solo carga los
+primeros 1000. Es pérdida de VISTA, no de datos (la base los tiene
+todos y el respaldo también), pero cualquier lectura nueva de una tabla
+que pueda pasar de 1000 filas necesita paginación como la de
+`respaldoLeerTablaCompleta()`.
+
 ## Al recibir un prompt nuevo de módulo
 1. Lee solo la sección del sidebar/JS relevante al módulo pedido, no
    todo el archivo.

@@ -1,2 +1,11 @@
 .vercel
 .env*
+
+# Respaldos generados en local. Este repositorio es PÚBLICO: un `git add .`
+# distraído publicaría historia clínica y datos personales de los tutores.
+# Ver scripts/respaldo/README.md
+iris-respaldo-*/
+iris-respaldo-*.zip
+iris-respaldo-*.zip.gpg
+respaldos-iris/
+*.dump

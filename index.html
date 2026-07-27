@@ -3065,6 +3065,49 @@
       width: 26px; height: 26px; border-radius: 6px; background: #0B1F3A; color: #fff;
       display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;
     }
+
+    /* ── RED IRIS (vinculación de tutores y solicitudes entre clínicas) ── */
+    .red-aviso {
+      display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; margin-bottom: 14px;
+      border: 1px solid var(--clinic-accent); border-radius: var(--radius);
+      background: color-mix(in srgb, var(--clinic-accent) 8%, transparent);
+      color: var(--clinic-accent);
+    }
+    .red-aviso-title { font-size: 13px; font-weight: 700; }
+    .red-aviso-text { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+    .red-help-text { font-size: 12px; color: var(--text-2); line-height: 1.5; margin: 0 0 12px; }
+    .red-empty-note { font-size: 12px; color: var(--text-2); padding: 12px 2px; margin: 0; }
+
+    .red-persona-card {
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: var(--surface);
+    }
+    .red-persona-nombre { font-size: 14px; font-weight: 700; color: var(--text-1); }
+    .red-persona-linea { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+
+    .red-pet-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+    .red-pet-option {
+      display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer;
+      border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+    }
+    .red-pet-option:hover { border-color: var(--clinic-accent); }
+    .red-pet-option.disabled { opacity: 0.55; cursor: not-allowed; }
+    .red-pet-option.disabled:hover { border-color: var(--border); }
+    .red-pet-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .red-pet-name { font-size: 13px; font-weight: 600; color: var(--text-1); }
+    .red-pet-meta { font-size: 11.5px; color: var(--text-2); }
+    .red-pet-flag {
+      font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+      background: color-mix(in srgb, var(--text-2) 12%, transparent); color: var(--text-2); flex-shrink: 0;
+    }
+
+    .red-tipo-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin-top: 6px; }
+    .red-tipo-option { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-1); cursor: pointer; }
+
+    .red-pendientes-badge {
+      display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px;
+      padding: 0 5px; border-radius: 999px; background: var(--clinic-accent); color: #fff;
+      font-size: 10.5px; font-weight: 700; line-height: 1; margin-left: 6px;
+    }
   </style>
   <!-- Aplica el tema de color guardado ANTES de pintar el shell, para
        evitar el parpadeo del Teal por defecto en cada refresh/login.
@@ -3845,7 +3888,11 @@
         <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('tutores')">Tutores</button>
         <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('planes')">Planes y suscripción</button>
         <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('variables')">Variables</button>
+        <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('respaldo')">Respaldo de datos</button>
         <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('usuarios'); switchAdminView('solicitudes');">Solicitudes de vinculación</button>
+        <button type="button" class="tab-dropdown-item" onclick="abrirAdminView('red')">
+          Red IRIS <span class="red-pendientes-badge" id="red-pendientes-badge" style="display:none;"></span>
+        </button>
       </div>
     </div>
     <!-- Punto de llegada para usuarios sin establecimiento (Tarea 4) y
@@ -4238,6 +4285,9 @@
                 </div>
                 <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
               </div>
+              <button class="btn-outline" id="btn-vincular-red" data-btn-registrar-propietario onclick="abrirRedVincularModalManual()" title="Traer un tutor que ya existe en otro establecimiento de la red IRIS">
+                <i data-lucide="link" style="width: 16px; height: 16px;"></i> Vincular de la red
+              </button>
               <button class="btn-primary" id="btn-registrar-propietario" data-btn-registrar-propietario onclick="openRegistrarPropietarioModal()">
                 <i data-lucide="plus" style="width: 16px; height: 16px;"></i> Registrar propietario
               </button>
@@ -4488,6 +4538,9 @@
                     </button>
                     <button class="btn-outline" onclick="openEditMascotaModal(selectedPetKey)">
                       <i data-lucide="pencil" style="width: 14px; height: 14px;"></i> Editar mascota
+                    </button>
+                    <button class="btn-outline" onclick="abrirRedSolicitudModal(selectedPetKey)" title="Solicitar información clínica de este paciente a otro establecimiento de la red IRIS">
+                      <i data-lucide="network" style="width: 14px; height: 14px;"></i> Solicitar a otra clínica
                     </button>
                     <button class="btn-primary" id="btn-nueva-consulta" onclick="abrirTableroTrabajo()">
                       <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Consulta
@@ -6402,6 +6455,73 @@
         </div>
       </div>
 
+      <!-- Vista: Red IRIS — bandeja de solicitudes de información entre
+           establecimientos. Recibidas = otras clínicas nos piden la
+           historia de un paciente compartido (nosotros aprobamos o
+           rechazamos); Enviadas = lo que nosotros pedimos. Aprobar no
+           copia nada: habilita la lectura de las filas originales (ver
+           red_puede_ver_registro en supabase/schema.sql), y "Revocar"
+           la corta de inmediato. -->
+      <div class="admin-outer-view" id="admin-outer-red">
+        <div class="admin-pane">
+          <div class="admin-pane-header">
+            <div>
+              <h2 class="admin-pane-title">Red IRIS</h2>
+              <p class="admin-pane-subtitle">Solicitudes de información clínica entre establecimientos</p>
+            </div>
+            <button class="btn-outline" onclick="renderRedSolicitudes()" style="padding:8px 14px;font-size:13px;">
+              <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Actualizar
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><i data-lucide="inbox" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Solicitudes recibidas</span>
+            </div>
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Establecimiento solicitante</th>
+                  <th>Paciente / Tutor</th>
+                  <th>Información solicitada</th>
+                  <th>Estado</th>
+                  <th style="text-align:right;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="red-recibidas-body"></tbody>
+            </table>
+            <div class="placeholder-content" id="red-recibidas-empty" style="display:none;background-color:transparent;padding:28px 0;">
+              <div class="placeholder-icon"><i data-lucide="inbox" style="width:22px;height:22px;"></i></div>
+              <p class="placeholder-text" style="font-size:12px;">Ningún establecimiento ha solicitado información</p>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:16px;">
+            <div class="card-header">
+              <span class="card-title"><i data-lucide="send" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Solicitudes enviadas</span>
+            </div>
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Establecimiento destino</th>
+                  <th>Paciente / Tutor</th>
+                  <th>Información solicitada</th>
+                  <th>Estado</th>
+                  <th style="text-align:right;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="red-enviadas-body"></tbody>
+            </table>
+            <div class="placeholder-content" id="red-enviadas-empty" style="display:none;background-color:transparent;padding:28px 0;">
+              <div class="placeholder-icon"><i data-lucide="send" style="width:22px;height:22px;"></i></div>
+              <p class="placeholder-text" style="font-size:12px;">No has solicitado información a otros establecimientos</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Vista: Variables (Parte A.5) -->
       <div class="admin-outer-view" id="admin-outer-variables">
         <div class="admin-pane">
@@ -6440,6 +6560,75 @@
                 <!-- Dinámico por JS -->
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vista: Respaldo de datos (Parte A.6) -->
+      <div class="admin-outer-view" id="admin-outer-respaldo">
+        <div class="admin-pane">
+          <div class="admin-pane-header">
+            <div>
+              <h2 class="admin-pane-title">Respaldo de datos</h2>
+              <p class="admin-pane-subtitle">Copia de seguridad de la información del establecimiento</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><i data-lucide="download" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Descargar respaldo manual</span>
+              <button type="button" class="btn-primary" id="respaldo-btn-descargar" onclick="descargarRespaldoEstablecimiento()" style="padding:8px 16px;font-size:13px;">
+                <i data-lucide="download" style="width:14px;height:14px;"></i> Descargar respaldo (.json)
+              </button>
+            </div>
+            <div style="padding:20px;display:flex;flex-direction:column;gap:14px;">
+              <p style="font-size:13px;color:var(--text-2);line-height:1.6;margin:0;max-width:760px;">
+                Genera un archivo <strong>.json</strong> con todos los registros de este establecimiento leídos
+                directamente de la base de datos: tutores, mascotas, consultas, vacunaciones, desparasitaciones,
+                cirugías, hospitalizaciones, fórmulas, exámenes, documentos, seguimientos, remisiones, peluquería,
+                guardería, tareas, mensajes, agenda, inventario, movimientos de caja, arqueos y facturación.
+              </p>
+              <p style="font-size:12px;color:var(--text-2);line-height:1.6;margin:0;max-width:760px;">
+                <strong>No incluye los archivos</strong> (PDFs de documentos, firmas, fotos de mascotas, logo):
+                esos viven en el almacenamiento y sí los cubre el respaldo automático diario. El .json lista la
+                ruta de cada archivo para poder ubicarlos.
+              </p>
+              <div id="respaldo-estado" style="font-size:13px;color:var(--text-2);"></div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:16px;">
+            <div class="card-header">
+              <span class="card-title"><i data-lucide="list-checks" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Contenido del último respaldo generado</span>
+            </div>
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th>Tabla</th>
+                  <th style="text-align:right;">Registros</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="respaldo-conteos-body"></tbody>
+            </table>
+            <div class="placeholder-content" id="respaldo-conteos-empty" style="background-color:transparent;padding:28px 0;">
+              <div class="placeholder-icon"><i data-lucide="archive" style="width:22px;height:22px;"></i></div>
+              <p class="placeholder-text" style="font-size:12px;">Aún no has generado un respaldo en esta sesión</p>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:16px;">
+            <div class="card-header">
+              <span class="card-title"><i data-lucide="shield-check" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Respaldo automático</span>
+            </div>
+            <div style="padding:20px;">
+              <p style="font-size:13px;color:var(--text-2);line-height:1.7;margin:0;max-width:760px;">
+                Todos los días a las <strong>2:10 a.m.</strong> se respalda automáticamente la base de datos
+                completa —de todos los establecimientos— junto con todos los archivos almacenados. El respaldo
+                queda cifrado y se conserva 90 días. Este botón es la copia manual que la clínica puede
+                llevarse; no reemplaza al respaldo automático ni hace falta pulsarlo a diario.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -8325,6 +8514,24 @@
       };
 
       const btn = document.getElementById('prop-guardar-btn');
+
+      // RED IRIS: antes de crear un tutor nuevo, pregunta si esa cédula o
+      // ese celular ya existen en otro establecimiento de la red. Si hay
+      // coincidencia se abre el formulario de seguridad (cédula + celular)
+      // y este guardado se aborta — o el operador confirma que es alguien
+      // distinto con "Registrar como nuevo de todas formas", que fija
+      // redOmitirDeteccion y vuelve a entrar acá. No aplica al editar.
+      if (!isEdit && !redOmitirDeteccion) {
+        if (btn) btn.disabled = true;
+        const hint = await redDetectarCoincidencia(establecimientoId, datosForm.docNumero, datosForm.movil);
+        if (btn) btn.disabled = false;
+        if (hint) {
+          abrirRedVincularModal(hint);
+          return;
+        }
+      }
+      redOmitirDeteccion = false;
+
       if (btn) btn.disabled = true;
 
       try {
@@ -8592,11 +8799,22 @@
     // mascota en patientData + los registrados vía "Registrar propietario"
     // (estos últimos aún sin mascota — la selección de Mascota quedará
     // en "Sin mascotas registradas" hasta que ese módulo exista).
+    // Cada opción trae además cédula/teléfono como texto de búsqueda oculto
+    // (ver searchableSelectHTML) para poder buscar por esos datos y no solo
+    // por nombre.
     function getAgendaPropietarioOptions() {
-      const owners = new Set();
-      Object.values(patientData).forEach(d => owners.add(d.owner));
-      propietarios.forEach(p => owners.add(p.nombre));
-      return Array.from(owners).sort();
+      const owners = new Map(); // nombre -> "cedula telefono" (texto de búsqueda)
+      Object.entries(patientData).forEach(([petKey, d]) => {
+        if (owners.has(d.owner)) return;
+        const prop = getPropietarioDeMascota(petKey);
+        const cedula = prop ? prop.docNumero : '';
+        const tel = (prop && prop.movil) || d.ownerPhone || '';
+        owners.set(d.owner, [cedula, tel].filter(Boolean).join(' '));
+      });
+      propietarios.forEach(p => {
+        if (!owners.has(p.nombre)) owners.set(p.nombre, [p.docNumero, p.movil].filter(Boolean).join(' '));
+      });
+      return Array.from(owners.keys()).sort().map(nombre => ({ value: nombre, search: owners.get(nombre) }));
     }
 
     function onSelectAgendaPropietario(ownerName) {
@@ -10943,7 +11161,16 @@
     }
 
     function renderRowActionsMenu(moduleKey, recordId, extraActions, actionsOverride) {
-      const actions = actionsOverride || getRowActionsForRole();
+      let actions = actionsOverride || getRowActionsForRole();
+      // Registro que vive en otra clínica y solo se está leyendo por una
+      // solicitud aprobada de la Red IRIS: acá es de solo lectura (las
+      // policies de update/delete siguen siendo del establecimiento
+      // dueño), así que el menú se recorta a Ver/Imprimir y se descartan
+      // las acciones extra del módulo (firmar, registrar resultado, etc.).
+      if (registroCompartidoDeFila(moduleKey, recordId)) {
+        actions = actions.filter(a => a === 'ver' || a === 'imprimir');
+        extraActions = [];
+      }
       if (!actions.length) return '';
       extraActions = extraActions || [];
       const menuId = `row-menu-${moduleKey}-${String(recordId).replace(/[^a-zA-Z0-9]/g, '_')}`;
@@ -12479,12 +12706,30 @@
       select.innerHTML = getVacunasCatalogo().map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('');
     }
 
-    function registrarNuevaVacuna() {
+    async function registrarNuevaVacuna() {
       const nuevo = window.prompt('Nombre de la nueva vacuna:');
       if (!nuevo || !nuevo.trim()) return;
       const nombre = nuevo.trim();
-      if (!getVacunasCatalogo().includes(nombre)) vacunasCatalogoCustom.push(nombre);
-      renderVacunaOptions(nombre);
+      if (getVacunasCatalogo().includes(nombre)) { renderVacunaOptions(nombre); return; }
+
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const { error } = await window.supabase.from('catalogos_custom').insert({
+          establecimiento_id: currentSession.activeMembership.establecimientoId,
+          categoria: 'vacuna', valor: nombre, created_by: userId
+        });
+        if (error && error.code !== '23505') throw error; // 23505 = ya existe (otra sesión la agregó)
+        vacunasCatalogoCustom.push(nombre);
+        renderVacunaOptions(nombre);
+      } catch (err) {
+        console.error('[IRIS] Error guardando la vacuna en el catálogo:', err);
+        showToast('No se pudo guardar la vacuna — intenta de nuevo');
+      }
     }
 
     function openVacunacionModal(mode, petKey, vacunacionIndex) {
@@ -12709,12 +12954,30 @@
       select.innerHTML = getTiposDesparasitacion().map(t => `<option value="${t}" ${t === selected ? 'selected' : ''}>${t}</option>`).join('');
     }
 
-    function registrarNuevoTipoDesparasitacion() {
+    async function registrarNuevoTipoDesparasitacion() {
       const nuevo = window.prompt('Nombre del nuevo tipo de desparasitación:');
       if (!nuevo || !nuevo.trim()) return;
       const nombre = nuevo.trim();
-      if (!getTiposDesparasitacion().includes(nombre)) desparasitacionTiposCustom.push(nombre);
-      renderTipoDesparasitacionOptions(nombre);
+      if (getTiposDesparasitacion().includes(nombre)) { renderTipoDesparasitacionOptions(nombre); return; }
+
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const { error } = await window.supabase.from('catalogos_custom').insert({
+          establecimiento_id: currentSession.activeMembership.establecimientoId,
+          categoria: 'desparasitacion', valor: nombre, created_by: userId
+        });
+        if (error && error.code !== '23505') throw error; // 23505 = ya existe (otra sesión la agregó)
+        desparasitacionTiposCustom.push(nombre);
+        renderTipoDesparasitacionOptions(nombre);
+      } catch (err) {
+        console.error('[IRIS] Error guardando el tipo de desparasitación en el catálogo:', err);
+        showToast('No se pudo guardar el tipo de desparasitación — intenta de nuevo');
+      }
     }
 
     function handleDespArchivoSeleccionado(input) {
@@ -14354,8 +14617,14 @@
     function searchableSelectHTML(fieldName, options, selectedValue, placeholder, onSelectFnName) {
       const uid = `ss-${ordenSsUidCounter++}`;
       const label = selectedValue || placeholder || 'Seleccionar...';
-      const optsHTML = options.length
-        ? options.map(opt => `<div class="ss-option" data-value="${opt}" onclick="selectSearchableOption('${uid}', this)">${opt}</div>`).join('')
+      // Cada opción puede ser un string plano (comportamiento original: se
+      // busca solo por el texto visible) o un objeto { value, search } donde
+      // `search` agrega texto adicional (ej. cédula/teléfono) que también
+      // filtra pero no se muestra — usado por el buscador de propietario de
+      // Agenda (ver getAgendaPropietarioOptions).
+      const norm = options.map(o => (o && typeof o === 'object') ? o : { value: o, search: '' });
+      const optsHTML = norm.length
+        ? norm.map(o => `<div class="ss-option" data-value="${o.value}" data-search="${(o.value + ' ' + (o.search || '')).toLowerCase()}" onclick="selectSearchableOption('${uid}', this)">${o.value}</div>`).join('')
         : `<div class="ss-option-empty">Sin resultados</div>`;
       return `
         <div class="searchable-select" id="${uid}" ${onSelectFnName ? `data-onselect="${onSelectFnName}"` : ''}>
@@ -14395,7 +14664,8 @@
     function filterSearchableOptions(uid, query) {
       const q = query.trim().toLowerCase();
       document.querySelectorAll(`#${uid} .ss-option`).forEach(opt => {
-        opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+        const haystack = opt.getAttribute('data-search') || opt.textContent.toLowerCase();
+        opt.style.display = haystack.includes(q) ? '' : 'none';
       });
     }
 
@@ -15994,12 +16264,31 @@
       select.innerHTML = getTiposHospitalizacion().map(t => `<option value="${t}" ${t === selected ? 'selected' : ''}>${t}</option>`).join('');
     }
 
-    function registrarNuevoTipoHospitalizacion() {
+    async function registrarNuevoTipoHospitalizacion() {
       const nuevo = window.prompt('Nombre del nuevo tipo de hospitalización/ambulatorio:');
       if (!nuevo || !nuevo.trim()) return;
       const nombre = nuevo.trim();
-      if (!getTiposHospitalizacion().includes(nombre)) hospitalizacionTiposCustom.push(nombre);
-      renderHospTipoOptions(nombre);
+      if (getTiposHospitalizacion().includes(nombre)) { renderHospTipoOptions(nombre); return; }
+
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const { error } = await window.supabase.from('catalogos_custom').insert({
+          establecimiento_id: currentSession.activeMembership.establecimientoId,
+          categoria: 'hospitalizacion', valor: nombre, created_by: userId
+        });
+        if (error && error.code !== '23505') throw error; // 23505 = ya existe (otra sesión la agregó)
+        hospitalizacionTiposCustom.push(nombre);
+        renderHospTipoOptions(nombre);
+      } catch (err) {
+        console.error('[IRIS] Error guardando el tipo de hospitalización en el catálogo:', err);
+        showToast('No se pudo guardar el tipo de hospitalización — intenta de nuevo');
+        return;
+      }
     }
 
     function renderMotivoSalidaOptions(selected) {
@@ -17496,6 +17785,582 @@
       if (data && document.getElementById('documentos-table-body') && selectedPetKey === petKey) renderDocumentosTable(petKey);
     }
 
+    // ── MÓDULO: RED IRIS — identidad compartida entre establecimientos ──
+    // Dos capacidades distintas, con niveles de acceso distintos:
+    //
+    //  1. VINCULAR TUTOR (ficha, sin historia clínica). Al registrar un
+    //     propietario, red_buscar_persona() avisa si esa cédula/celular ya
+    //     existe en otra clínica de la red — solo con el nombre enmascarado.
+    //     Para traer los datos hay que pasar el formulario de seguridad:
+    //     cédula Y celular tienen que coincidir con la MISMA persona
+    //     (red_verificar_identidad, 5 intentos fallidos por 15 min y
+    //     después bloqueo). Eso devuelve un token de 10 minutos que
+    //     red_vincular_con_token() consume para copiar la ficha del tutor
+    //     y las fichas de mascota seleccionadas. Nunca viaja historia
+    //     clínica por acá.
+    //
+    //  2. SOLICITAR INFORMACIÓN (historia). Se pide por paciente a una
+    //     clínica concreta y esa clínica aprueba o rechaza desde su
+    //     bandeja (Admin > Red IRIS). Aprobar NO copia registros ni
+    //     archivos: habilita la lectura de las filas originales vía las
+    //     policies `*_select_red` (ver supabase/schema.sql), y por eso
+    //     esos registros son SOLO LECTURA acá — el menú "..." se recorta a
+    //     Ver/Imprimir en renderRowActionsMenu() y los PDFs se abren desde
+    //     su ruta original en Storage, sin volver a subirlos.
+    //
+    // Toda la lógica sensible vive en funciones `security definer` de
+    // Postgres: las tablas del directorio (red_personas/red_mascotas) no
+    // son legibles por PostgREST. Si necesitas un dato nuevo de la red,
+    // agrégalo al jsonb que devuelve la RPC correspondiente — no abras
+    // una policy de select sobre esas tablas.
+    let redVerificacion = null;          // resultado de red_verificar_identidad en curso (incluye token)
+    let redSolicitudPetKey = null;       // paciente para el que se está pidiendo información
+    let redSolicitudDestinos = [];       // establecimientos donde existe ese paciente
+    let redSolicitudesCache = [];        // última respuesta de red_listar_solicitudes (bandeja)
+    let redOmitirDeteccion = false;      // "Registrar como nuevo de todas formas"
+
+    function redEstablecimientoActivo() {
+      return (currentSession && currentSession.activeMembership)
+        ? currentSession.activeMembership.establecimientoId
+        : null;
+    }
+
+    // Envoltura única de las RPC de la red: todas devuelven un jsonb con
+    // { ok, ... } y ninguna debe tumbar la UI si el backend falla.
+    async function redRpc(fn, args) {
+      if (!window.supabase) return null;
+      const { data, error } = await window.supabase.rpc(fn, args);
+      if (error) {
+        console.error(`[IRIS] Error en RPC ${fn}:`, error);
+        return { ok: false, motivo: 'error' };
+      }
+      return data;
+    }
+
+    const RED_TIPOS_INFO = [
+      { key: 'documentos',        label: 'Documentos' },
+      { key: 'consultas',         label: 'Consultas (SOIP)' },
+      { key: 'vacunaciones',      label: 'Vacunaciones' },
+      { key: 'desparasitaciones', label: 'Desparasitaciones' },
+      { key: 'examenes',          label: 'Exámenes e imágenes' },
+      { key: 'formulas',          label: 'Fórmulas médicas' },
+      { key: 'cirugias',          label: 'Cirugías / procedimientos' }
+    ];
+
+    function redTipoLabel(key) {
+      const t = RED_TIPOS_INFO.find(x => x.key === key);
+      return t ? t.label : key;
+    }
+
+    // ── 1. DETECCIÓN + VINCULACIÓN ───────────────────────────────
+    // Llamada desde guardarPropietario() antes del insert. Devuelve el
+    // "hint" (nombre enmascarado + contadores) o null si no hay
+    // coincidencia, si ya está en esta clínica o si la red no responde —
+    // en cualquiera de esos casos el registro normal sigue su curso.
+    async function redDetectarCoincidencia(establecimientoId, docNumero, movil) {
+      const res = await redRpc('red_buscar_persona', {
+        p_establecimiento_id: establecimientoId,
+        p_doc_numero: docNumero,
+        p_movil: movil
+      });
+      if (!res || !res.ok || !res.existe) return null;
+      if (res.ya_en_clinica) return null;
+      return res;
+    }
+
+    function abrirRedVincularModal(hint) {
+      redVerificacion = null;
+      const avisoEl = document.getElementById('red-vincular-aviso');
+      if (hint) {
+        avisoEl.style.display = '';
+        document.getElementById('red-hint-nombre').textContent = hint.nombre_masked || '—';
+        const partes = [];
+        if (hint.mascotas) partes.push(`${hint.mascotas} mascota${hint.mascotas === 1 ? '' : 's'}`);
+        if (hint.clinicas) partes.push(`${hint.clinicas} establecimiento${hint.clinicas === 1 ? '' : 's'}`);
+        document.getElementById('red-hint-detalle').textContent = partes.join(' · ') || 'Sin fichas asociadas';
+      } else {
+        avisoEl.style.display = 'none';
+      }
+
+      document.getElementById('red-vincular-paso1').style.display = '';
+      document.getElementById('red-vincular-paso2').style.display = 'none';
+      document.getElementById('red-vincular-verificar-btn').style.display = '';
+      document.getElementById('red-vincular-confirmar-btn').style.display = 'none';
+      // El botón de escape solo aplica cuando se llegó acá desde el
+      // registro de un propietario nuevo (hay un formulario esperando).
+      document.getElementById('red-vincular-nuevo-btn').style.display = hint ? '' : 'none';
+
+      // A propósito NO se precargan la cédula ni el celular con lo que ya
+      // se digitó en el formulario: son el segundo factor y los tiene que
+      // confirmar el tutor, no el recepcionista.
+      const docEl = document.getElementById('red-doc-numero');
+      docEl.value = '';
+      docEl.classList.remove('field-error');
+      docEl.oninput = () => docEl.classList.remove('field-error');
+      document.getElementById('red-movil').value = '';
+      aplicarPaisTelefono('red-movil', 'CO');
+      configurarInputTelefonoPais('red-movil');
+      document.getElementById('red-movil-error').classList.remove('show');
+      document.getElementById('red-vincular-error').classList.remove('show');
+
+      document.getElementById('red-vincular-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    // Entrada manual (botón "Vincular de la red" del buscador de
+    // Consultorio): mismo formulario de seguridad, sin hint previo.
+    function abrirRedVincularModalManual() {
+      const role = ROLES[currentSimRole];
+      if (!role.canRegisterOwner) return;
+      if (!redEstablecimientoActivo()) { showToast('No hay una clínica activa'); return; }
+      abrirRedVincularModal(null);
+    }
+
+    function closeRedVincularModal() {
+      document.getElementById('red-vincular-modal').classList.remove('show');
+      redVerificacion = null;
+    }
+
+    function handleRedVincularOverlayClick(e) {
+      if (e.target === document.getElementById('red-vincular-modal')) closeRedVincularModal();
+    }
+
+    // "Registrar como nuevo de todas formas": el operador decide que NO es
+    // la misma persona (homónimo, cédula mal digitada en la otra clínica).
+    // Se salta la detección una sola vez y reintenta el guardado normal.
+    function redRegistrarComoNuevo() {
+      closeRedVincularModal();
+      redOmitirDeteccion = true;
+      guardarPropietario();
+    }
+
+    async function redVerificarIdentidad() {
+      const establecimientoId = redEstablecimientoActivo();
+      if (!establecimientoId) { showToast('No hay una clínica activa'); return; }
+
+      const docEl = document.getElementById('red-doc-numero');
+      const movilEl = document.getElementById('red-movil');
+      const errorEl = document.getElementById('red-vincular-error');
+      const movilCheck = validarTelefonoPais('red-movil');
+
+      const docVacio = docEl.value.trim() === '';
+      const movilInvalido = movilEl.value.trim() === '' || !movilCheck.valido;
+      docEl.classList.toggle('field-error', docVacio);
+      movilEl.classList.toggle('field-error', movilInvalido);
+      document.getElementById('red-movil-error').classList.toggle('show', movilInvalido);
+      if (docVacio || movilInvalido) {
+        showToast('Ingresa el número de documento y el celular del tutor');
+        return;
+      }
+
+      const btn = document.getElementById('red-vincular-verificar-btn');
+      btn.disabled = true;
+      const res = await redRpc('red_verificar_identidad', {
+        p_establecimiento_id: establecimientoId,
+        p_doc_numero: docEl.value.trim(),
+        p_movil: `+${movilCheck.pais.dial} ${movilEl.value.trim()}`
+      });
+      btn.disabled = false;
+
+      if (!res || !res.ok) {
+        const motivo = res ? res.motivo : 'error';
+        let msg;
+        if (motivo === 'bloqueado') {
+          msg = 'Demasiados intentos fallidos. Espera 15 minutos antes de volver a intentarlo.';
+        } else if (motivo === 'no_coincide') {
+          // Mensaje deliberadamente genérico: no decimos cuál de los dos
+          // datos falló (ver nota de red_verificar_identidad en el schema).
+          msg = 'Los datos no coinciden con ningún tutor de la red.'
+              + (res.intentos_restantes != null ? ` Te quedan ${res.intentos_restantes} intento(s).` : '');
+        } else {
+          msg = 'No se pudo verificar la identidad — intenta de nuevo.';
+        }
+        errorEl.textContent = msg;
+        errorEl.classList.add('show');
+        docEl.classList.add('field-error');
+        movilEl.classList.add('field-error');
+        return;
+      }
+
+      errorEl.classList.remove('show');
+      redVerificacion = res;
+      renderRedVincularPaso2();
+    }
+
+    function renderRedVincularPaso2() {
+      const v = redVerificacion;
+      const persona = v.persona || {};
+      document.getElementById('red-persona-nombre').textContent = persona.nombre || '—';
+      document.getElementById('red-persona-doc').textContent =
+        `${persona.doc_tipo || ''} ${persona.doc_numero || ''}`.trim() || '—';
+      document.getElementById('red-persona-contacto').textContent =
+        [persona.movil, persona.email].filter(Boolean).join(' · ') || '—';
+      document.getElementById('red-persona-ubicacion').textContent =
+        [persona.direccion, persona.ciudad].filter(Boolean).join(' · ') || '—';
+
+      const mascotas = v.mascotas || [];
+      const cont = document.getElementById('red-mascotas-list');
+      cont.innerHTML = mascotas.length ? mascotas.map(m => {
+        const meta = [
+          m.especie, m.raza,
+          m.fecha_nacimiento ? formatearEdadYMD(m.fecha_nacimiento) : null,
+          m.chip ? `Chip ${m.chip}` : null
+        ].filter(Boolean).join(' · ');
+        return `
+          <label class="red-pet-option${m.ya_existe ? ' disabled' : ''}">
+            <input type="checkbox" value="${m.id}" ${m.ya_existe ? 'disabled' : 'checked'}>
+            <span class="red-pet-body">
+              <span class="red-pet-name">${m.nombre}</span>
+              <span class="red-pet-meta">${meta || 'Sin datos adicionales'}</span>
+            </span>
+            ${m.ya_existe ? '<span class="red-pet-flag">Ya registrada aquí</span>' : ''}
+          </label>`;
+      }).join('') : '<p class="red-empty-note">Este tutor no tiene fichas de mascota en la red.</p>';
+
+      document.getElementById('red-vincular-paso1').style.display = 'none';
+      document.getElementById('red-vincular-paso2').style.display = '';
+      document.getElementById('red-vincular-verificar-btn').style.display = 'none';
+      document.getElementById('red-vincular-nuevo-btn').style.display = 'none';
+      document.getElementById('red-vincular-confirmar-btn').style.display = '';
+      lucide.createIcons();
+    }
+
+    async function redConfirmarVinculacion() {
+      if (!redVerificacion || !redVerificacion.token) return;
+      const ids = Array.from(document.querySelectorAll('#red-mascotas-list input[type="checkbox"]'))
+        .filter(c => c.checked && !c.disabled).map(c => c.value);
+
+      const btn = document.getElementById('red-vincular-confirmar-btn');
+      btn.disabled = true;
+      const res = await redRpc('red_vincular_con_token', {
+        p_token: redVerificacion.token,
+        p_red_mascota_ids: ids
+      });
+      btn.disabled = false;
+
+      if (!res || !res.ok) {
+        showToast(res && res.motivo === 'token_invalido'
+          ? 'La verificación expiró — vuelve a ingresar los datos del tutor'
+          : 'No se pudo vincular al tutor — intenta de nuevo');
+        return;
+      }
+
+      const prop = construirPropietarioDesdeFila(res.propietario);
+      const yaEstaba = propietarios.findIndex(p => p.id === prop.id);
+      if (yaEstaba >= 0) propietarios[yaEstaba] = prop; else propietarios.unshift(prop);
+      // Mismo pre-registro perezoso que hace el loader al arrancar sesión
+      // (ver nota junto a getVentasClienteIdDePropietario).
+      getVentasClienteIdDePropietario(prop.id);
+
+      const nuevas = res.mascotas || [];
+      nuevas.forEach(r => { patientData[r.pet_key] = construirMascotaDesdeFila(r, prop); });
+
+      renderPropietariosTable();
+      renderTutoresTable();
+      renderDashboard();
+      closeRedVincularModal();
+      closeRegistrarPropietarioModal();
+      showToast(nuevas.length
+        ? `Tutor vinculado — ${nuevas.length} ficha${nuevas.length === 1 ? '' : 's'} de mascota importada${nuevas.length === 1 ? '' : 's'}`
+        : 'Tutor vinculado a este establecimiento');
+      abrirPerfilPropietario(prop.id);
+    }
+
+    // ── 2. SOLICITUDES DE INFORMACIÓN ENTRE ESTABLECIMIENTOS ─────
+    async function abrirRedSolicitudModal(petKey) {
+      const data = patientData[petKey];
+      if (!data || !data.mascotaId) { showToast('Este paciente todavía no está sincronizado'); return; }
+      redSolicitudPetKey = petKey;
+
+      document.getElementById('red-solicitud-pet-name').textContent = data.name;
+      document.getElementById('red-solicitud-mensaje').value = '';
+      document.getElementById('red-solicitud-tipos').innerHTML = RED_TIPOS_INFO.map(t => `
+        <label class="red-tipo-option">
+          <input type="checkbox" value="${t.key}" checked>
+          <span>${t.label}</span>
+        </label>`).join('');
+      const destinosEl = document.getElementById('red-solicitud-destinos');
+      destinosEl.innerHTML = '<p class="red-empty-note">Buscando en la red…</p>';
+      document.getElementById('red-solicitud-modal').classList.add('show');
+      lucide.createIcons();
+
+      const res = await redRpc('red_establecimientos_de_mascota', { p_mascota_id: data.mascotaId });
+      redSolicitudDestinos = (res && res.ok) ? (res.establecimientos || []) : [];
+
+      if (!redSolicitudDestinos.length) {
+        destinosEl.innerHTML = `<p class="red-empty-note">${
+          res && res.ok
+            ? 'Este paciente no está registrado en ningún otro establecimiento de la red.'
+            : 'No se pudo consultar la red — intenta de nuevo.'
+        }</p>`;
+        return;
+      }
+
+      destinosEl.innerHTML = redSolicitudDestinos.map((e, i) => {
+        const pendiente = e.solicitud_estado === 'pendiente';
+        const aprobada = e.solicitud_estado === 'aprobada';
+        const nota = pendiente ? 'Solicitud pendiente' : (aprobada ? 'Acceso aprobado' : '');
+        return `
+          <label class="red-pet-option${pendiente ? ' disabled' : ''}">
+            <input type="radio" name="red-solicitud-destino" value="${e.establecimiento_id}" ${pendiente ? 'disabled' : (i === 0 ? 'checked' : '')}>
+            <span class="red-pet-body">
+              <span class="red-pet-name">${e.nombre}</span>
+              <span class="red-pet-meta">${[e.ciudad, `Paciente desde ${formatFechaCorta((e.desde || '').slice(0, 10))}`].filter(Boolean).join(' · ')}</span>
+            </span>
+            ${nota ? `<span class="red-pet-flag">${nota}</span>` : ''}
+          </label>`;
+      }).join('');
+      lucide.createIcons();
+    }
+
+    function closeRedSolicitudModal() {
+      document.getElementById('red-solicitud-modal').classList.remove('show');
+      redSolicitudPetKey = null;
+    }
+
+    function handleRedSolicitudOverlayClick(e) {
+      if (e.target === document.getElementById('red-solicitud-modal')) closeRedSolicitudModal();
+    }
+
+    async function redEnviarSolicitud() {
+      const data = patientData[redSolicitudPetKey];
+      if (!data) return;
+      const destinoEl = document.querySelector('#red-solicitud-destinos input[name="red-solicitud-destino"]:checked');
+      if (!destinoEl) { showToast('Selecciona el establecimiento al que le vas a solicitar la información'); return; }
+      const tipos = Array.from(document.querySelectorAll('#red-solicitud-tipos input[type="checkbox"]:checked')).map(c => c.value);
+      if (!tipos.length) { showToast('Selecciona al menos un tipo de información'); return; }
+
+      const btn = document.getElementById('red-solicitud-enviar-btn');
+      btn.disabled = true;
+      const res = await redRpc('red_crear_solicitud', {
+        p_mascota_id: data.mascotaId,
+        p_destino_establecimiento_id: destinoEl.value,
+        p_tipos: tipos,
+        p_mensaje: document.getElementById('red-solicitud-mensaje').value.trim()
+      });
+      btn.disabled = false;
+
+      if (!res || !res.ok) {
+        const motivos = {
+          ya_pendiente: 'Ya hay una solicitud pendiente para este paciente en ese establecimiento',
+          no_existe_en_destino: 'Ese establecimiento ya no tiene a este paciente',
+          sin_identidad_red: 'Este paciente todavía no tiene identidad en la red'
+        };
+        showToast((res && motivos[res.motivo]) || 'No se pudo enviar la solicitud');
+        return;
+      }
+
+      closeRedSolicitudModal();
+      showToast('Solicitud enviada — el otro establecimiento debe aprobarla');
+    }
+
+    // ── BANDEJA (Admin > Red IRIS) ───────────────────────────────
+    function redEstadoBadgeHTML(estado) {
+      const map = {
+        pendiente: 'status-badge status-badge-pendiente',
+        aprobada: 'status-badge status-badge-activo',
+        rechazada: 'status-badge status-badge-vencido',
+        cancelada: 'status-badge status-badge-inactivo',
+        revocada: 'status-badge status-badge-vencido'
+      };
+      const label = { pendiente: 'Pendiente', aprobada: 'Aprobada', rechazada: 'Rechazada', cancelada: 'Cancelada', revocada: 'Revocada' };
+      return `<span class="${map[estado] || 'status-badge'}">${label[estado] || estado}</span>`;
+    }
+
+    async function renderRedSolicitudes() {
+      const establecimientoId = redEstablecimientoActivo();
+      const recibidasBody = document.getElementById('red-recibidas-body');
+      const enviadasBody = document.getElementById('red-enviadas-body');
+      if (!recibidasBody || !enviadasBody) return;
+
+      if (!establecimientoId) {
+        recibidasBody.innerHTML = '';
+        enviadasBody.innerHTML = '';
+        document.getElementById('red-recibidas-empty').style.display = 'flex';
+        document.getElementById('red-enviadas-empty').style.display = 'flex';
+        return;
+      }
+
+      const res = await redRpc('red_listar_solicitudes', { p_establecimiento_id: establecimientoId });
+      redSolicitudesCache = (res && res.ok) ? (res.solicitudes || []) : [];
+
+      const filaHTML = (s, esRecibida) => {
+        const acciones = [];
+        if (esRecibida && s.estado === 'pendiente') {
+          acciones.push(`<button class="btn-primary" style="padding:5px 10px;font-size:12px;" onclick="redResponderSolicitud('${s.id}','aprobada')">Aprobar</button>`);
+          acciones.push(`<button class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="redResponderSolicitud('${s.id}','rechazada')">Rechazar</button>`);
+        } else if (esRecibida && s.estado === 'aprobada') {
+          acciones.push(`<button class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="redResponderSolicitud('${s.id}','revocada')">Revocar acceso</button>`);
+        } else if (!esRecibida && s.estado === 'pendiente') {
+          acciones.push(`<button class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="redResponderSolicitud('${s.id}','cancelada')">Cancelar</button>`);
+        }
+        return `
+          <tr>
+            <td>${formatFechaCorta((s.created_at || '').slice(0, 10))}</td>
+            <td>${esRecibida ? s.solicitante_nombre : s.destino_nombre}</td>
+            <td>
+              <div style="font-weight:600;">${s.mascota_nombre}${s.mascota_especie ? ` · ${s.mascota_especie}` : ''}</div>
+              <div style="font-size:11px;color:var(--text-2);">${s.propietario_nombre || '—'}</div>
+            </td>
+            <td style="max-width:260px;">
+              <div style="font-size:11px;">${(s.tipos || []).map(redTipoLabel).join(', ')}</div>
+              ${s.mensaje ? `<div style="font-size:11px;color:var(--text-2);margin-top:2px;">"${s.mensaje}"</div>` : ''}
+            </td>
+            <td>${redEstadoBadgeHTML(s.estado)}</td>
+            <td style="text-align:right;"><div style="display:flex;gap:6px;justify-content:flex-end;">${acciones.join('')}</div></td>
+          </tr>`;
+      };
+
+      const recibidas = redSolicitudesCache.filter(s => s.direccion === 'recibida');
+      const enviadas = redSolicitudesCache.filter(s => s.direccion === 'enviada');
+      recibidasBody.innerHTML = recibidas.map(s => filaHTML(s, true)).join('');
+      enviadasBody.innerHTML = enviadas.map(s => filaHTML(s, false)).join('');
+      document.getElementById('red-recibidas-empty').style.display = recibidas.length ? 'none' : 'flex';
+      document.getElementById('red-enviadas-empty').style.display = enviadas.length ? 'none' : 'flex';
+
+      // Contador de pendientes en la entrada del menú de Admin.
+      const badge = document.getElementById('red-pendientes-badge');
+      if (badge) {
+        const n = recibidas.filter(s => s.estado === 'pendiente').length;
+        badge.textContent = n || '';
+        badge.style.display = n ? '' : 'none';
+      }
+      lucide.createIcons();
+    }
+
+    async function redResponderSolicitud(id, estado) {
+      if (estado === 'revocada' && !confirm('¿Revocar el acceso? El otro establecimiento dejará de ver esta información de inmediato.')) return;
+      const res = await redRpc('red_responder_solicitud', { p_id: id, p_estado: estado, p_nota: null });
+      if (!res || !res.ok) { showToast('No se pudo actualizar la solicitud'); return; }
+      const msgs = {
+        aprobada: 'Solicitud aprobada — el otro establecimiento ya puede ver la información',
+        rechazada: 'Solicitud rechazada',
+        cancelada: 'Solicitud cancelada',
+        revocada: 'Acceso revocado'
+      };
+      showToast(msgs[estado] || 'Solicitud actualizada');
+      renderRedSolicitudes();
+    }
+
+    // ── REGISTROS COMPARTIDOS (lectura desde otra clínica) ───────
+    // Marca un registro que vive en otra clínica: además de la bandera
+    // que consume renderRowActionsMenu(), reescribe la columna "Usuario"
+    // (o "vet" en el timeline de Historia) para que el origen se vea sin
+    // tocar el render de cada uno de los 7 módulos.
+    function redMarcarCompartido(record, clinica) {
+      record.compartidoDe = clinica;
+      const etiqueta = `Compartido · ${clinica}`;
+      if ('usuario' in record) record.usuario = record.usuario ? `${etiqueta} (${record.usuario})` : etiqueta;
+      if ('vet' in record) record.vet = record.vet ? `${etiqueta} (${record.vet})` : etiqueta;
+      return record;
+    }
+
+    function redArrayDeModulo(moduleKey) {
+      switch (moduleKey) {
+        case 'documento':       return 'documentos';
+        case 'consulta':        return 'consultas';
+        case 'vacunacion':      return 'vacunaciones';
+        case 'desparasitacion': return 'desparasitaciones';
+        case 'examen':          return 'examenes';
+        case 'formula':         return 'formulas';
+        case 'cirugia':         return 'cirugias';
+        default:                return null;
+      }
+    }
+
+    // Resuelve el `recordId` que usan los menús "..." de los módulos
+    // clínicos (`petKey:indice`, o `petKey:dbId` en Consultas) contra el
+    // array real, en vez de guardar un set de ids: los índices se corren
+    // al eliminar registros y un set quedaría desactualizado.
+    function registroCompartidoDeFila(moduleKey, recordId) {
+      const arrKey = redArrayDeModulo(moduleKey);
+      if (!arrKey || typeof recordId !== 'string' || recordId.indexOf(':') === -1) return null;
+      const [petKey, ref] = recordId.split(':');
+      const data = patientData[petKey];
+      const arr = data && data[arrKey];
+      if (!Array.isArray(arr)) return null;
+      const rec = /^\d+$/.test(ref) ? arr[Number(ref)] : arr.find(x => String(x.dbId || x.id || '') === ref);
+      return (rec && rec.compartidoDe) ? rec.compartidoDe : null;
+    }
+
+    // Carga los registros que otras clínicas nos aprobaron y los mezcla en
+    // patientData. No filtra por tipo del lado del cliente: las policies
+    // `*_select_red` ya limitan cada select a los tipos aprobados, así que
+    // lo que llega acá es exactamente lo autorizado.
+    async function cargarCompartidosDeLaRed(establecimientoId) {
+      if (!window.supabase || !establecimientoId) return;
+      const res = await redRpc('red_mis_compartidos', { p_establecimiento_id: establecimientoId });
+      const compartidos = (res && res.ok) ? (res.compartidos || []) : [];
+      if (!compartidos.length) return;
+
+      const porOrigen = new Map();
+      compartidos.forEach(c => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === c.mascota_local_id);
+        if (pet && c.mascota_origen_id) {
+          porOrigen.set(c.mascota_origen_id, { pet, clinica: c.establecimiento_origen_nombre || 'Otro establecimiento' });
+        }
+      });
+      if (!porOrigen.size) return;
+      const origenIds = Array.from(porOrigen.keys());
+
+      try {
+        const [docRes, consultaRes, vacRes, despRes, examRes, formulaRes, cirugiaRes] = await Promise.all([
+          window.supabase.from('documentos').select('*').in('mascota_id', origenIds),
+          window.supabase.from('consultas').select('*').in('mascota_id', origenIds),
+          window.supabase.from('vacunaciones').select('*').in('mascota_id', origenIds),
+          window.supabase.from('desparasitaciones').select('*').in('mascota_id', origenIds),
+          window.supabase.from('examenes').select('*').in('mascota_id', origenIds),
+          window.supabase.from('formulas_medicas').select('*').in('mascota_id', origenIds),
+          window.supabase.from('cirugias').select('*').in('mascota_id', origenIds)
+        ]);
+
+        const ctxDe = r => porOrigen.get(r.mascota_id);
+
+        (docRes.data || []).forEach(r => {
+          const ctx = ctxDe(r); if (!ctx) return;
+          ctx.pet.documentos.push(redMarcarCompartido(construirDocumentoDesdeFila(r), ctx.clinica));
+        });
+        (consultaRes.data || []).forEach(r => {
+          const ctx = ctxDe(r); if (!ctx) return;
+          ctx.pet.timeline.push(redMarcarCompartido(construirConsultaDesdeFila(r), ctx.clinica));
+          ctx.pet.consultas.push(redMarcarCompartido(construirConsultaRegistroDesdeFila(r), ctx.clinica));
+        });
+        (vacRes.data || []).forEach(r => {
+          const ctx = ctxDe(r); if (!ctx) return;
+          const record = redMarcarCompartido(construirVacunacionDesdeFila(r), ctx.clinica);
+          ctx.pet.vacunaciones.push(record);
+          ctx.pet.timeline.push(redMarcarCompartido(construirVacunacionTimelineDesdeFila(record), ctx.clinica));
+        });
+        (despRes.data || []).forEach(r => {
+          const ctx = ctxDe(r); if (!ctx) return;
+          const record = redMarcarCompartido(construirDesparasitacionDesdeFila(r), ctx.clinica);
+          ctx.pet.desparasitaciones.push(record);
+          ctx.pet.timeline.push(redMarcarCompartido(construirDesparasitacionTimelineDesdeFila(record), ctx.clinica));
+        });
+        (examRes.data || []).forEach(r => {
+          const ctx = ctxDe(r); if (!ctx) return;
+          ctx.pet.examenes.push(redMarcarCompartido(construirExamenDesdeFila(r), ctx.clinica));
+        });
+        (formulaRes.data || []).forEach(r => {
+          const ctx = ctxDe(r); if (!ctx) return;
+          ctx.pet.formulas.push(redMarcarCompartido(construirFormulaDesdeFila(r), ctx.clinica));
+        });
+        (cirugiaRes.data || []).forEach(r => {
+          const ctx = ctxDe(r); if (!ctx) return;
+          const record = redMarcarCompartido(construirCirugiaDesdeFila(r), ctx.clinica);
+          ctx.pet.cirugias.push(record);
+          ctx.pet.timeline.push(redMarcarCompartido(construirCirugiaTimelineDesdeFila(record), ctx.clinica));
+        });
+
+        porOrigen.forEach(({ pet }) => {
+          pet.timeline.sort((a, b) => new Date(b.dateSortKey || 0) - new Date(a.dateSortKey || 0));
+          pet.consultas.sort((a, b) => new Date(b.fechaISO || 0) - new Date(a.fechaISO || 0));
+        });
+      } catch (err) {
+        console.error('[IRIS] Error cargando registros compartidos de la red:', err);
+      }
+    }
+
     // ── MÓDULO: ADMIN — USUARIOS Y PRIVILEGIOS ───────────────────
     function switchAdminView(viewName) {
       document.querySelectorAll('.admin-subview-tab-btn').forEach(btn => {
@@ -17645,7 +18510,203 @@
         pane.classList.toggle('active', pane.id === `admin-outer-${viewKey}`);
       });
       if (viewKey === 'tutores') renderTutoresTable();
+      if (viewKey === 'red') renderRedSolicitudes();
+      if (viewKey === 'respaldo') renderRespaldoEstado();
       lucide.createIcons();
+    }
+
+    // ── A.6 — RESPALDO DE DATOS ────────────────────────────────────
+    // Exporta las FILAS REALES de Supabase del establecimiento activo, no el
+    // modelo en memoria (`patientData`/arrays mock): el objetivo es poder
+    // volver a insertar la información, y para eso sirve la fila tal como está
+    // en la base, no la forma que el render necesita.
+    //
+    // Esto es la copia MANUAL. El respaldo de verdad —base completa de todos
+    // los establecimientos + los archivos de Storage, cifrado y diario— vive
+    // en .github/workflows/respaldo-supabase.yml (ver scripts/respaldo/README.md).
+    // Si agregas una tabla nueva por establecimiento, agrégala a las DOS
+    // partes: acá y al workflow no hace falta (vuelca el schema completo), pero
+    // sí a esta lista, o el respaldo manual la omite en silencio.
+    const RESPALDO_TABLAS = [
+      'propietarios', 'mascotas', 'consultas', 'documentos', 'examenes', 'formulas_medicas',
+      'vacunaciones', 'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
+      'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes', 'mensajes',
+      'agenda_eventos', 'productos', 'movimientos', 'arqueos', 'ventas_facturas',
+      'ventas_cotizaciones', 'catalogos_custom', 'memberships', 'invites', 'link_requests'
+    ];
+
+    function respaldoUltimoKey(establecimientoId) {
+      return `iris_ultimo_respaldo_${establecimientoId}`;
+    }
+
+    function renderRespaldoEstado(mensaje) {
+      const cont = document.getElementById('respaldo-estado');
+      if (!cont) return;
+      const estabId = currentSession && currentSession.activeMembership
+        ? currentSession.activeMembership.establecimientoId : null;
+      if (mensaje) { cont.textContent = mensaje; return; }
+      let ultimo = null;
+      try { ultimo = estabId ? localStorage.getItem(respaldoUltimoKey(estabId)) : null; } catch (e) { ultimo = null; }
+      cont.textContent = ultimo
+        ? `Último respaldo manual descargado: ${new Date(ultimo).toLocaleString('es-CO')}`
+        : 'Todavía no se ha descargado ningún respaldo manual de este establecimiento.';
+    }
+
+    // Lee una tabla COMPLETA paginando de 1000 en 1000. PostgREST devuelve
+    // como máximo 1000 filas por petición y no avisa que truncó: un select
+    // suelto sobre `productos` (2000+ filas en producción) daría un respaldo
+    // silenciosamente incompleto, que es exactamente el peor resultado posible
+    // acá. El .order('id') es parte de la corrección, no cosmético: sin un
+    // orden estable, dos páginas consecutivas pueden repetir y omitir filas.
+    async function respaldoLeerTablaCompleta(tabla, establecimientoId) {
+      const PAGINA = 1000;
+      const filas = [];
+      for (let desde = 0; ; desde += PAGINA) {
+        const { data, error } = await window.supabase
+          .from(tabla)
+          .select('*')
+          .eq('establecimiento_id', establecimientoId)
+          .order('id', { ascending: true })
+          .range(desde, desde + PAGINA - 1);
+        if (error) throw error;
+        const lote = data || [];
+        filas.push(...lote);
+        if (lote.length < PAGINA) return filas;
+      }
+    }
+
+    // Recorre las filas buscando rutas de archivos de Storage para dejar el
+    // inventario dentro del .json. Genérico a propósito (cualquier campo que
+    // termine en _path/_url, más los arrays de fotos de Peluquería), así una
+    // columna de archivo nueva aparece sin tocar esta función.
+    function respaldoInventarioArchivos(tablas) {
+      const archivos = [];
+      Object.entries(tablas).forEach(([tabla, filas]) => {
+        (filas || []).forEach(fila => {
+          Object.entries(fila).forEach(([campo, valor]) => {
+            if (typeof valor === 'string' && valor && /(_path|_url)$/.test(campo)) {
+              archivos.push({ tabla, registroId: fila.id, campo, valor });
+            } else if (Array.isArray(valor) && /^fotos_/.test(campo)) {
+              valor.forEach(item => {
+                const nombre = item && (item.path || item.nombre);
+                if (nombre) archivos.push({ tabla, registroId: fila.id, campo, valor: nombre });
+              });
+            }
+          });
+        });
+      });
+      return archivos;
+    }
+
+    function renderRespaldoConteos(conteos, errores) {
+      const tbody = document.getElementById('respaldo-conteos-body');
+      const empty = document.getElementById('respaldo-conteos-empty');
+      if (!tbody) return;
+      const filas = Object.entries(conteos);
+      tbody.innerHTML = filas.map(([tabla, n]) => {
+        const err = errores[tabla];
+        const estado = err
+          ? `<span style="color:#dc2626;">No se pudo leer: ${err}</span>`
+          : '<span style="color:var(--text-2);">Incluida</span>';
+        return `<tr><td>${tabla}</td><td style="text-align:right;">${err ? '—' : n}</td><td>${estado}</td></tr>`;
+      }).join('');
+      if (empty) empty.style.display = filas.length ? 'none' : '';
+    }
+
+    async function descargarRespaldoEstablecimiento() {
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay sesión ni establecimiento activo');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const btn = document.getElementById('respaldo-btn-descargar');
+      if (btn) btn.disabled = true;
+      renderRespaldoEstado('Generando respaldo…');
+
+      try {
+        const tablas = {};
+        const conteos = {};
+        const errores = {};
+
+        // Secuencial y no en paralelo: son 26 tablas paginadas y disparar todo
+        // a la vez contra el plan free provoca throttling justo en la
+        // operación que menos conviene que falle a medias.
+        for (const tabla of RESPALDO_TABLAS) {
+          try {
+            const filas = await respaldoLeerTablaCompleta(tabla, establecimientoId);
+            tablas[tabla] = filas;
+            conteos[tabla] = filas.length;
+          } catch (err) {
+            tablas[tabla] = [];
+            conteos[tabla] = 0;
+            errores[tabla] = (err && err.message) ? err.message : String(err);
+            console.error(`[IRIS] respaldo: falló la tabla ${tabla}`, err);
+          }
+        }
+
+        let establecimiento = null;
+        try {
+          const { data } = await window.supabase
+            .from('establecimientos').select('*').eq('id', establecimientoId).maybeSingle();
+          establecimiento = data || null;
+        } catch (err) {
+          console.error('[IRIS] respaldo: no se pudo leer el establecimiento', err);
+        }
+
+        const archivos = respaldoInventarioArchivos(tablas);
+        const totalRegistros = Object.values(conteos).reduce((s, n) => s + n, 0);
+        const generadoEn = new Date().toISOString();
+
+        const respaldo = {
+          _meta: {
+            app: 'IRIS',
+            formato: 'respaldo-establecimiento',
+            version: 1,
+            generadoEn,
+            establecimientoId,
+            establecimientoNombre: establecimiento ? establecimiento.nombre : null,
+            generadoPor: currentSession.user ? currentSession.user.email : null,
+            totalRegistros,
+            conteos,
+            tablasConError: errores,
+            nota: 'Los archivos binarios (PDFs, firmas, fotos) no están en este archivo; solo su ruta en el inventario "archivos". El respaldo automático diario sí los incluye.'
+          },
+          establecimiento,
+          tablas,
+          archivos
+        };
+
+        const nombreArchivo = `iris-respaldo-${(establecimiento && establecimiento.nombre ? establecimiento.nombre : 'establecimiento')
+          .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+          }-${generadoEn.slice(0, 10)}.json`;
+
+        const blob = new Blob([JSON.stringify(respaldo, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const enlace = document.createElement('a');
+        enlace.href = url;
+        enlace.download = nombreArchivo;
+        document.body.appendChild(enlace);
+        enlace.click();
+        document.body.removeChild(enlace);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        renderRespaldoConteos(conteos, errores);
+        const conError = Object.keys(errores);
+        if (conError.length) {
+          renderRespaldoEstado(`Respaldo descargado con ${conError.length} tabla(s) que no se pudieron leer: ${conError.join(', ')}.`);
+          showToast(`Respaldo descargado, pero ${conError.length} tabla(s) fallaron`);
+        } else {
+          try { localStorage.setItem(respaldoUltimoKey(establecimientoId), generadoEn); } catch (e) { /* modo privado */ }
+          renderRespaldoEstado();
+          showToast(`Respaldo descargado: ${totalRegistros} registros`);
+        }
+      } catch (err) {
+        console.error('[IRIS] respaldo: error general', err);
+        renderRespaldoEstado('No se pudo generar el respaldo. Revisa la consola para el detalle.');
+        showToast('No se pudo generar el respaldo');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     }
 
     // ── A.1 — CONFIGURACIÓN DE LA VETERINARIA ──────────────────────
@@ -22746,8 +23807,7 @@
       SIIGO_DISPOSITIVOS, siigoDispositivoSeq,
       INVENTARIO_SALIDAS, inventarioSalidaIdCounter,
       INVENTARIO_ORDENES_COMPRA, INVENTARIO_COMPRAS,
-      vacunasCatalogoCustom, desparasitacionTiposCustom,
-      hospitalizacionTiposCustom, hospitalizacionSeq,
+      hospitalizacionSeq,
       PLANTILLAS_DOCUMENTOS, CLINIC_INFO, VARIABLES_CATALOGOS,
       VENTAS_CLIENTES, VENTAS_FACTURAS, VENTAS_COTIZACIONES,
       VENTAS_NOTAS_CREDITO, VENTAS_DOC_SOPORTE, VENTAS_MOVIMIENTOS, VENTAS_ARQUEOS,
@@ -22808,14 +23868,11 @@
       INVENTARIO_COMPRAS.length = 0;
       if (seed) INVENTARIO_COMPRAS.push(...seed.INVENTARIO_COMPRAS);
 
-      vacunasCatalogoCustom.length = 0;
-      if (seed) vacunasCatalogoCustom.push(...seed.vacunasCatalogoCustom);
-
-      desparasitacionTiposCustom.length = 0;
-      if (seed) desparasitacionTiposCustom.push(...seed.desparasitacionTiposCustom);
-
-      hospitalizacionTiposCustom.length = 0;
-      if (seed) hospitalizacionTiposCustom.push(...seed.hospitalizacionTiposCustom);
+      // vacunasCatalogoCustom/desparasitacionTiposCustom/hospitalizacionTiposCustom
+      // ya NO se resetean/siembran acá (mismo criterio que AGENDA_EVENTOS, ver
+      // nota junto a cargarDatosClinicaDesdeSupabase()): se cargan de verdad
+      // desde la tabla `catalogos_custom`, filtrada por establecimiento_id, en
+      // esa función.
       hospitalizacionSeq = seed ? seed.hospitalizacionSeq : 1;
 
       PLANTILLAS_DOCUMENTOS.length = 0;
@@ -23283,7 +24340,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -23305,7 +24362,8 @@
           window.supabase.from('remisiones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('peluquerias').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('guarderias').select('*').eq('establecimiento_id', establecimientoId).order('fecha_ingreso', { ascending: false }),
-          window.supabase.from('mensajes').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false })
+          window.supabase.from('mensajes').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('catalogos_custom').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -23329,6 +24387,7 @@
         if (peluqueriaRes.error) throw peluqueriaRes.error;
         if (guarderiaRes.error) throw guarderiaRes.error;
         if (mensajeRes.error) throw mensajeRes.error;
+        if (catalogoRes.error) throw catalogoRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
@@ -23340,15 +24399,15 @@
           cirugiaRows: cirugiaRes.data || [], tareaPendienteRows: tareaPendienteRes.data || [],
           seguimientoRows: seguimientoRes.data || [], remisionRows: remisionRes.data || [],
           peluqueriaRows: peluqueriaRes.data || [], guarderiaRows: guarderiaRes.data || [],
-          mensajeRows: mensajeRes.data || []
+          mensajeRows: mensajeRes.data || [], catalogoRows: catalogoRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows } = await leerTodo());
       }
 
       propietarios.length = 0;
@@ -23497,6 +24556,28 @@
       agendaRows.forEach(r => AGENDA_EVENTOS.push(construirEventoAgendaDesdeFila(r)));
       refreshAgendaCalendarEvents();
       refreshAgendaPersonalCalendarEvents();
+
+      // Catálogos "+Registrar X" de Vacunas/Desparasitaciones/Hospitalizaciones
+      // (tabla `catalogos_custom`, ver nota junto a resetMockDataForClinic) —
+      // mismo criterio que AGENDA_EVENTOS arriba: ya no se resetean/siembran
+      // ahí, se cargan de verdad acá filtrando por `categoria`.
+      vacunasCatalogoCustom.length = 0;
+      desparasitacionTiposCustom.length = 0;
+      hospitalizacionTiposCustom.length = 0;
+      catalogoRows.forEach(r => {
+        if (r.categoria === 'vacuna') vacunasCatalogoCustom.push(r.valor);
+        else if (r.categoria === 'desparasitacion') desparasitacionTiposCustom.push(r.valor);
+        else if (r.categoria === 'hospitalizacion') hospitalizacionTiposCustom.push(r.valor);
+      });
+
+      // Registros de OTRAS clínicas que nos aprobaron por la Red IRIS. Va
+      // al final a propósito: se mezclan sobre el patientData ya armado
+      // (necesita mascotaId para saber en qué paciente local pintarlos) y
+      // vuelve a ordenar el timeline de los pacientes afectados.
+      await cargarCompartidosDeLaRed(establecimientoId);
+      // Deja el contador de solicitudes pendientes al día en el menú de
+      // Admin sin esperar a que alguien abra la bandeja.
+      renderRedSolicitudes();
     }
 
     // Clínica nueva: el único "usuario del sistema" visible en Admin >
@@ -25346,6 +26427,124 @@
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeRegistrarPropietarioModal()">Cancelar</button>
         <button class="btn-primary" id="prop-guardar-btn" onclick="guardarPropietario()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Red IRIS — vincular tutor existente en otro establecimiento.
+       Paso 1 = formulario de seguridad (cédula + celular tienen que
+       coincidir con la MISMA persona del directorio); paso 2 = ficha del
+       tutor + selección de las mascotas a importar. No trae historia
+       clínica: para eso está la solicitud de información. -->
+  <div class="modal-overlay" id="red-vincular-modal" onclick="handleRedVincularOverlayClick(event)">
+    <div class="soap-modal-card" style="width:620px;" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <span class="soap-modal-pet-name">Vincular tutor de la red IRIS</span>
+        </div>
+        <button class="soap-modal-close" onclick="closeRedVincularModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div class="soap-modal-body">
+
+        <div class="red-aviso" id="red-vincular-aviso">
+          <i data-lucide="user-search" style="width:18px;height:18px;flex-shrink:0;"></i>
+          <div>
+            <div class="red-aviso-title">Ya existe un tutor con estos datos en la red</div>
+            <div class="red-aviso-text">
+              <strong id="red-hint-nombre">—</strong> · <span id="red-hint-detalle"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="red-vincular-paso1">
+          <p class="red-help-text">
+            Por seguridad, confirma con el tutor su número de documento y su celular.
+            Ambos datos deben coincidir con el mismo registro de la red para poder vincularlo.
+          </p>
+
+          <div class="input-group">
+            <label class="input-label" for="red-doc-numero">Número de identificación</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="red-doc-numero" autocomplete="off">
+          </div>
+
+          <div class="input-group">
+            <label class="input-label" for="red-movil">Móvil/WhatsApp</label>
+            <div class="phone-country-input" id="red-movil-wrap" data-iso2="CO">
+              <button type="button" class="phone-country-btn" id="red-movil-country-btn" onclick="togglePhoneCountryDropdown('red-movil')">
+                <span class="phone-country-flag" id="red-movil-country-flag">🇨🇴</span>
+                <span class="phone-country-dial" id="red-movil-country-dial">+57</span>
+                <i data-lucide="chevron-down" style="width:14px;height:14px;"></i>
+              </button>
+              <input type="tel" class="input-control phone-number-input" id="red-movil" placeholder="Número de celular" inputmode="numeric" autocomplete="off">
+              <div class="phone-country-dropdown" id="red-movil-country-dropdown">
+                <input type="text" class="phone-country-search" id="red-movil-country-search" placeholder="Buscar país..." oninput="filterPhoneCountryList('red-movil')">
+                <div class="phone-country-list" id="red-movil-country-list"></div>
+              </div>
+            </div>
+            <span class="form-error-msg" id="red-movil-error">Ingresa un número de celular válido para el país seleccionado</span>
+          </div>
+
+          <span class="form-error-msg" id="red-vincular-error"></span>
+        </div>
+
+        <div id="red-vincular-paso2" style="display:none;">
+          <div class="red-persona-card">
+            <div class="red-persona-nombre" id="red-persona-nombre">—</div>
+            <div class="red-persona-linea" id="red-persona-doc">—</div>
+            <div class="red-persona-linea" id="red-persona-contacto">—</div>
+            <div class="red-persona-linea" id="red-persona-ubicacion">—</div>
+          </div>
+
+          <label class="input-label" style="margin-top:14px;display:block;">Fichas de mascota a importar</label>
+          <p class="red-help-text" style="margin-top:2px;">
+            Solo se copian los datos de la ficha (especie, raza, edad, chip…). La historia clínica
+            no se comparte acá — se pide después con "Solicitar a otra clínica".
+          </p>
+          <div id="red-mascotas-list" class="red-pet-list"></div>
+        </div>
+
+      </div>
+      <div class="soap-modal-footer">
+        <button class="btn-secondary" onclick="closeRedVincularModal()">Cancelar</button>
+        <button class="btn-secondary" id="red-vincular-nuevo-btn" onclick="redRegistrarComoNuevo()">Registrar como nuevo de todas formas</button>
+        <button class="btn-primary" id="red-vincular-verificar-btn" onclick="redVerificarIdentidad()">Verificar identidad</button>
+        <button class="btn-primary" id="red-vincular-confirmar-btn" style="display:none;" onclick="redConfirmarVinculacion()">Vincular e importar fichas</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Red IRIS — solicitar información clínica de un paciente a
+       otro establecimiento donde también está registrado. -->
+  <div class="modal-overlay" id="red-solicitud-modal" onclick="handleRedSolicitudOverlayClick(event)">
+    <div class="soap-modal-card" style="width:620px;" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <span class="soap-modal-pet-name">Solicitar información — <span id="red-solicitud-pet-name"></span></span>
+        </div>
+        <button class="soap-modal-close" onclick="closeRedSolicitudModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div class="soap-modal-body">
+        <label class="input-label" style="display:block;">Establecimiento</label>
+        <p class="red-help-text" style="margin-top:2px;">Clínicas de la red donde este mismo paciente está registrado.</p>
+        <div id="red-solicitud-destinos" class="red-pet-list"></div>
+
+        <label class="input-label" style="margin-top:14px;display:block;">Información solicitada</label>
+        <div id="red-solicitud-tipos" class="red-tipo-list"></div>
+
+        <div class="input-group" style="margin-top:14px;">
+          <label class="input-label" for="red-solicitud-mensaje">Mensaje (opcional)</label>
+          <textarea class="input-control" style="padding:10px 12px;min-height:70px;" id="red-solicitud-mensaje" placeholder="Motivo de la solicitud"></textarea>
+        </div>
+
+        <p class="red-help-text">
+          El otro establecimiento debe aprobar la solicitud. Al aprobarla, los registros quedan
+          visibles en los módulos de este paciente en modo solo lectura (sin duplicar documentos)
+          y pueden revocarse en cualquier momento.
+        </p>
+      </div>
+      <div class="soap-modal-footer">
+        <button class="btn-secondary" onclick="closeRedSolicitudModal()">Cancelar</button>
+        <button class="btn-primary" id="red-solicitud-enviar-btn" onclick="redEnviarSolicitud()">Enviar solicitud</button>
       </div>
     </div>
   </div>

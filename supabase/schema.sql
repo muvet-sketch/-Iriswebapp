@@ -1792,3 +1792,1061 @@ create policy "guarderias_delete_member"
 alter table public.vacunaciones add column if not exists vencimiento date;
 alter table public.desparasitaciones add column if not exists lote text;
 alter table public.desparasitaciones add column if not exists vencimiento date;
+
+-- ── TABLA: catalogos_custom (entradas "+Registrar X" de Vacunas/
+-- Desparasitaciones/Hospitalizaciones) ────────────────────────────
+-- Antes vivían solo en memoria (vacunasCatalogoCustom/
+-- desparasitacionTiposCustom/hospitalizacionTiposCustom, mock) y se
+-- perdían al refrescar/reiniciar sesión — el usuario tenía que volver
+-- a registrar la misma vacuna o tipo cada vez. Una sola tabla genérica
+-- para los 3 catálogos (en vez de 3 tablas casi idénticas) porque cada
+-- entrada es solo un string plano sin sub-estructura propia; `categoria`
+-- distingue a cuál de los 3 selects alimenta. El unique constraint
+-- evita duplicados si dos sesiones agregan el mismo valor a la vez —
+-- el frontend trata esa violación como "ya existe" en vez de error.
+create table if not exists public.catalogos_custom (
+  id                  uuid primary key default gen_random_uuid(),
+  establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
+  categoria           text not null check (categoria in ('vacuna', 'desparasitacion', 'hospitalizacion')),
+  valor               text not null,
+  created_by          uuid references auth.users (id) on delete set null,
+  created_at          timestamptz not null default now(),
+  unique (establecimiento_id, categoria, valor)
+);
+
+create index if not exists catalogos_custom_establecimiento_id_idx on public.catalogos_custom (establecimiento_id);
+
+alter table public.catalogos_custom enable row level security;
+
+drop policy if exists "catalogos_custom_select_member" on public.catalogos_custom;
+create policy "catalogos_custom_select_member"
+  on public.catalogos_custom for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "catalogos_custom_insert_member" on public.catalogos_custom;
+create policy "catalogos_custom_insert_member"
+  on public.catalogos_custom for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+-- ============================================================
+-- RED IRIS — identidad compartida de propietarios/mascotas entre
+-- establecimientos + solicitudes de información clínica entre
+-- clínicas.
+--
+-- Problema que resuelve: `propietarios`/`mascotas` están aisladas
+-- por `establecimiento_id` (ver policies arriba). Si Pedro con su
+-- gato Pacco ya existe en la Clínica A y llega a la Clínica B, hoy
+-- hay que volver a escribir todo a mano y no hay forma de saber
+-- que es la misma persona/mascota.
+--
+-- Modelo:
+--   red_personas        → identidad canónica de un tutor en la red,
+--                         llaveada por el número de documento
+--                         normalizado. NO tiene establecimiento_id:
+--                         es global.
+--   red_persona_moviles → todos los celulares conocidos de esa
+--                         persona (segundo factor de verificación).
+--                         Se AGREGAN, nunca se sobreescriben: si la
+--                         Clínica B corrige el celular, el de la
+--                         Clínica A sigue siendo válido para
+--                         verificar (la gente cambia de número) y
+--                         ninguna clínica puede "secuestrar" la
+--                         verificación de otra pisando el dato.
+--   red_mascotas        → ficha canónica de la mascota (especie,
+--                         raza, fecha de nacimiento, chip...).
+--                         SIN historia clínica: nada de consultas,
+--                         documentos ni registros — eso solo viaja
+--                         vía red_solicitudes, con aprobación
+--                         explícita de la clínica origen.
+--
+-- Aislamiento: red_personas / red_persona_moviles / red_mascotas
+-- tienen RLS habilitada y CERO policies a propósito → ningún
+-- cliente puede leerlas ni escribirlas por PostgREST. El único
+-- acceso es a través de las funciones `security definer` de abajo,
+-- que aplican verificación de identidad, rate limiting y auditoría.
+-- No agregues una policy de select "para debuggear": eso convierte
+-- el directorio en una lista de cédulas y teléfonos legible por
+-- cualquier clínica de la red.
+--
+-- Publicación al directorio: automática vía triggers sobre
+-- propietarios/mascotas, condicionada a `propietarios.consentimiento_red`
+-- (default true, viene de los términos y condiciones que se aceptan
+-- al registrar). Poner ese flag en false saca a la persona del
+-- directorio para búsquedas futuras.
+-- ============================================================
+
+-- ── NORMALIZADORES ──────────────────────────────────────────
+-- Toda comparación de la red pasa por estas tres funciones. No
+-- compares nunca doc/celular "en crudo": la misma cédula se escribe
+-- con puntos en una clínica y sin puntos en otra, y el móvil se
+-- guarda como "+57 3001234567" pero se digita de mil formas.
+create or replace function public.red_norm_doc(p text)
+returns text language sql immutable set search_path = public as $$
+  select nullif(upper(regexp_replace(coalesce(p, ''), '[^a-zA-Z0-9]', '', 'g')), '');
+$$;
+
+-- Se queda con los últimos 10 dígitos: así "+57 3001234567",
+-- "3001234567" y "57 300 123 4567" normalizan al mismo valor sin
+-- tener que adivinar el indicativo. Heurística pensada para
+-- Colombia (10 dígitos); números de otros países con longitud
+-- distinta igual funcionan mientras la misma persona se digite
+-- consistentemente.
+create or replace function public.red_norm_movil(p text)
+returns text language sql immutable set search_path = public as $$
+  select nullif(right(regexp_replace(coalesce(p, ''), '\D', '', 'g'), 10), '');
+$$;
+
+create or replace function public.red_norm_txt(p text)
+returns text language sql immutable set search_path = public as $$
+  select nullif(lower(regexp_replace(
+    translate(coalesce(p, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'),
+    '[^a-zA-Z0-9]', '', 'g')), '');
+$$;
+
+-- Enmascara un nombre para el "hint" de coincidencia: "Pedro Gómez"
+-- → "Pe*** Gó***". Suficiente para que el recepcionista reconozca
+-- al tutor que tiene enfrente, insuficiente para armar una base de
+-- datos de nombres a punta de consultas.
+create or replace function public.red_mask_nombre(p text)
+returns text language sql immutable set search_path = public as $$
+  select coalesce(nullif(trim(string_agg(
+    case when length(w) <= 2 then w || '*'
+         else left(w, 2) || repeat('*', least(length(w) - 2, 5)) end, ' ')), ''), '-')
+  from unnest(string_to_array(trim(coalesce(p, '')), ' ')) as w
+  where w <> '';
+$$;
+
+grant execute on function public.red_norm_doc(text) to authenticated;
+grant execute on function public.red_norm_movil(text) to authenticated;
+grant execute on function public.red_norm_txt(text) to authenticated;
+
+-- ── TABLA: red_personas (directorio global de tutores) ──────
+create table if not exists public.red_personas (
+  id                   uuid primary key default gen_random_uuid(),
+  doc_tipo             text,
+  doc_numero_norm      text not null unique,
+  doc_numero           text,
+  movil_norm           text,
+  movil                text,
+  nombre               text,
+  email                text,
+  direccion            text,
+  ciudad               text,
+  contacto_autorizado  text,
+  telefono_alterno     text,
+  telefono_opcional    text,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+alter table public.red_personas enable row level security;
+-- Sin policies: ver nota de aislamiento arriba.
+
+create table if not exists public.red_persona_moviles (
+  persona_id  uuid not null references public.red_personas (id) on delete cascade,
+  movil_norm  text not null,
+  movil       text,
+  created_at  timestamptz not null default now(),
+  primary key (persona_id, movil_norm)
+);
+
+alter table public.red_persona_moviles enable row level security;
+
+create index if not exists red_persona_moviles_movil_idx on public.red_persona_moviles (movil_norm);
+
+-- ── TABLA: red_mascotas (ficha canónica, SIN historia clínica) ──
+create table if not exists public.red_mascotas (
+  id                   uuid primary key default gen_random_uuid(),
+  persona_id           uuid not null references public.red_personas (id) on delete cascade,
+  nombre               text not null,
+  nombre_norm          text not null,
+  especie              text,
+  especie_norm         text not null default '',
+  raza                 text,
+  chip                 text,
+  fecha_nacimiento     date,
+  peso                 text,
+  color                text,
+  genero               text,
+  talla                text,
+  estado_reproductivo  text,
+  animal_servicio      boolean not null default false,
+  fallecido            boolean not null default false,
+  foto_path            text,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  unique (persona_id, nombre_norm, especie_norm)
+);
+
+alter table public.red_mascotas enable row level security;
+
+-- ── COLUMNAS DE ENLACE en las tablas por clínica ────────────
+alter table public.propietarios add column if not exists red_persona_id uuid references public.red_personas (id) on delete set null;
+alter table public.propietarios add column if not exists consentimiento_red boolean not null default true;
+alter table public.mascotas     add column if not exists red_mascota_id uuid references public.red_mascotas (id) on delete set null;
+
+create index if not exists propietarios_red_persona_id_idx on public.propietarios (red_persona_id);
+create index if not exists mascotas_red_mascota_id_idx on public.mascotas (red_mascota_id);
+
+-- ── PUBLICACIÓN AL DIRECTORIO ───────────────────────────────
+-- Funciones reutilizadas por los triggers Y por el backfill del
+-- final del archivo (por eso no viven dentro del trigger).
+create or replace function public.red_upsert_persona(
+  p_doc_tipo text, p_doc_numero text, p_movil text, p_nombre text, p_email text,
+  p_direccion text, p_ciudad text, p_contacto_autorizado text,
+  p_telefono_alterno text, p_telefono_opcional text
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_doc  text := public.red_norm_doc(p_doc_numero);
+  v_mov  text := public.red_norm_movil(p_movil);
+  v_id   uuid;
+begin
+  -- Sin documento no hay identidad canónica posible: el celular solo
+  -- sirve de segundo factor, nunca de llave primaria (se reasigna
+  -- entre personas con el tiempo).
+  if v_doc is null then return null; end if;
+
+  insert into public.red_personas as rp (
+    doc_tipo, doc_numero_norm, doc_numero, movil_norm, movil, nombre, email,
+    direccion, ciudad, contacto_autorizado, telefono_alterno, telefono_opcional
+  ) values (
+    p_doc_tipo, v_doc, p_doc_numero, v_mov, p_movil, p_nombre, nullif(p_email, ''),
+    nullif(p_direccion, ''), nullif(p_ciudad, ''), nullif(p_contacto_autorizado, ''),
+    nullif(p_telefono_alterno, ''), nullif(p_telefono_opcional, '')
+  )
+  on conflict (doc_numero_norm) do update set
+    doc_tipo            = coalesce(excluded.doc_tipo, rp.doc_tipo),
+    doc_numero          = coalesce(excluded.doc_numero, rp.doc_numero),
+    movil_norm          = coalesce(excluded.movil_norm, rp.movil_norm),
+    movil               = coalesce(excluded.movil, rp.movil),
+    nombre              = coalesce(excluded.nombre, rp.nombre),
+    email               = coalesce(excluded.email, rp.email),
+    direccion           = coalesce(excluded.direccion, rp.direccion),
+    ciudad              = coalesce(excluded.ciudad, rp.ciudad),
+    contacto_autorizado = coalesce(excluded.contacto_autorizado, rp.contacto_autorizado),
+    telefono_alterno    = coalesce(excluded.telefono_alterno, rp.telefono_alterno),
+    telefono_opcional   = coalesce(excluded.telefono_opcional, rp.telefono_opcional),
+    updated_at          = now()
+  returning rp.id into v_id;
+
+  -- El móvil se ACUMULA (ver nota del modelo arriba).
+  if v_mov is not null then
+    insert into public.red_persona_moviles (persona_id, movil_norm, movil)
+    values (v_id, v_mov, p_movil)
+    on conflict (persona_id, movil_norm) do nothing;
+  end if;
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.red_upsert_mascota(
+  p_persona_id uuid, p_nombre text, p_especie text, p_raza text, p_chip text,
+  p_fecha_nacimiento date, p_peso text, p_color text, p_genero text, p_talla text,
+  p_estado_reproductivo text, p_animal_servicio boolean, p_fallecido boolean, p_foto_path text
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  v_nom text := public.red_norm_txt(p_nombre);
+  v_esp text := coalesce(public.red_norm_txt(p_especie), '');
+  v_id  uuid;
+begin
+  if p_persona_id is null or v_nom is null then return null; end if;
+
+  insert into public.red_mascotas as rm (
+    persona_id, nombre, nombre_norm, especie, especie_norm, raza, chip, fecha_nacimiento,
+    peso, color, genero, talla, estado_reproductivo, animal_servicio, fallecido, foto_path
+  ) values (
+    p_persona_id, p_nombre, v_nom, nullif(p_especie, ''), v_esp, nullif(p_raza, ''),
+    nullif(p_chip, ''), p_fecha_nacimiento, nullif(p_peso, ''), nullif(p_color, ''),
+    nullif(p_genero, ''), nullif(p_talla, ''), nullif(p_estado_reproductivo, ''),
+    coalesce(p_animal_servicio, false), coalesce(p_fallecido, false), p_foto_path
+  )
+  on conflict (persona_id, nombre_norm, especie_norm) do update set
+    raza                = coalesce(excluded.raza, rm.raza),
+    chip                = coalesce(excluded.chip, rm.chip),
+    fecha_nacimiento    = coalesce(excluded.fecha_nacimiento, rm.fecha_nacimiento),
+    peso                = coalesce(excluded.peso, rm.peso),
+    color               = coalesce(excluded.color, rm.color),
+    genero              = coalesce(excluded.genero, rm.genero),
+    talla               = coalesce(excluded.talla, rm.talla),
+    estado_reproductivo = coalesce(excluded.estado_reproductivo, rm.estado_reproductivo),
+    animal_servicio     = rm.animal_servicio or excluded.animal_servicio,
+    fallecido           = rm.fallecido or excluded.fallecido,
+    foto_path           = coalesce(rm.foto_path, excluded.foto_path),
+    updated_at          = now()
+  returning rm.id into v_id;
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.red_trg_publicar_propietario()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  if not coalesce(new.consentimiento_red, true) then
+    return new;
+  end if;
+  v_id := public.red_upsert_persona(
+    new.doc_tipo, new.doc_numero, new.movil, new.nombre, new.email,
+    new.direccion, new.ciudad, new.contacto_autorizado,
+    new.telefono_alterno, new.telefono_opcional
+  );
+  if v_id is not null then new.red_persona_id := v_id; end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists propietarios_red_publicar on public.propietarios;
+create trigger propietarios_red_publicar
+  before insert or update of doc_tipo, doc_numero, movil, nombre, email, direccion, ciudad, consentimiento_red
+  on public.propietarios
+  for each row execute function public.red_trg_publicar_propietario();
+
+create or replace function public.red_trg_publicar_mascota()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_persona uuid;
+  v_id uuid;
+begin
+  select p.red_persona_id into v_persona from public.propietarios p where p.id = new.propietario_id;
+  if v_persona is null then return new; end if;
+
+  v_id := public.red_upsert_mascota(
+    v_persona, new.nombre, new.especie, new.raza, new.chip, new.fecha_nacimiento,
+    new.peso, new.color, new.genero, new.talla, new.estado_reproductivo,
+    new.animal_servicio, new.fallecido, new.foto_path
+  );
+  if v_id is not null then new.red_mascota_id := v_id; end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists mascotas_red_publicar on public.mascotas;
+create trigger mascotas_red_publicar
+  before insert or update of nombre, especie, raza, chip, fecha_nacimiento, peso, color, genero, talla, estado_reproductivo, animal_servicio, fallecido, foto_path
+  on public.mascotas
+  for each row execute function public.red_trg_publicar_mascota();
+
+-- ── AUDITORÍA Y RATE LIMITING ───────────────────────────────
+-- Una búsqueda por cédula es un oráculo de enumeración ("¿existe
+-- esta cédula en la red?") y la verificación lo es de credenciales
+-- (cédula + celular). Ambas quedan registradas acá y ambas tienen
+-- tope por usuario y ventana de tiempo — sin esto, cualquier
+-- clínica de la red puede barrer el directorio con un script.
+create table if not exists public.red_intentos (
+  id                 uuid primary key default gen_random_uuid(),
+  user_id            uuid references auth.users (id) on delete set null,
+  establecimiento_id uuid references public.establecimientos (id) on delete set null,
+  tipo               text not null check (tipo in ('busqueda', 'verificacion')),
+  doc_numero_norm    text,
+  exito              boolean not null default false,
+  created_at         timestamptz not null default now()
+);
+
+create index if not exists red_intentos_user_idx on public.red_intentos (user_id, tipo, created_at desc);
+
+alter table public.red_intentos enable row level security;
+-- Sin policies (solo lo escriben/leen las funciones definer).
+
+-- Topes. Si una clínica real los alcanza, súbelos acá — pero no
+-- los quites: son la única defensa contra el barrido del directorio.
+create or replace function public.red_limite_busquedas() returns int language sql immutable set search_path = public as $$ select 60 $$;   -- por hora
+create or replace function public.red_limite_verificaciones() returns int language sql immutable set search_path = public as $$ select 5 $$; -- fallidas por 15 min
+
+-- Token de corta vida que emite red_verificar_identidad() y consume
+-- red_vincular_con_token(): así la cédula y el celular viajan UNA
+-- vez (en la verificación) y no se vuelven a mandar al confirmar
+-- cuáles mascotas copiar.
+create table if not exists public.red_verificaciones (
+  id                 uuid primary key default gen_random_uuid(),
+  persona_id         uuid not null references public.red_personas (id) on delete cascade,
+  user_id            uuid not null references auth.users (id) on delete cascade,
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  usada              boolean not null default false,
+  expira_at          timestamptz not null default (now() + interval '10 minutes'),
+  created_at         timestamptz not null default now()
+);
+
+alter table public.red_verificaciones enable row level security;
+
+create table if not exists public.red_vinculaciones (
+  id                 uuid primary key default gen_random_uuid(),
+  persona_id         uuid not null references public.red_personas (id) on delete cascade,
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  propietario_id     uuid references public.propietarios (id) on delete set null,
+  mascotas_copiadas  int not null default 0,
+  user_id            uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now()
+);
+
+alter table public.red_vinculaciones enable row level security;
+
+-- ── RPC 1: red_buscar_persona — detección (hint, sin PII) ────
+-- Se llama al guardar un propietario nuevo. Responde "esta cédula
+-- o este celular ya existen en la red" con el nombre enmascarado y
+-- unos contadores; nunca devuelve datos utilizables sin pasar por
+-- la verificación de abajo.
+create or replace function public.red_buscar_persona(
+  p_establecimiento_id uuid, p_doc_numero text, p_movil text
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_doc     text := public.red_norm_doc(p_doc_numero);
+  v_mov     text := public.red_norm_movil(p_movil);
+  v_persona public.red_personas%rowtype;
+  v_por_doc boolean := false;
+  v_usos    int;
+begin
+  if auth.uid() is null or not public.user_is_member_of(p_establecimiento_id) then
+    raise exception 'No autorizado';
+  end if;
+
+  select count(*) into v_usos from public.red_intentos
+   where user_id = auth.uid() and tipo = 'busqueda' and created_at > now() - interval '1 hour';
+  if v_usos >= public.red_limite_busquedas() then
+    return jsonb_build_object('ok', false, 'motivo', 'rate_limited');
+  end if;
+
+  if v_doc is not null then
+    select * into v_persona from public.red_personas where doc_numero_norm = v_doc;
+    v_por_doc := found;
+  end if;
+
+  if not v_por_doc and v_mov is not null then
+    select rp.* into v_persona from public.red_personas rp
+      join public.red_persona_moviles m on m.persona_id = rp.id
+     where m.movil_norm = v_mov
+     limit 1;
+  end if;
+
+  insert into public.red_intentos (user_id, establecimiento_id, tipo, doc_numero_norm, exito)
+  values (auth.uid(), p_establecimiento_id, 'busqueda', v_doc, v_persona.id is not null);
+
+  if v_persona.id is null then
+    return jsonb_build_object('ok', true, 'existe', false);
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'existe', true,
+    'coincide_doc', v_por_doc,
+    'coincide_movil', v_mov is not null and exists (
+      select 1 from public.red_persona_moviles m where m.persona_id = v_persona.id and m.movil_norm = v_mov),
+    'nombre_masked', public.red_mask_nombre(v_persona.nombre),
+    'mascotas', (select count(*) from public.red_mascotas where persona_id = v_persona.id),
+    'clinicas', (select count(distinct establecimiento_id) from public.propietarios where red_persona_id = v_persona.id),
+    -- Ya registrado en MI clínica: el front avisa "ya existe acá" en
+    -- vez de ofrecer vincular (vincular sería un duplicado).
+    'ya_en_clinica', exists (
+      select 1 from public.propietarios
+       where red_persona_id = v_persona.id and establecimiento_id = p_establecimiento_id)
+  );
+end;
+$$;
+
+grant execute on function public.red_buscar_persona(uuid, text, text) to authenticated;
+
+-- ── RPC 2: red_verificar_identidad — cédula + celular ────────
+-- El formulario de seguridad. AMBOS datos tienen que coincidir con
+-- la misma persona; el mensaje de error es siempre el mismo
+-- ('no_coincide') sin decir cuál de los dos falló, para no
+-- convertirlo en un oráculo de "esta cédula existe, adivina el
+-- teléfono". Tras 5 fallos en 15 minutos el usuario queda
+-- bloqueado para verificar.
+create or replace function public.red_verificar_identidad(
+  p_establecimiento_id uuid, p_doc_numero text, p_movil text
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_doc     text := public.red_norm_doc(p_doc_numero);
+  v_mov     text := public.red_norm_movil(p_movil);
+  v_persona public.red_personas%rowtype;
+  v_fallos  int;
+  v_token   uuid;
+  v_mascotas jsonb;
+begin
+  if auth.uid() is null or not public.user_is_member_of(p_establecimiento_id) then
+    raise exception 'No autorizado';
+  end if;
+
+  select count(*) into v_fallos from public.red_intentos
+   where user_id = auth.uid() and tipo = 'verificacion' and not exito
+     and created_at > now() - interval '15 minutes';
+  if v_fallos >= public.red_limite_verificaciones() then
+    return jsonb_build_object('ok', false, 'motivo', 'bloqueado');
+  end if;
+
+  if v_doc is not null and v_mov is not null then
+    select rp.* into v_persona from public.red_personas rp
+     where rp.doc_numero_norm = v_doc
+       and exists (select 1 from public.red_persona_moviles m
+                    where m.persona_id = rp.id and m.movil_norm = v_mov);
+  end if;
+
+  if v_persona.id is null then
+    insert into public.red_intentos (user_id, establecimiento_id, tipo, doc_numero_norm, exito)
+    values (auth.uid(), p_establecimiento_id, 'verificacion', v_doc, false);
+    return jsonb_build_object(
+      'ok', false, 'motivo', 'no_coincide',
+      'intentos_restantes', greatest(public.red_limite_verificaciones() - v_fallos - 1, 0));
+  end if;
+
+  insert into public.red_intentos (user_id, establecimiento_id, tipo, doc_numero_norm, exito)
+  values (auth.uid(), p_establecimiento_id, 'verificacion', v_doc, true);
+
+  insert into public.red_verificaciones (persona_id, user_id, establecimiento_id)
+  values (v_persona.id, auth.uid(), p_establecimiento_id)
+  returning id into v_token;
+
+  -- Fichas de mascota (sin historia clínica). `ya_existe` marca las
+  -- que esta clínica ya tiene: el front las muestra deshabilitadas
+  -- para no crear duplicados.
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', rm.id, 'nombre', rm.nombre, 'especie', rm.especie, 'raza', rm.raza,
+           'chip', rm.chip, 'fecha_nacimiento', rm.fecha_nacimiento, 'peso', rm.peso,
+           'color', rm.color, 'genero', rm.genero, 'talla', rm.talla,
+           'estado_reproductivo', rm.estado_reproductivo,
+           'animal_servicio', rm.animal_servicio, 'fallecido', rm.fallecido,
+           'clinicas', (select count(distinct m2.establecimiento_id) from public.mascotas m2 where m2.red_mascota_id = rm.id),
+           'ya_existe', exists (select 1 from public.mascotas m3
+                                 where m3.red_mascota_id = rm.id
+                                   and m3.establecimiento_id = p_establecimiento_id)
+         ) order by rm.nombre), '[]'::jsonb)
+    into v_mascotas
+    from public.red_mascotas rm where rm.persona_id = v_persona.id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'token', v_token,
+    'ya_vinculado', exists (select 1 from public.propietarios
+                             where red_persona_id = v_persona.id
+                               and establecimiento_id = p_establecimiento_id),
+    'persona', jsonb_build_object(
+      'doc_tipo', v_persona.doc_tipo, 'doc_numero', v_persona.doc_numero,
+      'movil', v_persona.movil, 'nombre', v_persona.nombre, 'email', v_persona.email,
+      'direccion', v_persona.direccion, 'ciudad', v_persona.ciudad,
+      'contacto_autorizado', v_persona.contacto_autorizado,
+      'telefono_alterno', v_persona.telefono_alterno,
+      'telefono_opcional', v_persona.telefono_opcional),
+    'mascotas', v_mascotas
+  );
+end;
+$$;
+
+grant execute on function public.red_verificar_identidad(uuid, text, text) to authenticated;
+
+-- ── RPC 3: red_vincular_con_token — copia las fichas ─────────
+-- Crea el propietario en la clínica solicitante y una fila de
+-- `mascotas` por cada ficha seleccionada. Copia SOLO ficha: ni una
+-- consulta, ni un documento, ni un registro clínico (eso es
+-- red_solicitudes, más abajo). Devuelve las filas insertadas para
+-- que el front arme su estado local sin releer todo.
+create or replace function public.red_vincular_con_token(
+  p_token uuid, p_red_mascota_ids uuid[]
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_ver     public.red_verificaciones%rowtype;
+  v_persona public.red_personas%rowtype;
+  v_prop    public.propietarios%rowtype;
+  v_rm      public.red_mascotas%rowtype;
+  v_key     text;
+  v_base    text;
+  v_i       int;
+  v_nueva   public.mascotas%rowtype;
+  v_mascotas jsonb := '[]'::jsonb;
+  v_copiadas int := 0;
+begin
+  select * into v_ver from public.red_verificaciones
+   where id = p_token and user_id = auth.uid() and not usada and expira_at > now();
+  if v_ver.id is null then
+    return jsonb_build_object('ok', false, 'motivo', 'token_invalido');
+  end if;
+  if not public.user_is_member_of(v_ver.establecimiento_id) then
+    raise exception 'No autorizado';
+  end if;
+
+  update public.red_verificaciones set usada = true where id = v_ver.id;
+
+  select * into v_persona from public.red_personas where id = v_ver.persona_id;
+
+  -- Si la clínica ya tenía a esta persona (p. ej. dos vinculaciones
+  -- seguidas), se reutiliza su propietario en vez de duplicarlo.
+  select * into v_prop from public.propietarios
+   where red_persona_id = v_persona.id and establecimiento_id = v_ver.establecimiento_id
+   limit 1;
+
+  if v_prop.id is null then
+    insert into public.propietarios (
+      establecimiento_id, doc_tipo, doc_numero, movil, email, nombre, direccion, ciudad,
+      contacto_autorizado, telefono_alterno, telefono_opcional, created_by, red_persona_id
+    ) values (
+      v_ver.establecimiento_id, v_persona.doc_tipo, v_persona.doc_numero, v_persona.movil,
+      v_persona.email, coalesce(v_persona.nombre, 'Sin nombre'), v_persona.direccion, v_persona.ciudad,
+      v_persona.contacto_autorizado, v_persona.telefono_alterno, v_persona.telefono_opcional,
+      auth.uid(), v_persona.id
+    ) returning * into v_prop;
+  end if;
+
+  for v_rm in
+    select rm.* from public.red_mascotas rm
+     where rm.persona_id = v_persona.id
+       and rm.id = any(coalesce(p_red_mascota_ids, array[]::uuid[]))
+       and not exists (select 1 from public.mascotas m
+                        where m.red_mascota_id = rm.id
+                          and m.establecimiento_id = v_ver.establecimiento_id)
+  loop
+    -- pet_key: mismo criterio que crearMascotaKey() en index.html
+    -- (slug del nombre, sufijo numérico ante colisión) porque es la
+    -- llave con la que el front indexa patientData.
+    v_base := coalesce(public.red_norm_txt(v_rm.nombre), 'mascota');
+    v_key := v_base;
+    v_i := 2;
+    while exists (select 1 from public.mascotas
+                   where establecimiento_id = v_ver.establecimiento_id and pet_key = v_key) loop
+      v_key := v_base || v_i::text;
+      v_i := v_i + 1;
+    end loop;
+
+    insert into public.mascotas (
+      establecimiento_id, propietario_id, pet_key, nombre, chip, especie, raza,
+      fecha_nacimiento, peso, color, genero, talla, estado_reproductivo,
+      animal_servicio, fallecido, foto_path, created_by, red_mascota_id
+    ) values (
+      v_ver.establecimiento_id, v_prop.id, v_key, v_rm.nombre, v_rm.chip, v_rm.especie, v_rm.raza,
+      v_rm.fecha_nacimiento, v_rm.peso, v_rm.color, v_rm.genero, v_rm.talla, v_rm.estado_reproductivo,
+      v_rm.animal_servicio, v_rm.fallecido, v_rm.foto_path, auth.uid(), v_rm.id
+    ) returning * into v_nueva;
+
+    v_mascotas := v_mascotas || to_jsonb(v_nueva);
+    v_copiadas := v_copiadas + 1;
+  end loop;
+
+  insert into public.red_vinculaciones (persona_id, establecimiento_id, propietario_id, mascotas_copiadas, user_id)
+  values (v_persona.id, v_ver.establecimiento_id, v_prop.id, v_copiadas, auth.uid());
+
+  return jsonb_build_object('ok', true, 'propietario', to_jsonb(v_prop), 'mascotas', v_mascotas);
+end;
+$$;
+
+grant execute on function public.red_vincular_con_token(uuid, uuid[]) to authenticated;
+
+-- ============================================================
+-- SOLICITUDES DE INFORMACIÓN ENTRE ESTABLECIMIENTOS
+--
+-- La vinculación de arriba trae ficha, no historia. Para la
+-- historia (documentos, consultas, vacunaciones, ...) la clínica
+-- solicitante pide permiso y la clínica origen aprueba o rechaza.
+--
+-- Aprobar NO copia ni duplica nada: agrega una policy de lectura
+-- (ver red_puede_ver_registro más abajo) sobre las filas que ya
+-- existen en la clínica origen. Ventajas frente a copiar:
+--   · no se duplica información clínica ni archivos en Storage —
+--     el PDF se lee en su ubicación original, que es exactamente
+--     el "no tener que descargar y volver a cargar cada documento";
+--   · revocar el acceso lo revoca de verdad (estado 'revocada'),
+--     en vez de dejar copias regadas;
+--   · los cambios en la clínica origen se ven al día.
+-- Contrapartida: los registros compartidos son SOLO LECTURA en la
+-- clínica solicitante (las policies de update/delete siguen
+-- exigiendo membresía del establecimiento dueño), y el front lo
+-- refleja limitando el menú "..." a Ver/Imprimir.
+-- ============================================================
+create table if not exists public.red_solicitudes (
+  id                             uuid primary key default gen_random_uuid(),
+  red_mascota_id                 uuid not null references public.red_mascotas (id) on delete cascade,
+  solicitante_establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  destino_establecimiento_id     uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_solicitante_id         uuid references public.mascotas (id) on delete set null,
+  mascota_destino_id             uuid references public.mascotas (id) on delete set null,
+  tipos                          text[] not null,
+  mensaje                        text,
+  estado                         text not null default 'pendiente'
+                                 check (estado in ('pendiente', 'aprobada', 'rechazada', 'cancelada', 'revocada')),
+  respuesta_nota                 text,
+  created_by                     uuid references auth.users (id) on delete set null,
+  created_at                     timestamptz not null default now(),
+  respondida_por                 uuid references auth.users (id) on delete set null,
+  respondida_at                  timestamptz,
+  constraint red_solicitudes_tipos_validos check (
+    array_length(tipos, 1) >= 1
+    and tipos <@ array['documentos','consultas','vacunaciones','desparasitaciones','examenes','formulas','cirugias']::text[]
+  ),
+  constraint red_solicitudes_distintos check (solicitante_establecimiento_id <> destino_establecimiento_id)
+);
+
+create index if not exists red_solicitudes_destino_idx on public.red_solicitudes (destino_establecimiento_id, estado);
+create index if not exists red_solicitudes_solicitante_idx on public.red_solicitudes (solicitante_establecimiento_id, estado);
+create index if not exists red_solicitudes_mascota_destino_idx on public.red_solicitudes (mascota_destino_id, estado);
+
+alter table public.red_solicitudes enable row level security;
+
+-- Select: las dos clínicas involucradas ven la solicitud. Sin
+-- policies de insert/update/delete a propósito — crear, responder y
+-- cancelar pasan por las funciones de abajo, que son las que
+-- validan quién puede hacer qué (el solicitante no puede aprobarse
+-- su propia solicitud escribiendo estado='aprobada' por PostgREST).
+drop policy if exists "red_solicitudes_select_involucrados" on public.red_solicitudes;
+create policy "red_solicitudes_select_involucrados"
+  on public.red_solicitudes for select
+  using (public.user_is_member_of(solicitante_establecimiento_id)
+      or public.user_is_member_of(destino_establecimiento_id));
+
+-- ── Regla de lectura compartida ─────────────────────────────
+-- El corazón del permiso. stable + definer: lee red_solicitudes sin
+-- RLS y se evalúa una vez por fila candidata.
+create or replace function public.red_puede_ver_registro(
+  p_establecimiento_id uuid, p_mascota_id uuid, p_tipo text
+) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.red_solicitudes s
+     where s.estado = 'aprobada'
+       and s.destino_establecimiento_id = p_establecimiento_id
+       and s.mascota_destino_id = p_mascota_id
+       and p_tipo = any (s.tipos)
+       and public.user_is_member_of(s.solicitante_establecimiento_id)
+  );
+$$;
+
+grant execute on function public.red_puede_ver_registro(uuid, uuid, text) to authenticated;
+
+-- Policies ADICIONALES de select (las permissive se combinan con OR,
+-- así que la policy "..._select_member" original sigue mandando para
+-- la clínica dueña; esta solo agrega el caso compartido).
+drop policy if exists "documentos_select_red" on public.documentos;
+create policy "documentos_select_red" on public.documentos for select
+  using (public.red_puede_ver_registro(establecimiento_id, mascota_id, 'documentos'));
+
+drop policy if exists "consultas_select_red" on public.consultas;
+create policy "consultas_select_red" on public.consultas for select
+  using (public.red_puede_ver_registro(establecimiento_id, mascota_id, 'consultas'));
+
+drop policy if exists "vacunaciones_select_red" on public.vacunaciones;
+create policy "vacunaciones_select_red" on public.vacunaciones for select
+  using (public.red_puede_ver_registro(establecimiento_id, mascota_id, 'vacunaciones'));
+
+drop policy if exists "desparasitaciones_select_red" on public.desparasitaciones;
+create policy "desparasitaciones_select_red" on public.desparasitaciones for select
+  using (public.red_puede_ver_registro(establecimiento_id, mascota_id, 'desparasitaciones'));
+
+drop policy if exists "examenes_select_red" on public.examenes;
+create policy "examenes_select_red" on public.examenes for select
+  using (public.red_puede_ver_registro(establecimiento_id, mascota_id, 'examenes'));
+
+drop policy if exists "formulas_medicas_select_red" on public.formulas_medicas;
+create policy "formulas_medicas_select_red" on public.formulas_medicas for select
+  using (public.red_puede_ver_registro(establecimiento_id, mascota_id, 'formulas'));
+
+drop policy if exists "cirugias_select_red" on public.cirugias;
+create policy "cirugias_select_red" on public.cirugias for select
+  using (public.red_puede_ver_registro(establecimiento_id, mascota_id, 'cirugias'));
+
+-- Storage: el PDF de un documento compartido y el archivo de
+-- resultado de un examen compartido se leen en su ruta original
+-- (bucket `pdfs`, prefijo "clinica/<estab_origen>/..."), sin copiar
+-- el archivo. Definer porque tiene que mirar documentos/examenes
+-- saltándose la RLS de esas tablas.
+create or replace function public.red_puede_ver_pdf(p_path text)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.documentos d
+     where d.pdf_path = p_path
+       and public.red_puede_ver_registro(d.establecimiento_id, d.mascota_id, 'documentos')
+  ) or exists (
+    select 1 from public.examenes e, jsonb_array_elements(e.pruebas) pr
+     where pr->>'resultadoPath' = p_path
+       and public.red_puede_ver_registro(e.establecimiento_id, e.mascota_id, 'examenes')
+  );
+$$;
+
+grant execute on function public.red_puede_ver_pdf(text) to authenticated;
+
+drop policy if exists "pdfs_select_red_compartido" on storage.objects;
+create policy "pdfs_select_red_compartido"
+  on storage.objects for select
+  using (bucket_id = 'pdfs' and public.red_puede_ver_pdf(name));
+
+-- ── RPC: clínicas donde existe esta mascota ─────────────────
+-- Alimenta el selector "¿a qué establecimiento le solicitas?".
+-- Devuelve solo nombre/ciudad de la clínica y la fecha del último
+-- registro — nunca contenido clínico.
+create or replace function public.red_establecimientos_de_mascota(p_mascota_id uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_m public.mascotas%rowtype;
+  v_out jsonb;
+begin
+  select * into v_m from public.mascotas where id = p_mascota_id;
+  if v_m.id is null or not public.user_is_member_of(v_m.establecimiento_id) then
+    raise exception 'No autorizado';
+  end if;
+  if v_m.red_mascota_id is null then
+    return jsonb_build_object('ok', true, 'red_mascota_id', null, 'establecimientos', '[]'::jsonb);
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'establecimiento_id', e.id, 'nombre', e.nombre, 'ciudad', e.ciudad,
+           'mascota_id', m.id, 'desde', m.created_at,
+           'solicitud_estado', (select s.estado from public.red_solicitudes s
+                                 where s.mascota_destino_id = m.id
+                                   and s.solicitante_establecimiento_id = v_m.establecimiento_id
+                                 order by s.created_at desc limit 1)
+         ) order by e.nombre), '[]'::jsonb)
+    into v_out
+    from public.mascotas m
+    join public.establecimientos e on e.id = m.establecimiento_id
+   where m.red_mascota_id = v_m.red_mascota_id
+     and m.establecimiento_id <> v_m.establecimiento_id;
+
+  return jsonb_build_object('ok', true, 'red_mascota_id', v_m.red_mascota_id, 'establecimientos', v_out);
+end;
+$$;
+
+grant execute on function public.red_establecimientos_de_mascota(uuid) to authenticated;
+
+-- ── RPC: crear solicitud ────────────────────────────────────
+-- Va por función y no por insert directo porque el solicitante NO
+-- puede leer `mascotas` de la clínica destino (RLS): la resolución
+-- de mascota_destino_id la hace el servidor.
+create or replace function public.red_crear_solicitud(
+  p_mascota_id uuid, p_destino_establecimiento_id uuid, p_tipos text[], p_mensaje text
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_m public.mascotas%rowtype;
+  v_destino uuid;
+  v_id uuid;
+begin
+  select * into v_m from public.mascotas where id = p_mascota_id;
+  if v_m.id is null or not public.user_is_member_of(v_m.establecimiento_id) then
+    raise exception 'No autorizado';
+  end if;
+  if v_m.red_mascota_id is null then
+    return jsonb_build_object('ok', false, 'motivo', 'sin_identidad_red');
+  end if;
+  if p_destino_establecimiento_id = v_m.establecimiento_id then
+    return jsonb_build_object('ok', false, 'motivo', 'mismo_establecimiento');
+  end if;
+
+  select id into v_destino from public.mascotas
+   where red_mascota_id = v_m.red_mascota_id
+     and establecimiento_id = p_destino_establecimiento_id
+   limit 1;
+  if v_destino is null then
+    return jsonb_build_object('ok', false, 'motivo', 'no_existe_en_destino');
+  end if;
+
+  if exists (select 1 from public.red_solicitudes
+              where mascota_destino_id = v_destino
+                and solicitante_establecimiento_id = v_m.establecimiento_id
+                and estado = 'pendiente') then
+    return jsonb_build_object('ok', false, 'motivo', 'ya_pendiente');
+  end if;
+
+  insert into public.red_solicitudes (
+    red_mascota_id, solicitante_establecimiento_id, destino_establecimiento_id,
+    mascota_solicitante_id, mascota_destino_id, tipos, mensaje, created_by
+  ) values (
+    v_m.red_mascota_id, v_m.establecimiento_id, p_destino_establecimiento_id,
+    v_m.id, v_destino, p_tipos, nullif(p_mensaje, ''), auth.uid()
+  ) returning id into v_id;
+
+  return jsonb_build_object('ok', true, 'id', v_id);
+end;
+$$;
+
+grant execute on function public.red_crear_solicitud(uuid, uuid, text[], text) to authenticated;
+
+-- ── RPC: responder / cancelar / revocar ─────────────────────
+-- Aprobar y rechazar son del establecimiento DESTINO (el dueño de
+-- los datos); cancelar es del solicitante mientras siga pendiente;
+-- revocar es del destino sobre una solicitud ya aprobada y corta el
+-- acceso de inmediato (las policies de arriba solo miran
+-- estado='aprobada').
+create or replace function public.red_responder_solicitud(
+  p_id uuid, p_estado text, p_nota text
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_s public.red_solicitudes%rowtype;
+begin
+  select * into v_s from public.red_solicitudes where id = p_id;
+  if v_s.id is null then return jsonb_build_object('ok', false, 'motivo', 'no_existe'); end if;
+
+  if p_estado in ('aprobada', 'rechazada') then
+    if not public.user_is_member_of(v_s.destino_establecimiento_id) then raise exception 'No autorizado'; end if;
+    if v_s.estado <> 'pendiente' then return jsonb_build_object('ok', false, 'motivo', 'ya_respondida'); end if;
+  elsif p_estado = 'revocada' then
+    if not public.user_is_member_of(v_s.destino_establecimiento_id) then raise exception 'No autorizado'; end if;
+    if v_s.estado <> 'aprobada' then return jsonb_build_object('ok', false, 'motivo', 'no_aprobada'); end if;
+  elsif p_estado = 'cancelada' then
+    if not public.user_is_member_of(v_s.solicitante_establecimiento_id) then raise exception 'No autorizado'; end if;
+    if v_s.estado <> 'pendiente' then return jsonb_build_object('ok', false, 'motivo', 'ya_respondida'); end if;
+  else
+    return jsonb_build_object('ok', false, 'motivo', 'estado_invalido');
+  end if;
+
+  update public.red_solicitudes
+     set estado = p_estado, respuesta_nota = nullif(p_nota, ''),
+         respondida_por = auth.uid(), respondida_at = now()
+   where id = p_id;
+
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+grant execute on function public.red_responder_solicitud(uuid, text, text) to authenticated;
+
+-- ── RPC: bandeja (recibidas + enviadas) ─────────────────────
+-- Enriquecida en el servidor porque cada lado necesita datos que su
+-- RLS no le deja leer directo (el destino no ve la mascota del
+-- solicitante y viceversa).
+create or replace function public.red_listar_solicitudes(p_establecimiento_id uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_out jsonb;
+begin
+  if not public.user_is_member_of(p_establecimiento_id) then raise exception 'No autorizado'; end if;
+
+  select coalesce(jsonb_agg(x order by x->>'created_at' desc), '[]'::jsonb) into v_out from (
+    select jsonb_build_object(
+      'id', s.id,
+      'direccion', case when s.destino_establecimiento_id = p_establecimiento_id then 'recibida' else 'enviada' end,
+      'estado', s.estado, 'tipos', s.tipos, 'mensaje', s.mensaje,
+      'respuesta_nota', s.respuesta_nota,
+      'created_at', s.created_at, 'respondida_at', s.respondida_at,
+      'mascota_nombre', rm.nombre, 'mascota_especie', rm.especie,
+      'propietario_nombre', rp.nombre,
+      'solicitante_nombre', es.nombre, 'destino_nombre', ed.nombre,
+      'creado_por_nombre', pr.nombre
+    ) as x
+    from public.red_solicitudes s
+    join public.red_mascotas rm on rm.id = s.red_mascota_id
+    join public.red_personas rp on rp.id = rm.persona_id
+    join public.establecimientos es on es.id = s.solicitante_establecimiento_id
+    join public.establecimientos ed on ed.id = s.destino_establecimiento_id
+    left join public.profiles pr on pr.id = s.created_by
+    where s.solicitante_establecimiento_id = p_establecimiento_id
+       or s.destino_establecimiento_id = p_establecimiento_id
+  ) t;
+
+  return jsonb_build_object('ok', true, 'solicitudes', v_out);
+end;
+$$;
+
+grant execute on function public.red_listar_solicitudes(uuid) to authenticated;
+
+-- ── RPC: qué tengo compartido HACIA MÍ ──────────────────────
+-- Lo llama cargarDatosClinicaDesdeSupabase() al iniciar sesión para
+-- saber qué mascotas ajenas puede leer y en qué mascota local
+-- mostrarlas. Los registros en sí se leen con selects normales
+-- (las policies de arriba los habilitan), no por acá.
+create or replace function public.red_mis_compartidos(p_establecimiento_id uuid)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_out jsonb;
+begin
+  if not public.user_is_member_of(p_establecimiento_id) then raise exception 'No autorizado'; end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'solicitud_id', s.id,
+           'mascota_local_id', s.mascota_solicitante_id,
+           'mascota_origen_id', s.mascota_destino_id,
+           'establecimiento_origen_id', s.destino_establecimiento_id,
+           'establecimiento_origen_nombre', e.nombre,
+           'tipos', s.tipos,
+           'aprobada_at', s.respondida_at)), '[]'::jsonb)
+    into v_out
+    from public.red_solicitudes s
+    join public.establecimientos e on e.id = s.destino_establecimiento_id
+   where s.solicitante_establecimiento_id = p_establecimiento_id
+     and s.estado = 'aprobada';
+
+  return jsonb_build_object('ok', true, 'compartidos', v_out);
+end;
+$$;
+
+grant execute on function public.red_mis_compartidos(uuid) to authenticated;
+
+-- ── ENDURECIMIENTO DE PERMISOS (no es opcional) ─────────────
+-- Supabase concede EXECUTE por default privileges a `anon` y
+-- `authenticated` sobre TODA función nueva de `public`, y PostgREST
+-- expone cualquier función con EXECUTE en /rest/v1/rpc/<nombre>. Sin
+-- este bloque, `red_upsert_persona` — que es `security definer` y no
+-- verifica nada porque solo la llaman los triggers — queda invocable
+-- por un anónimo desde internet: bastaría un POST para agregarle un
+-- celular propio a la persona de otra clínica en red_persona_moviles
+-- y pasar después la verificación de identidad como si fuera el
+-- tutor. Detectado por el advisor de seguridad
+-- (anon_security_definer_function_executable).
+-- Ojo: `revoke ... from public` NO alcanza, porque el grant a
+-- anon/authenticated es directo, no heredado de PUBLIC — hay que
+-- nombrarlos. Se revoca todo y se vuelve a conceder solo lo que el
+-- front llama de verdad; los helpers internos (red_upsert_*, los dos
+-- trigger functions, los límites y el enmascarador) quedan sin
+-- EXECUTE para nadie: los triggers y las RPC los ejecutan como dueño
+-- de la función, no como el usuario que llama.
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid::regprocedure as sig
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname like 'red\_%'
+  loop
+    execute format('revoke all on function %s from anon, authenticated, public', r.sig);
+  end loop;
+end $$;
+
+grant execute on function public.red_norm_doc(text) to authenticated;
+grant execute on function public.red_norm_movil(text) to authenticated;
+grant execute on function public.red_norm_txt(text) to authenticated;
+grant execute on function public.red_buscar_persona(uuid, text, text) to authenticated;
+grant execute on function public.red_verificar_identidad(uuid, text, text) to authenticated;
+grant execute on function public.red_vincular_con_token(uuid, uuid[]) to authenticated;
+-- Estas dos las evalúan las policies con el rol del que consulta, no
+-- con el dueño: sin EXECUTE, todo select sobre las 7 tablas
+-- compartidas fallaría.
+grant execute on function public.red_puede_ver_registro(uuid, uuid, text) to authenticated;
+grant execute on function public.red_puede_ver_pdf(text) to authenticated;
+grant execute on function public.red_establecimientos_de_mascota(uuid) to authenticated;
+grant execute on function public.red_crear_solicitud(uuid, uuid, text[], text) to authenticated;
+grant execute on function public.red_responder_solicitud(uuid, text, text) to authenticated;
+grant execute on function public.red_listar_solicitudes(uuid) to authenticated;
+grant execute on function public.red_mis_compartidos(uuid) to authenticated;
+
+-- ── BACKFILL del directorio con lo ya existente ─────────────
+-- Los propietarios/mascotas que ya estaban en la base cuando se
+-- corrió esta migración no dispararon los triggers. Se publican una
+-- vez acá; es idempotente (los upsert resuelven por llave natural),
+-- así que volver a correr el archivo completo no duplica nada.
+do $$
+declare r record; v_id uuid;
+begin
+  for r in select * from public.propietarios where red_persona_id is null and coalesce(consentimiento_red, true) loop
+    v_id := public.red_upsert_persona(r.doc_tipo, r.doc_numero, r.movil, r.nombre, r.email,
+                                      r.direccion, r.ciudad, r.contacto_autorizado,
+                                      r.telefono_alterno, r.telefono_opcional);
+    if v_id is not null then
+      update public.propietarios set red_persona_id = v_id where id = r.id;
+    end if;
+  end loop;
+
+  for r in
+    select m.*, p.red_persona_id as persona_id
+      from public.mascotas m join public.propietarios p on p.id = m.propietario_id
+     where m.red_mascota_id is null and p.red_persona_id is not null
+  loop
+    v_id := public.red_upsert_mascota(r.persona_id, r.nombre, r.especie, r.raza, r.chip,
+                                      r.fecha_nacimiento, r.peso, r.color, r.genero, r.talla,
+                                      r.estado_reproductivo, r.animal_servicio, r.fallecido, r.foto_path);
+    if v_id is not null then
+      update public.mascotas set red_mascota_id = v_id where id = r.id;
+    end if;
+  end loop;
+end $$;
