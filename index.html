@@ -7206,7 +7206,7 @@
       document.getElementById('facturacion-cliente-tributario-nombre').textContent = cliente.nombre;
       document.getElementById('fct-numero-documento').value = (cliente.cedula || '').replace(/^[A-Za-zÀ-ÿ.]+\s*/, '');
       document.getElementById('fct-tipo-documento').value = cliente.tipoDocumento || 'Cédula de ciudadanía';
-      document.getElementById('fct-tipo-organizacion').value = cliente.tipoOrganizacion || 'Persona Natural';
+      document.getElementById('fct-tipo-organizacion').value = cliente.tipoOrganizacion || '';
       document.getElementById('fct-razon-social').value = cliente.razonSocial || cliente.nombre || '';
       document.getElementById('fct-telefono').value = cliente.telefono || '';
       document.getElementById('fct-correo').value = cliente.email || '';
@@ -7248,6 +7248,19 @@
       cliente.detallesTributarios = document.getElementById('fct-detalles-tributarios').value;
       toggleFacturacionClienteTributario(false);
       showToast('Información tributaria actualizada');
+    }
+
+    // Comparten el mismo comportamiento los dos paneles "Información
+    // tributaria del cliente" (fct-/dvfct-, ver comentario más abajo sobre
+    // por qué hay dos): Persona Natural en Colombia factura por defecto
+    // como No responsable de IVA, así que al elegirla se autocompleta el
+    // régimen — el usuario todavía puede corregirlo a mano si el cliente
+    // es una excepción. Persona Jurídica no autocompleta nada porque su
+    // régimen sí varía caso a caso.
+    function autoRegimenPorTipoOrganizacion(select) {
+      if (select.value !== 'Persona Natural') return;
+      const regimenSelect = document.getElementById(select.id.replace('tipo-organizacion', 'regimen'));
+      if (regimenSelect) regimenSelect.value = 'No responsable de IVA';
     }
 
     // ── MÓDULO: AGENDA (FullCalendar) ──────────────────────────────
@@ -19374,7 +19387,7 @@
       if (!cliente) return;
       document.getElementById('dvfct-numero-documento').value = (cliente.cedula || '').replace(/^[A-Za-zÀ-ÿ.]+\s*/, '');
       document.getElementById('dvfct-tipo-documento').value = cliente.tipoDocumento || 'Cédula de ciudadanía';
-      document.getElementById('dvfct-tipo-organizacion').value = cliente.tipoOrganizacion || 'Persona Natural';
+      document.getElementById('dvfct-tipo-organizacion').value = cliente.tipoOrganizacion || '';
       document.getElementById('dvfct-razon-social').value = cliente.razonSocial || cliente.nombre || '';
       document.getElementById('dvfct-telefono').value = cliente.telefono || '';
       document.getElementById('dvfct-correo').value = cliente.email || '';
@@ -19479,6 +19492,20 @@
         return;
       }
       const clienteId = document.getElementById('doc-venta-cliente-select').value;
+      // Guardar o "Guardar y cerrar cuenta" de una factura exige que el
+      // tipo de organización del cliente ya haya quedado resuelto en su
+      // información tributaria (ver autoRegimenPorTipoOrganizacion arriba)
+      // — no se valida el select del panel (puede estar cerrado/sin
+      // abrir), sino el dato ya persistido en VENTAS_CLIENTES, que solo se
+      // escribe al guardar ese panel (guardarDocVentaClienteTributario).
+      if (tipo === 'factura') {
+        const clienteFactura = ventasClienteById(clienteId);
+        if (!clienteFactura || !clienteFactura.tipoOrganizacion) {
+          showToast('Completa el tipo de organización en la información tributaria del cliente');
+          toggleDocVentaClienteTributario(true);
+          return;
+        }
+      }
       const estado = document.getElementById('doc-venta-estado-select').value;
       const tabla = tipo === 'cotizacion' ? 'ventas_cotizaciones' : 'ventas_facturas';
       const arr = getDocVentaArray(tipo);
@@ -19587,6 +19614,18 @@
     async function confirmarCerrarCuenta() {
       const factura = VENTAS_FACTURAS.find(f => f.id === cerrarCuentaFacturaId);
       if (!factura) return;
+      // Cerrar cuenta también puede dispararse directo desde el menú "..."
+      // de Estado de cuenta (abrirCerrarCuentaModalDesdeId), sin pasar por
+      // guardarDocVenta — necesita su propia validación del tipo de
+      // organización del cliente, mismo criterio que ahí.
+      const clienteFactura = ventasClienteById(factura.clienteId);
+      if (!clienteFactura || !clienteFactura.tipoOrganizacion) {
+        showToast('Completa el tipo de organización en la información tributaria del cliente antes de cerrar la cuenta');
+        closeCerrarCuentaModal();
+        openDocVentaModal('factura', 'edit', factura.id);
+        toggleDocVentaClienteTributario(true);
+        return;
+      }
       const metodo = document.getElementById('cerrar-cuenta-metodo-select').value;
       const valor = Number(document.getElementById('cerrar-cuenta-valor-input').value) || 0;
       if (!metodo) { showToast('Selecciona el método de pago'); return; }
@@ -23832,21 +23871,26 @@
       formDraftSaveTimers[overlay.id] = setTimeout(() => saveFormDraft(overlay.id), 400);
     }, true);
 
-    document.querySelectorAll('.modal-overlay[id]').forEach(overlay => {
-      new MutationObserver(mutations => {
-        mutations.forEach(() => {
-          const isShown = overlay.classList.contains('show');
-          const wasShown = formDraftOpenState.has(overlay.id);
-          if (isShown && !wasShown) {
-            formDraftOpenState.add(overlay.id);
-            onModalDraftOpened(overlay.id);
-          } else if (!isShown && wasShown) {
-            formDraftOpenState.delete(overlay.id);
-            onModalDraftClosed(overlay.id);
-          }
-        });
-      }).observe(overlay, { attributes: true, attributeFilter: ['class'] });
-    });
+    // Un solo observer en <body> (con subtree) en vez de uno por modal:
+    // este script corre ANTES de que el HTML de los modales (más abajo en
+    // el documento, fuera de este <script>) llegue a existir en el DOM, así
+    // que enumerar `.modal-overlay` acá arriba encontraría cero elementos.
+    // Observar el subtree de body cubre los modales aunque se parseen después.
+    new MutationObserver(mutations => {
+      mutations.forEach(m => {
+        const overlay = m.target;
+        if (!overlay.classList || !overlay.classList.contains('modal-overlay') || !overlay.id) return;
+        const isShown = overlay.classList.contains('show');
+        const wasShown = formDraftOpenState.has(overlay.id);
+        if (isShown && !wasShown) {
+          formDraftOpenState.add(overlay.id);
+          onModalDraftOpened(overlay.id);
+        } else if (!isShown && wasShown) {
+          formDraftOpenState.delete(overlay.id);
+          onModalDraftClosed(overlay.id);
+        }
+      });
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'], subtree: true });
 
     // Llamada real (ver nota junto a mostrarShellSegunSesion()) — debe
     // ser lo último del script. bootstrapSession() reemplaza al viejo
@@ -25378,7 +25422,8 @@
           </div>
           <div class="input-group">
             <label class="input-label" for="dvfct-tipo-organizacion">Tipo de organización</label>
-            <select class="soap-select-control" id="dvfct-tipo-organizacion">
+            <select class="soap-select-control" id="dvfct-tipo-organizacion" onchange="autoRegimenPorTipoOrganizacion(this)">
+              <option value="">Selecciona...</option>
               <option>Persona Natural</option>
               <option>Persona Jurídica</option>
             </select>
@@ -26262,7 +26307,8 @@
                 </div>
                 <div class="input-group">
                   <label class="input-label" for="fct-tipo-organizacion">Tipo de organización</label>
-                  <select class="soap-select-control" id="fct-tipo-organizacion">
+                  <select class="soap-select-control" id="fct-tipo-organizacion" onchange="autoRegimenPorTipoOrganizacion(this)">
+                    <option value="">Selecciona...</option>
                     <option>Persona Natural</option>
                     <option>Persona Jurídica</option>
                   </select>
