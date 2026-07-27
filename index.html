@@ -4222,7 +4222,7 @@
             <table class="results-table">
               <thead>
                 <tr>
-                  <th></th>
+                  <th>Facturación</th>
                   <th>Nombre propietario</th>
                   <th>Documento</th>
                   <th>Teléfono</th>
@@ -6900,10 +6900,15 @@
             <td>${p.movil}${copyIconHTML(p.movil)}</td>
             <td><div class="pet-badge-list">${chips}</div></td>
             <td>
-              <span class="gestion-tag">
-                <span class="gestion-time">${gestion.time}</span>
-                ${gestion.detail ? `<span class="gestion-detail">${gestion.detail}</span>` : ''}
-              </span>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <span class="gestion-tag">
+                  <span class="gestion-time">${gestion.time}</span>
+                  ${gestion.detail ? `<span class="gestion-detail">${gestion.detail}</span>` : ''}
+                </span>
+                <button class="row-actions-btn" title="Registrar mascota nueva" onclick="event.stopPropagation(); openRegistrarMascotaModal('${p.id}')">
+                  <i data-lucide="plus" style="width:14px;height:14px;"></i>
+                </button>
+              </div>
             </td>
           </tr>
         `;
@@ -9647,7 +9652,7 @@
       if (e.target === document.getElementById('actualizar-peso-modal')) closeActualizarPesoModal();
     }
 
-    function guardarPesoActualizado() {
+    async function guardarPesoActualizado() {
       const petKey = actualizandoPesoPetKey;
       const data = patientData[petKey];
       if (!data) return;
@@ -9662,14 +9667,32 @@
       const [y, m, d] = fechaISO.split('-');
       const fecha = `${d}/${m}/${y}`;
 
-      if (!Array.isArray(data.pesoHistorico)) data.pesoHistorico = [];
-      data.pesoHistorico.push({ fechaISO, fecha, peso: pesoNum });
-      data.pesoHistorico.sort((a, b) => a.fechaISO.localeCompare(b.fechaISO));
+      const pesoHistoricoPrevio = Array.isArray(data.pesoHistorico) ? data.pesoHistorico : [];
+      const nuevoPesoHistorico = [...pesoHistoricoPrevio, { fechaISO, fecha, peso: pesoNum }]
+        .sort((a, b) => a.fechaISO.localeCompare(b.fechaISO));
+      const masReciente = nuevoPesoHistorico[nuevoPesoHistorico.length - 1];
+      const nuevoWeight = `${masReciente.peso} kg`;
+
+      const btn = document.getElementById('peso-nuevo-guardar-btn');
+      if (btn) btn.disabled = true;
+
+      if (window.supabase && data.mascotaId) {
+        const { error } = await window.supabase.from('mascotas').update({
+          peso_historico: nuevoPesoHistorico, peso: nuevoWeight, updated_at: new Date().toISOString()
+        }).eq('id', data.mascotaId);
+        if (error) {
+          console.error('[IRIS] Error actualizando histórico de peso en Supabase:', error);
+          showToast('No se pudo guardar el peso — intenta de nuevo');
+          if (btn) btn.disabled = false;
+          return;
+        }
+      }
+      if (btn) btn.disabled = false;
 
       // El registro más reciente por fecha (no necesariamente el último
       // insertado) manda sobre el peso "actual" mostrado en la ficha.
-      const masReciente = data.pesoHistorico[data.pesoHistorico.length - 1];
-      data.weight = `${masReciente.peso} kg`;
+      data.pesoHistorico = nuevoPesoHistorico;
+      data.weight = nuevoWeight;
 
       if (selectedPetKey === petKey) {
         document.getElementById('pet-profile-weight').textContent = data.weight;
@@ -24648,7 +24671,7 @@
       </div>
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeActualizarPesoModal()">Cancelar</button>
-        <button class="btn-primary" onclick="guardarPesoActualizado()">Guardar peso</button>
+        <button class="btn-primary" id="peso-nuevo-guardar-btn" onclick="guardarPesoActualizado()">Guardar peso</button>
       </div>
     </div>
   </div>
