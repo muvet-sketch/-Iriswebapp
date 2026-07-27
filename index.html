@@ -628,6 +628,13 @@
       display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;
     }
     .med-block-header { display: flex; justify-content: space-between; align-items: center; }
+    .med-block-header-left { display: flex; align-items: center; gap: 8px; }
+    .med-block-drag-handle {
+      display: flex; align-items: center; color: var(--text-2); cursor: grab; padding: 2px; border-radius: 4px;
+    }
+    .med-block-drag-handle:active { cursor: grabbing; }
+    .med-block-dragging { opacity: 0.45; }
+    .med-block-drag-over { border-color: var(--clinic-accent); box-shadow: 0 0 0 2px rgba(var(--clinic-accent-rgb), 0.15); }
     .med-block-title {
       font-size: 11px; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.5px;
     }
@@ -11631,10 +11638,22 @@
       `;
     }
 
+    // Números romanos (I, II, III...) para numerar cada medicamento en el
+    // documento/PDF de Fórmula médica -- solo cubre 1-49 (rango más que
+    // suficiente para medicamentos en una sola fórmula).
+    function numeroRomano(n) {
+      const valores = [[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']];
+      let resto = n, out = '';
+      for (const [valor, simbolo] of valores) {
+        while (resto >= valor) { out += simbolo; resto -= valor; }
+      }
+      return out;
+    }
+
     function formulaViewContentHTML(record) {
-      const medsHTML = record.medicamentos.map(m => `
-        <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#FAFBFD;">
-          <div style="font-size:13px;font-weight:600;">${m.nombre} ${m.cantidad || ''} <span style="font-weight:400;color:var(--text-2);">(${m.presentacion || ''})</span></div>
+      const medsHTML = record.medicamentos.map((m, i) => `
+        <div style="padding:6px 0;margin-bottom:4px;">
+          <div style="font-size:13px;font-weight:600;">${numeroRomano(i + 1)}. ${m.nombre} (${m.presentacion || ''})--- #${m.cantidad || ''}</div>
           <div style="font-size:12px;color:var(--text-2);margin-top:4px;">${m.posologia || ''}</div>
         </div>
       `).join('');
@@ -11730,9 +11749,17 @@
     function medBlockTemplate(index, med) {
       med = med || {};
       return `
-        <div class="med-block" data-med-index="${index}">
+        <div class="med-block" data-med-index="${index}" draggable="false"
+             ondragstart="medBlockDragStart(event)" ondragend="medBlockDragEnd(event)"
+             ondragover="medBlockDragOver(event)" ondragleave="medBlockDragLeave(event)" ondrop="medBlockDrop(event)">
           <div class="med-block-header">
-            <span class="med-block-title">Medicamento ${index + 1}</span>
+            <div class="med-block-header-left">
+              <span class="med-block-drag-handle" title="Arrastrar para reordenar"
+                    onmousedown="medBlockHandleMouseDown(event)">
+                <i data-lucide="grip-vertical" style="width:14px;height:14px;"></i>
+              </span>
+              <span class="med-block-title">Medicamento ${index + 1}</span>
+            </div>
             <button type="button" class="med-block-remove" onclick="removeFormulaMedBlock(${index})">
               <i data-lucide="x" style="width:12px;height:12px;"></i> Eliminar
             </button>
@@ -11788,6 +11815,77 @@
         block.querySelector('.med-block-title').textContent = `Medicamento ${i + 1}`;
         block.querySelector('.med-block-remove').setAttribute('onclick', `removeFormulaMedBlock(${i})`);
       });
+    }
+
+    // Reordenar medicamentos con el mouse (arrastrar por el grip a la
+    // izquierda del título). El bloque solo se vuelve draggable="true"
+    // mientras el mouse está presionado sobre el grip (medBlockHandleMouseDown
+    // / reset en el primer mouseup) -- así arrastrar texto dentro de los
+    // inputs/textarea del bloque no dispara un drag accidental del bloque
+    // completo. Los nodos DOM se mueven tal cual (insertBefore/after), nunca
+    // se re-renderizan desde datos, para no perder texto recién tipeado que
+    // aún no se guardó.
+    function medBlockHandleMouseDown(e) {
+      const block = e.currentTarget.closest('.med-block');
+      if (!block) return;
+      block.setAttribute('draggable', 'true');
+      const resetDraggable = () => block.setAttribute('draggable', 'false');
+      document.addEventListener('mouseup', resetDraggable, { once: true });
+    }
+
+    function medBlockDragStart(e) {
+      const block = e.currentTarget;
+      block.classList.add('med-block-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', block.getAttribute('data-med-index') || '');
+    }
+
+    function medBlockDragEnd(e) {
+      const block = e.currentTarget;
+      block.classList.remove('med-block-dragging');
+      block.setAttribute('draggable', 'false');
+      document.querySelectorAll('#formula-meds-list .med-block-drag-over').forEach(b => b.classList.remove('med-block-drag-over'));
+    }
+
+    function medBlockDragOver(e) {
+      if (!document.querySelector('#formula-meds-list .med-block-dragging')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.add('med-block-drag-over');
+    }
+
+    function medBlockDragLeave(e) {
+      e.currentTarget.classList.remove('med-block-drag-over');
+    }
+
+    function medBlockDrop(e) {
+      e.preventDefault();
+      const targetBlock = e.currentTarget;
+      targetBlock.classList.remove('med-block-drag-over');
+      const list = document.getElementById('formula-meds-list');
+      const srcBlock = list.querySelector('.med-block-dragging');
+      if (!srcBlock || srcBlock === targetBlock) return;
+      const blocks = [...list.children];
+      if (blocks.indexOf(srcBlock) < blocks.indexOf(targetBlock)) {
+        targetBlock.after(srcBlock);
+      } else {
+        targetBlock.before(srcBlock);
+      }
+      renumberFormulaMedBlocks();
+    }
+
+    function medBlockContainerDragOver(e) {
+      if (!document.querySelector('#formula-meds-list .med-block-dragging')) return;
+      e.preventDefault();
+    }
+
+    function medBlockContainerDrop(e) {
+      e.preventDefault();
+      if (e.target.closest('.med-block')) return; // ya lo maneja medBlockDrop
+      const list = document.getElementById('formula-meds-list');
+      const srcBlock = list.querySelector('.med-block-dragging');
+      if (srcBlock) list.appendChild(srcBlock);
+      renumberFormulaMedBlocks();
     }
 
     function medSummary(medicamentos) {
@@ -23602,7 +23700,7 @@
 
         <div>
           <label class="input-label" style="margin-bottom:8px;display:block;">Medicamentos</label>
-          <div id="formula-meds-list"></div>
+          <div id="formula-meds-list" ondragover="medBlockContainerDragOver(event)" ondrop="medBlockContainerDrop(event)"></div>
           <button type="button" class="btn-outline" onclick="addFormulaMedBlock()">
             <i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar medicamento
           </button>
