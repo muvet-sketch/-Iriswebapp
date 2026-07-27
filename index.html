@@ -799,7 +799,7 @@
        .admin-pane es hijo DIRECTO de .tab-content (flex), sin esta capa
        intermedia.  */
     .admin-outer-view { display: none; }
-    .admin-outer-view.active { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+    .admin-outer-view.active { display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; }
 
     /* Tabs de "Configuración de la veterinaria" y de "Variables" — mismo
        look que .admin-subview-tabs, clases propias para no interferir con
@@ -1539,9 +1539,26 @@
       margin-top: 16px;
       padding-top: 16px;
       border-top: 1px solid var(--border);
+      max-height: 400px;
+      opacity: 1;
+      overflow: hidden;
+      transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.25s ease, padding-top 0.25s ease;
     }
     .pet-header-bottom-row .pet-weight-chart-col { flex: 1; }
     .pet-header-bottom-row .pet-data-table-col { flex: 1.4; }
+
+    /* Al hacer scroll dentro de .patient-pane-body se le da prioridad al
+       panel del módulo seleccionado colapsando esta franja (peso + datos
+       generales) — ver setupPatientPaneHeaderCollapse(). Solo colapsa la
+       fila inferior; identidad/acciones (.pet-header-top-row) permanece
+       fija para no perder contexto del paciente ni las acciones rápidas. */
+    .pet-header-card.pet-header-collapsed .pet-header-bottom-row {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+      padding-top: 0;
+      border-top-color: transparent;
+    }
 
     @media (max-width: 900px) {
       .pet-header-bottom-row { flex-direction: column; }
@@ -7887,6 +7904,18 @@
       switchSubTab('historia');
     }
 
+    // Colapsa la franja de peso/datos generales del header (.pet-header-bottom-row)
+    // al hacer scroll dentro del panel de módulo, para priorizar la
+    // visualización del módulo seleccionado. Se re-expande al volver arriba.
+    (function setupPatientPaneHeaderCollapse() {
+      const paneBody = document.querySelector('.patient-pane-body');
+      const headerCard = document.querySelector('.pet-header-card');
+      if (!paneBody || !headerCard) return;
+      paneBody.addEventListener('scroll', () => {
+        headerCard.classList.toggle('pet-header-collapsed', paneBody.scrollTop > 12);
+      });
+    })();
+
     // Pinta una lista de eventos de timeline (misma factoría de nodos usada
     // por Historia y por el timeline mini del Tablero de trabajo)
     function renderTimelineNodes(containerId, events) {
@@ -10165,6 +10194,12 @@
 
       // Re-inicializar iconos en panel dinámico
       lucide.createIcons();
+
+      // Volver arriba del panel al cambiar de módulo — evita heredar el
+      // scroll (y la franja de peso colapsada, ver setupPatientPaneHeaderCollapse)
+      // del módulo anterior.
+      const paneBody = document.querySelector('.patient-pane-body');
+      if (paneBody) paneBody.scrollTop = 0;
     }
 
     // ── MODAL: NUEVA CONSULTA (SOIP) ────────────────────────────
@@ -12430,6 +12465,8 @@
         <div class="info-value">${record.laboratorio || '—'}</div>
         <div class="info-label">Lote</div>
         <div class="info-value">${record.lote || '—'}</div>
+        <div class="info-label">Fecha de vencimiento</div>
+        <div class="info-value">${record.vencimiento || '—'}</div>
         <div class="info-label">Próxima vacunación</div>
         <div class="info-value">${record.proximaVacunacion || '—'}</div>
         <div class="info-label">Observaciones</div>
@@ -12470,6 +12507,7 @@
         renderVacunaOptions(record.vacuna);
         document.getElementById('vac-laboratorio').value = record.laboratorio || '';
         document.getElementById('vac-lote').value = record.lote || '';
+        document.getElementById('vac-vencimiento').value = record.vencimientoISO || '';
         document.getElementById('vac-observaciones').value = record.observaciones || '';
         document.getElementById('vac-proxima').value = record.proximaVacunacionISO || '';
         saveBtn.textContent = 'Guardar cambios';
@@ -12478,6 +12516,7 @@
         renderVacunaOptions('');
         document.getElementById('vac-laboratorio').value = '';
         document.getElementById('vac-lote').value = '';
+        document.getElementById('vac-vencimiento').value = '';
         document.getElementById('vac-observaciones').value = '';
         document.getElementById('vac-proxima').value = '';
         saveBtn.textContent = 'Guardar';
@@ -12519,6 +12558,7 @@
       const vacuna = document.getElementById('vac-vacuna').value;
       const laboratorio = document.getElementById('vac-laboratorio').value.trim();
       const lote = document.getElementById('vac-lote').value.trim();
+      const vencimientoISO = document.getElementById('vac-vencimiento').value;
       const observaciones = document.getElementById('vac-observaciones').value.trim();
       const proximaISO = document.getElementById('vac-proxima').value;
 
@@ -12543,6 +12583,7 @@
 
         const payload = {
           fecha: fechaISO, vacuna, laboratorio: laboratorio || null, lote: lote || null,
+          vencimiento: vencimientoISO || null,
           observaciones: observaciones || null, proxima_vacunacion: proximaISO || null,
           usuario: usuarioNombre
         };
@@ -12562,7 +12603,10 @@
 
         const record = {
           id: dbId, fechaISO, fecha: formatFechaCorta(fechaISO),
-          vacuna, laboratorio, lote, observaciones,
+          vacuna, laboratorio, lote,
+          vencimientoISO: vencimientoISO || null,
+          vencimiento: vencimientoISO ? formatFechaCorta(vencimientoISO) : null,
+          observaciones,
           proximaVacunacionISO: proximaISO || null,
           proximaVacunacion: proximaISO ? formatFechaCorta(proximaISO) : null,
           usuario: usuarioNombre
@@ -12647,6 +12691,10 @@
         <div class="info-value">${record.producto || '—'}</div>
         <div class="info-label">Dosis</div>
         <div class="info-value">${record.dosis || '—'}</div>
+        <div class="info-label">Lote</div>
+        <div class="info-value">${record.lote || '—'}</div>
+        <div class="info-label">Fecha de vencimiento</div>
+        <div class="info-value">${record.vencimiento || '—'}</div>
         <div class="info-label">Próximo control</div>
         <div class="info-value">${record.proximoControl || '—'}</div>
         <div class="info-label">Adjunto</div>
@@ -12696,6 +12744,8 @@
         renderTipoDesparasitacionOptions(record.tipo);
         document.getElementById('desp-producto').value = record.producto || '';
         document.getElementById('desp-dosis').value = record.dosis || '';
+        document.getElementById('desp-lote').value = record.lote || '';
+        document.getElementById('desp-vencimiento').value = record.vencimientoISO || '';
         document.getElementById('desp-proximo-control').value = record.proximoControlISO || '';
         document.getElementById('desp-archivo-nombre').textContent = record.archivoAdjuntoNombre ? `Archivo adjunto: ${record.archivoAdjuntoNombre}` : '';
         document.getElementById('desp-observaciones').value = record.observaciones || '';
@@ -12706,6 +12756,8 @@
         renderTipoDesparasitacionOptions('');
         document.getElementById('desp-producto').value = '';
         document.getElementById('desp-dosis').value = '';
+        document.getElementById('desp-lote').value = '';
+        document.getElementById('desp-vencimiento').value = '';
         document.getElementById('desp-proximo-control').value = '';
         document.getElementById('desp-archivo-nombre').textContent = '';
         document.getElementById('desp-observaciones').value = '';
@@ -12747,6 +12799,8 @@
       const tipo = document.getElementById('desp-tipo').value;
       const producto = document.getElementById('desp-producto').value.trim();
       const dosis = document.getElementById('desp-dosis').value.trim();
+      const lote = document.getElementById('desp-lote').value.trim();
+      const vencimientoISO = document.getElementById('desp-vencimiento').value;
       const proximoControlISO = document.getElementById('desp-proximo-control').value;
       const observaciones = document.getElementById('desp-observaciones').value.trim();
       const archivoInput = document.getElementById('desp-archivo-input');
@@ -12778,6 +12832,7 @@
           fecha: fechaISO,
           ultima_desparasitacion: ultimaISO || null,
           tipo, producto: producto || null, dosis: dosis || null,
+          lote: lote || null, vencimiento: vencimientoISO || null,
           proximo_control: proximoControlISO || null,
           archivo_adjunto_nombre: archivoAdjuntoNombre || null,
           observaciones: observaciones || null,
@@ -12802,7 +12857,9 @@
           fechaISO, fecha: formatFechaCorta(fechaISO),
           ultimaDesparasitacionISO: ultimaISO || null,
           ultimaDesparasitacion: ultimaISO ? formatFechaCorta(ultimaISO) : null,
-          tipo, producto, dosis,
+          tipo, producto, dosis, lote,
+          vencimientoISO: vencimientoISO || null,
+          vencimiento: vencimientoISO ? formatFechaCorta(vencimientoISO) : null,
           proximoControlISO: proximoControlISO || null,
           proximoControl: proximoControlISO ? formatFechaCorta(proximoControlISO) : null,
           archivoAdjuntoNombre,
@@ -15378,6 +15435,8 @@
         id: r.id,
         fechaISO: r.fecha, fecha: formatFechaCorta(r.fecha),
         vacuna: r.vacuna, laboratorio: r.laboratorio || '', lote: r.lote || '',
+        vencimientoISO: r.vencimiento || null,
+        vencimiento: r.vencimiento ? formatFechaCorta(r.vencimiento) : null,
         observaciones: r.observaciones || '',
         proximaVacunacionISO: r.proxima_vacunacion || null,
         proximaVacunacion: r.proxima_vacunacion ? formatFechaCorta(r.proxima_vacunacion) : null,
@@ -15438,6 +15497,9 @@
         ultimaDesparasitacionISO: r.ultima_desparasitacion || null,
         ultimaDesparasitacion: r.ultima_desparasitacion ? formatFechaCorta(r.ultima_desparasitacion) : null,
         tipo: r.tipo, producto: r.producto || '', dosis: r.dosis || '',
+        lote: r.lote || '',
+        vencimientoISO: r.vencimiento || null,
+        vencimiento: r.vencimiento ? formatFechaCorta(r.vencimiento) : null,
         proximoControlISO: r.proximo_control || null,
         proximoControl: r.proximo_control ? formatFechaCorta(r.proximo_control) : null,
         archivoAdjuntoNombre: r.archivo_adjunto_nombre || null,
@@ -24255,12 +24317,19 @@
             <input type="text" class="input-control" style="padding-left:12px;" id="vac-laboratorio">
           </div>
           <div class="input-group">
+            <label class="input-label" for="vac-proxima">Próxima vacunación</label>
+            <input type="date" class="input-control" style="padding-left:12px;" id="vac-proxima">
+          </div>
+        </div>
+
+        <div class="soap-meta-row">
+          <div class="input-group">
             <label class="input-label" for="vac-lote">Lote</label>
             <input type="text" class="input-control" style="padding-left:12px;" id="vac-lote">
           </div>
           <div class="input-group">
-            <label class="input-label" for="vac-proxima">Próxima vacunación</label>
-            <input type="date" class="input-control" style="padding-left:12px;" id="vac-proxima">
+            <label class="input-label" for="vac-vencimiento">Fecha de vencimiento</label>
+            <input type="date" class="input-control" style="padding-left:12px;" id="vac-vencimiento">
           </div>
         </div>
 
@@ -24325,6 +24394,17 @@
           <div class="input-group">
             <label class="input-label" for="desp-proximo-control">Próximo control</label>
             <input type="date" class="input-control" style="padding-left:12px;" id="desp-proximo-control">
+          </div>
+        </div>
+
+        <div class="soap-meta-row">
+          <div class="input-group">
+            <label class="input-label" for="desp-lote">Lote</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="desp-lote">
+          </div>
+          <div class="input-group">
+            <label class="input-label" for="desp-vencimiento">Fecha de vencimiento</label>
+            <input type="date" class="input-control" style="padding-left:12px;" id="desp-vencimiento">
           </div>
         </div>
 

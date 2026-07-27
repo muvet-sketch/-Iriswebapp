@@ -971,6 +971,7 @@ create table if not exists public.vacunaciones (
   vacuna               text not null,
   laboratorio          text,
   lote                 text,
+  vencimiento          date,
   observaciones        text,
   proxima_vacunacion   date,
   usuario              text,
@@ -1019,6 +1020,8 @@ create table if not exists public.desparasitaciones (
   tipo                      text not null,
   producto                  text,
   dosis                     text,
+  lote                      text,
+  vencimiento               date,
   proximo_control           date,
   archivo_adjunto_nombre    text,
   observaciones             text,
@@ -1778,3 +1781,10 @@ drop policy if exists "guarderias_delete_member" on public.guarderias;
 create policy "guarderias_delete_member"
   on public.guarderias for delete
   using (public.user_is_member_of(establecimiento_id));
+
+-- ── vacunaciones.vencimiento / desparasitaciones.lote,vencimiento ──
+-- Recuadro de Lote + Fecha de vencimiento en el formulario, mismo
+-- criterio en ambos módulos (desparasitaciones no tenía Lote todavía).
+alter table public.vacunaciones add column if not exists vencimiento date;
+alter table public.desparasitaciones add column if not exists lote text;
+alter table public.desparasitaciones add column if not exists vencimiento date;
