@@ -595,6 +595,53 @@ acceso distintos; no los mezcles:
    (policy `pdfs_select_red_compartido` + `red_puede_ver_pdf`), que es
    justamente el "no volver a subir cada documento en cada módulo".
 
+**Tener la ficha ≠ poder abrirla — `propietarios.red_vinculado`.** Una
+clínica puede terminar con la fila de un tutor sin haberlo verificado
+nunca (botón "Registrar como nuevo de todas formas", importación de
+clientes por CSV). Esa fila nace con `red_vinculado = false` y NO da
+acceso a nada: se ve en el buscador con la etiqueta "Sin vincular" y un
+botón "Vincular" en la columna de acciones — hay que poder reclamarla —
+pero el nombre no es clickeable, los chips de mascota no llevan al
+Consultorio y perfil/facturación/editar/registrar mascota están
+cerrados. Detalles:
+- Lo decide el trigger `red_trg_publicar_propietario` en el `insert`, no
+  el front: nace en `false` SOLO si esa `red_persona_id` ya existe en
+  otro establecimiento. Tutor nuevo en la red, o sin cédula, nace
+  utilizable. Así queda cubierta toda vía de inserción presente y
+  futura sin replicar la regla en cada una.
+- El único camino que lo pone en `true` después es
+  `red_vincular_con_token()`, que además de crear la ficha desbloquea
+  la que ya estuviera bloqueada en esa clínica. Por PostgREST no se
+  puede: la policy `propietarios_update_member` exige
+  `red_vinculado`, y `mascotas_insert_member`/`_update_member` exigen
+  `propietario_vinculado(propietario_id)` — el bloqueo no vive solo en
+  index.html. La historia clínica cuelga de `mascotas`, así que sin
+  poder crear mascota tampoco se le cuelga nada.
+- En el front el guard único es `bloqueadoPorFaltaDeVinculacion(id,
+  accion)` (y `bloqueadoPorTutorSinVincular(petKey, accion)` entrando
+  por la mascota): devuelve `true` si hay que ABORTAR, ya avisó y ya
+  abrió el modal de vinculación. Cualquier punto de entrada nuevo a la
+  ficha de un tutor debe llamarlo — no repliques el chequeo a mano.
+- El backfill dejó en `true` TODO lo preexistente a propósito (ver el
+  comentario en `supabase/schema.sql`): en producción 80 de los 95
+  tutores de la clínica real comparten identidad con la de pruebas
+  porque ambas importaron la misma lista por CSV antes de que la red
+  existiera, y una regla retroactiva las habría bloqueado casi todas.
+  La regla aplica solo hacia adelante.
+- `redDetectarCoincidencia()` ya NO es fail-open: devuelve
+  `{estado: 'sin-coincidencia' | 'coincide' | 'indisponible'}` y
+  `guardarPropietario()` BLOQUEA el registro ante `indisponible` (rate
+  limit de 60 búsquedas/hora, error de red). Antes los tres casos
+  devolvían `null` y un error de red creaba el tutor sin vincular —
+  justo lo que la detección debía tapar.
+- El buscador de Consultorio consulta la red cuando no encuentra nada
+  localmente y el término tiene ≥6 dígitos (`programarBusquedaEnRed`):
+  espera 900 ms sin tecleo y cachea por término, porque
+  `red_buscar_persona` está limitada a 60 búsquedas/hora por usuario y
+  dispararla en cada tecla quemaba el cupo al instante. Solo se cachea
+  una respuesta real — si la red no contestó, el siguiente intento
+  puede volver a preguntar.
+
 Detalles que hay que respetar al tocar esto:
 - Las tablas del directorio tienen RLS **habilitada y cero policies a
   propósito**: nada de PostgREST las lee. Todo pasa por funciones

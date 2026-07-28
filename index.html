@@ -3084,6 +3084,31 @@
     .red-persona-nombre { font-size: 14px; font-weight: 700; color: var(--text-1); }
     .red-persona-linea { font-size: 12px; color: var(--text-2); margin-top: 2px; }
 
+    /* Tutor sin vincular en el buscador: la fila se ve pero no lleva a
+       ningún lado hasta pasar por la verificación de identidad. */
+    .owner-row-locked td { opacity: .72; }
+    .owner-row-locked td:nth-child(3),
+    .owner-row-locked td:nth-child(4) { opacity: 1; }
+    .owner-name-locked { cursor: default; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .owner-locked-tag {
+      font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+      color: #92400E; background: #FEF3C7; border: 1px solid #FDE68A;
+      padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+    }
+    .owner-locked-icon { color: var(--text-2); display: inline-flex; padding: 4px; }
+    .pet-chip-locked { opacity: .6; }
+    .btn-vincular-fila {
+      display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+      font-size: 11px; font-weight: 700; cursor: pointer;
+      color: var(--clinic-accent); background: transparent;
+      border: 1px solid var(--clinic-accent); border-radius: 999px;
+      padding: 4px 11px; transition: var(--transition);
+    }
+    .btn-vincular-fila:hover { background: var(--clinic-accent); color: #fff; }
+    /* Aviso "existe en la red" cuando el buscador local no encuentra nada. */
+    .buscador-red-hint { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 6px 0; }
+    .buscador-red-hint-text { font-size: 13px; color: var(--text-1); }
+    .buscador-red-hint-sub { font-size: 12px; color: var(--text-2); display: block; margin-top: 2px; }
     .red-pet-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
     .red-pet-option {
       display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer;
@@ -7152,6 +7177,74 @@
     // Separa la zona de click del nombre (abre Perfil de propietario) de la
     // de cada chip de mascota (va directo a su historia clínica) — ya no
     // hay un onclick único sobre toda la fila.
+    // ── BUSCADOR: CONSULTA A LA RED IRIS ────────────────────────────
+    // El buscador solo ve las fichas de ESTA clínica, así que un tutor que
+    // existe únicamente en otro establecimiento daba "No se encontraron
+    // resultados" y el camino natural pasaba a ser registrarlo de nuevo —
+    // justo el duplicado sin vincular que la red existe para evitar. Si el
+    // término parece cédula o celular se le pregunta a la red y se ofrece
+    // vincular.
+    //
+    // La consulta NO se dispara en cada tecla: red_buscar_persona está
+    // limitada a 60 búsquedas por hora y por usuario (ver red_intentos en
+    // el schema), así que se espera a que el usuario deje de escribir y se
+    // cachea el resultado por término para no volver a gastar cupo con lo
+    // mismo.
+    let redBuscadorTimer = null;
+    let redBuscadorCache = new Map();  // término → hint | null
+    let redBuscadorEnCurso = null;     // término que se está consultando
+
+    function terminoBuscableEnRed(termino) {
+      return (termino || '').replace(/\D/g, '').length >= 6;
+    }
+
+    function programarBusquedaEnRed(termino) {
+      clearTimeout(redBuscadorTimer);
+      if (!window.supabase || !redEstablecimientoActivo()) return;
+      if (!terminoBuscableEnRed(termino)) return;
+      if (redBuscadorCache.has(termino) || redBuscadorEnCurso === termino) return;
+
+      redBuscadorTimer = setTimeout(async () => {
+        redBuscadorEnCurso = termino;
+        renderPropietariosTable();
+        const res = await redRpc('red_buscar_persona', {
+          p_establecimiento_id: redEstablecimientoActivo(),
+          p_doc_numero: termino,
+          p_movil: termino
+        });
+        redBuscadorEnCurso = null;
+        // Solo se cachea una respuesta real: si la red no contestó, el
+        // próximo intento tiene que poder volver a preguntar.
+        if (res && res.ok) {
+          redBuscadorCache.set(termino, (res.existe && !res.ya_en_clinica) ? res : null);
+        }
+        renderPropietariosTable();
+      }, 900);
+    }
+
+    function filaBuscadorRedHTML(termino) {
+      if (redBuscadorEnCurso === termino) {
+        return '<span class="buscador-red-hint-text">Consultando la red IRIS…</span>';
+      }
+      const hint = redBuscadorCache.get(termino);
+      if (hint) {
+        const partes = [];
+        if (hint.mascotas) partes.push(`${hint.mascotas} mascota${hint.mascotas === 1 ? '' : 's'}`);
+        if (hint.clinicas) partes.push(`${hint.clinicas} establecimiento${hint.clinicas === 1 ? '' : 's'}`);
+        return `
+          <div class="buscador-red-hint">
+            <span class="buscador-red-hint-text">
+              <strong>${hint.nombre_masked || 'Un tutor'}</strong> ya existe en la red IRIS
+              <span class="buscador-red-hint-sub">${partes.join(' · ') || 'Sin fichas asociadas'} · verifica su identidad para traer la ficha</span>
+            </span>
+            <button class="btn-vincular-fila" onclick="abrirRedVincularModalManual()">
+              <i data-lucide="link" style="width:13px;height:13px;"></i> Vincular tutor
+            </button>
+          </div>`;
+      }
+      return 'No se encontraron resultados';
+    }
+
     function renderPropietariosTable() {
       const tbody = document.getElementById('propietarios-tbody');
       if (!tbody) return;
@@ -7174,38 +7267,46 @@
         return true;
       });
       if (!propietariosFiltrados.length) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No se encontraron resultados</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">${filaBuscadorRedHTML(filtroPropietario)}</td></tr>`;
         lucide.createIcons();
+        programarBusquedaEnRed(filtroPropietario);
         return;
       }
       tbody.innerHTML = propietariosFiltrados.map(p => {
+        // Tutor cuya identidad ya vivía en otro establecimiento y que esta
+        // clínica nunca verificó: la fila se muestra (hay que poder
+        // reclamarla) pero no lleva a ningún lado. Ver
+        // propietarioEstaVinculado().
+        const vinculado = p.redVinculado !== false;
         const mascotas = getMascotasDePropietario(p.id);
         const chips = mascotas.length
           ? mascotas.map(([petKey, d]) => `
-              <span class="pet-chip-badge ${d.avatarClass}">
-                <span class="pet-chip-photo" style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')" title="Ver historia clínica">
+              <span class="pet-chip-badge ${d.avatarClass}${vinculado ? '' : ' pet-chip-locked'}">
+                <span class="pet-chip-photo" ${vinculado ? `style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')" title="Ver historia clínica"` : 'title="Requiere vincular al tutor"'}>
                   ${d.fotoUrl ? `<img src="${d.fotoUrl}" alt="${d.name}">` : `<i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width: 11px; height: 11px;"></i>`}
                 </span>
-                <span style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')">${d.name} <span class="chip-number">${d.chip}</span></span>
-                <button class="row-actions-btn propietarios-consulta-btn pet-chip-consulta-btn" title="Iniciar consulta" onclick="event.stopPropagation(); iniciarConsultaMascotaDesdeBusqueda('${petKey}')">
+                <span ${vinculado ? `style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')"` : ''}>${d.name} <span class="chip-number">${d.chip}</span></span>
+                ${vinculado ? `<button class="row-actions-btn propietarios-consulta-btn pet-chip-consulta-btn" title="Iniciar consulta" onclick="event.stopPropagation(); iniciarConsultaMascotaDesdeBusqueda('${petKey}')">
                   <i data-lucide="clipboard-plus" style="width: 12px; height: 12px;"></i>
-                </button>
+                </button>` : ''}
               </span>
             `).join('')
           : '<span class="gestion-detail">Sin mascotas registradas</span>';
         const gestion = getUltimaGestionPropietario(p);
         const initials = p.nombre.split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('');
         return `
-          <tr>
+          <tr${vinculado ? '' : ' class="owner-row-locked"'}>
             <td>
-              <button class="row-actions-btn" title="Estado de cuenta / Facturación" onclick="event.stopPropagation(); abrirFacturacionPropietario('${p.id}')">
+              ${vinculado ? `<button class="row-actions-btn" title="Estado de cuenta / Facturación" onclick="event.stopPropagation(); abrirFacturacionPropietario('${p.id}')">
                 <i data-lucide="credit-card" style="width:16px;height:16px;"></i>
-              </button>
+              </button>` : `<span class="owner-locked-icon" title="Tutor de otro establecimiento — sin vincular"><i data-lucide="lock" style="width:15px;height:15px;"></i></span>`}
             </td>
             <td>
               <div class="owner-cell">
                 <div class="owner-avatar-placeholder">${initials || '—'}</div>
-                <span class="owner-name" style="cursor:pointer;" onclick="abrirPerfilPropietario('${p.id}')">${p.nombre}</span>
+                ${vinculado
+                  ? `<span class="owner-name" style="cursor:pointer;" onclick="abrirPerfilPropietario('${p.id}')">${p.nombre}</span>`
+                  : `<span class="owner-name owner-name-locked" title="Verifica la identidad del tutor para poder abrir su ficha">${p.nombre}<span class="owner-locked-tag">Sin vincular</span></span>`}
               </div>
             </td>
             <td>${p.docTipo} ${p.docNumero}${copyIconHTML(p.docNumero)}</td>
@@ -7217,9 +7318,13 @@
                   <span class="gestion-time">${gestion.time}</span>
                   ${gestion.detail ? `<span class="gestion-detail">${gestion.detail}</span>` : ''}
                 </span>
-                <button class="row-actions-btn" title="Registrar mascota nueva" onclick="event.stopPropagation(); openRegistrarMascotaModal('${p.id}')">
+                ${vinculado
+                  ? `<button class="row-actions-btn" title="Registrar mascota nueva" onclick="event.stopPropagation(); openRegistrarMascotaModal('${p.id}')">
                   <i data-lucide="plus" style="width:14px;height:14px;"></i>
-                </button>
+                </button>`
+                  : `<button class="btn-vincular-fila" onclick="event.stopPropagation(); abrirRedVincularModalManual()">
+                  <i data-lucide="link" style="width:13px;height:13px;"></i> Vincular
+                </button>`}
               </div>
             </td>
           </tr>
@@ -7240,6 +7345,7 @@
     // columna Acciones siempre usaba la primera mascota del propietario).
     function iniciarConsultaMascotaDesdeBusqueda(petKey) {
       if (!ROLES[currentSimRole].canNewConsult) return; // botón ya oculto para este rol vía applySimRole()
+      if (bloqueadoPorTutorSinVincular(petKey, 'Iniciar una consulta')) return;
       document.querySelector('.nav-tabs-bar .tab-btn[data-tab="consultorio"]').click();
       selectPet(petKey);
       abrirTableroTrabajo();
@@ -7381,6 +7487,7 @@
     function abrirFacturacionPropietario(propietarioId) {
       const p = propietarios.find(x => x.id === propietarioId);
       if (!p) { showToast('Propietario no encontrado'); return; }
+      if (bloqueadoPorFaltaDeVinculacion(propietarioId, 'Ver el estado de cuenta')) return;
       facturacionPropietarioId = propietarioId;
       document.getElementById('facturacion-modal-nombre').textContent = p.nombre;
       toggleFacturacionClienteTributario(false);
@@ -8043,10 +8150,16 @@
 
     // ACCIONES DE SELECCIÓN DE PACIENTE (Simulación)
     function selectPet(petKey) {
-      selectedPetKey = petKey;
       const data = patientData[petKey];
 
       if (!data) return;
+      // Puerta al Consultorio completo (historia + los 18 módulos): si el
+      // tutor de esta mascota no está vinculado a este establecimiento, no
+      // se entra. selectedPetKey NO se toca antes de este chequeo, para no
+      // dejar seleccionado un paciente al que no se llegó a entrar.
+      if (bloqueadoPorTutorSinVincular(petKey, 'Abrir la historia clínica')) return;
+
+      selectedPetKey = petKey;
 
       closeOwnerPopoverPin();
 
@@ -8388,6 +8501,7 @@
     function openEditarPropietarioModal(propietarioId) {
       const p = propietarios.find(x => x.id === propietarioId);
       if (!p) return;
+      if (bloqueadoPorFaltaDeVinculacion(propietarioId, 'Editar el tutor')) return;
       editingPropietarioId = propietarioId;
 
       document.getElementById('registrar-propietario-modal-title').textContent = 'Editar propietario';
@@ -8523,10 +8637,16 @@
       // redOmitirDeteccion y vuelve a entrar acá. No aplica al editar.
       if (!isEdit && !redOmitirDeteccion) {
         if (btn) btn.disabled = true;
-        const hint = await redDetectarCoincidencia(establecimientoId, datosForm.docNumero, datosForm.movil);
+        const deteccion = await redDetectarCoincidencia(establecimientoId, datosForm.docNumero, datosForm.movil);
         if (btn) btn.disabled = false;
-        if (hint) {
-          abrirRedVincularModal(hint);
+        if (deteccion.estado === 'coincide') {
+          abrirRedVincularModal(deteccion.hint);
+          return;
+        }
+        if (deteccion.estado === 'indisponible') {
+          showToast(deteccion.motivo === 'rate_limited'
+            ? 'Se alcanzó el límite de consultas a la red IRIS por esta hora — intenta más tarde'
+            : 'No se pudo consultar la red IRIS — no se registró el tutor para no duplicar una ficha de otra clínica');
           return;
         }
       }
@@ -8568,13 +8688,27 @@
 
         const nuevoPropietario = {
           id: inserted.id, ...datosForm,
-          ultimaGestionTime: 'Recién registrado', ultimaGestionDetail: '', pdfPath: null
+          ultimaGestionTime: 'Recién registrado', ultimaGestionDetail: '', pdfPath: null,
+          // Lo decide el trigger red_trg_publicar_propietario, no el front:
+          // llega false si esta identidad ya existía en otra clínica.
+          redVinculado: inserted.red_vinculado !== false
         };
         propietarios.unshift(nuevoPropietario);
         renderPropietariosTable();
         renderTutoresTable();
 
         closeRegistrarPropietarioModal();
+
+        if (!nuevoPropietario.redVinculado) {
+          // Caso "Registrar como nuevo de todas formas" sobre una identidad
+          // que sí estaba en la red: la ficha queda creada pero bloqueada, y
+          // no se encadena con "Registrar mascota" — sin vincular no se le
+          // puede colgar ninguna mascota (lo impide la policy de `mascotas`).
+          renderPropietariosTable();
+          showToast('Tutor registrado SIN vincular — verifica su identidad para poder abrir su perfil');
+          return;
+        }
+
         showToast('Propietario registrado');
 
         // Encadenar con "Registrar mascota" (Parte B.5) — el propietario recién
@@ -8599,6 +8733,7 @@
     function abrirPerfilPropietario(propietarioId) {
       const p = propietarios.find(x => x.id === propietarioId);
       if (!p) return;
+      if (bloqueadoPorFaltaDeVinculacion(propietarioId, 'Abrir el perfil del tutor')) return;
       propietarioPerfilId = propietarioId;
       renderPerfilPropietarioCard(propietarioId);
       renderPerfilMascotasTable(propietarioId);
@@ -10155,6 +10290,7 @@
     function openRegistrarMascotaModal(propietarioId) {
       const p = propietarios.find(x => x.id === propietarioId);
       if (!p) return;
+      if (bloqueadoPorFaltaDeVinculacion(propietarioId, 'Registrar una mascota')) return;
       // Limpia cualquier continuación pendiente de una apertura anterior sin
       // guardar (ver postRegistroMascotaAccion) — quien la necesite la fija
       // DESPUÉS de esta llamada, no antes.
@@ -17825,6 +17961,36 @@
         : null;
     }
 
+    // ── FICHAS BLOQUEADAS POR FALTA DE VINCULACIÓN ───────────────
+    // `propietarios.red_vinculado` (Supabase) vale false cuando la ficha
+    // se creó en esta clínica pero esa identidad ya vivía en otro
+    // establecimiento de la red: la fila existe y se ve en el buscador —
+    // hay que poder reclamarla — pero no da acceso a nada hasta que
+    // alguien pase por la verificación de identidad. El servidor ya lo
+    // impide (policies de update de `propietarios` y de insert/update de
+    // `mascotas`, ver supabase/migrations/20260728_red_vinculado.sql);
+    // esto es la mitad de la UI, para que no se llegue a un error feo.
+    function propietarioEstaVinculado(propietarioId) {
+      const p = propietarios.find(x => x.id === propietarioId);
+      return !p || p.redVinculado !== false;
+    }
+
+    // Guard único: devuelve true si hay que ABORTAR la acción (y ya
+    // avisó al usuario y le abrió el camino para vincular).
+    function bloqueadoPorFaltaDeVinculacion(propietarioId, accion) {
+      if (propietarioEstaVinculado(propietarioId)) return false;
+      showToast(`${accion || 'Esta acción'} requiere vincular primero al tutor desde la red IRIS`);
+      abrirRedVincularModalManual();
+      return true;
+    }
+
+    // Misma puerta, entrando por la mascota (Consultorio, historia, etc.)
+    function bloqueadoPorTutorSinVincular(petKey, accion) {
+      const data = patientData[petKey];
+      if (!data) return false;
+      return bloqueadoPorFaltaDeVinculacion(data.propietarioId, accion);
+    }
+
     // Envoltura única de las RPC de la red: todas devuelven un jsonb con
     // { ok, ... } y ninguna debe tumbar la UI si el backend falla.
     async function redRpc(fn, args) {
@@ -17857,15 +18023,32 @@
     // "hint" (nombre enmascarado + contadores) o null si no hay
     // coincidencia, si ya está en esta clínica o si la red no responde —
     // en cualquiera de esos casos el registro normal sigue su curso.
+    // Devuelve { estado, hint }:
+    //   'sin-coincidencia' → la red respondió y no hay nadie así (o ya
+    //                        está en esta clínica) → seguir el registro.
+    //   'coincide'         → hay tutor en otra clínica → hint con el
+    //                        nombre enmascarado, hay que vincular.
+    //   'indisponible'     → NO se pudo preguntar (rate limit, error de
+    //                        red, sesión sin Supabase).
+    //
+    // Distinguir el tercer caso es el punto de esta función. Antes los
+    // tres devolvían null y `guardarPropietario()` lo leía como "no
+    // existe", así que un límite de búsquedas alcanzado o un error de red
+    // creaban el tutor localmente sin vincular — justo el agujero que la
+    // detección debía tapar. Ante la duda ahora se BLOQUEA el registro:
+    // que se caiga la red no puede ser la forma fácil de saltarse la
+    // verificación de identidad.
     async function redDetectarCoincidencia(establecimientoId, docNumero, movil) {
       const res = await redRpc('red_buscar_persona', {
         p_establecimiento_id: establecimientoId,
         p_doc_numero: docNumero,
         p_movil: movil
       });
-      if (!res || !res.ok || !res.existe) return null;
-      if (res.ya_en_clinica) return null;
-      return res;
+      if (!res || !res.ok) {
+        return { estado: 'indisponible', motivo: (res && res.motivo) || 'error' };
+      }
+      if (!res.existe || res.ya_en_clinica) return { estado: 'sin-coincidencia' };
+      return { estado: 'coincide', hint: res };
     }
 
     function abrirRedVincularModal(hint) {
@@ -18045,9 +18228,13 @@
         return;
       }
 
+      // La RPC devuelve la fila ya con red_vinculado = true, tanto si la
+      // creó como si desbloqueó una que esta clínica ya tenía sin vincular.
       const prop = construirPropietarioDesdeFila(res.propietario);
       const yaEstaba = propietarios.findIndex(p => p.id === prop.id);
       if (yaEstaba >= 0) propietarios[yaEstaba] = prop; else propietarios.unshift(prop);
+      // El aviso "existe en la red" del buscador ya no aplica para esta persona.
+      redBuscadorCache.clear();
       // Mismo pre-registro perezoso que hace el loader al arrancar sesión
       // (ver nota junto a getVentasClienteIdDePropietario).
       getVentasClienteIdDePropietario(prop.id);
@@ -22056,7 +22243,13 @@
         renderTutoresTable();
         renderClientesTable();
         closeImportarClientesModal();
-        showToast(`Importación completa: ${inserted.length} cliente${inserted.length === 1 ? '' : 's'} nuevo${inserted.length === 1 ? '' : 's'}${omitidos ? `, ${omitidos} omitido${omitidos === 1 ? '' : 's'} (ya existían)` : ''}`);
+        // Las filas cuya cédula ya existía en otro establecimiento llegan
+        // con red_vinculado = false (lo decide el trigger, no este código):
+        // se importan igual, pero bloqueadas hasta verificar identidad.
+        // Antes esta vía no consultaba la red en absoluto y era la forma
+        // más fácil de quedarse con la cartera de tutores de otra clínica.
+        const sinVincular = inserted.filter(r => r.red_vinculado === false).length;
+        showToast(`Importación completa: ${inserted.length} cliente${inserted.length === 1 ? '' : 's'} nuevo${inserted.length === 1 ? '' : 's'}${omitidos ? `, ${omitidos} omitido${omitidos === 1 ? '' : 's'} (ya existían)` : ''}${sinVincular ? `, ${sinVincular} sin vincular (ya están en otra clínica de la red)` : ''}`);
       } catch (err) {
         console.error('[IRIS] Error importando clientes en Supabase:', err);
         showToast('No se pudo completar la importación — intenta de nuevo');
@@ -23962,7 +24155,11 @@
         comoNosEncontro: r.como_nos_encontro || '',
         ultimaGestionTime: r.ultima_gestion_time ? new Date(r.ultima_gestion_time).toLocaleString('es-CO') : 'Recién registrado',
         ultimaGestionDetail: r.ultima_gestion_detail || '',
-        pdfPath: r.pdf_path || null
+        pdfPath: r.pdf_path || null,
+        // Red IRIS: false = la ficha existe en esta clínica pero la
+        // identidad ya vivía en otro establecimiento y nadie verificó
+        // al tutor todavía. Ver propietarioEstaVinculado().
+        redVinculado: r.red_vinculado !== false
       };
     }
 

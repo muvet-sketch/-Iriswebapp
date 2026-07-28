@@ -2086,15 +2086,32 @@ create or replace function public.red_trg_publicar_propietario()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare v_id uuid;
 begin
-  if not coalesce(new.consentimiento_red, true) then
-    return new;
+  if coalesce(new.consentimiento_red, true) then
+    v_id := public.red_upsert_persona(
+      new.doc_tipo, new.doc_numero, new.movil, new.nombre, new.email,
+      new.direccion, new.ciudad, new.contacto_autorizado,
+      new.telefono_alterno, new.telefono_opcional
+    );
+    if v_id is not null then new.red_persona_id := v_id; end if;
   end if;
-  v_id := public.red_upsert_persona(
-    new.doc_tipo, new.doc_numero, new.movil, new.nombre, new.email,
-    new.direccion, new.ciudad, new.contacto_autorizado,
-    new.telefono_alterno, new.telefono_opcional
-  );
-  if v_id is not null then new.red_persona_id := v_id; end if;
+
+  -- Estado de vinculación (ver el bloque siguiente). Se decide solo al
+  -- CREAR la ficha, y solo si quien inserta no lo fijó explícitamente
+  -- (red_vincular_con_token sí lo hace, porque ahí la verificación de
+  -- identidad ya ocurrió). Vive en el trigger y no en index.html para
+  -- que quede cubierta TODA vía de inserción — "Registrar propietario",
+  -- la importación de clientes por CSV, la siembra de demo y cualquier
+  -- camino futuro — sin tener que replicar la regla en cada una.
+  if TG_OP = 'INSERT' and new.red_vinculado is null then
+    new.red_vinculado := not (
+      new.red_persona_id is not null and exists (
+        select 1 from public.propietarios p
+         where p.red_persona_id = new.red_persona_id
+           and p.establecimiento_id <> new.establecimiento_id
+      )
+    );
+  end if;
+
   return new;
 end;
 $$;
@@ -2129,6 +2146,78 @@ create trigger mascotas_red_publicar
   before insert or update of nombre, especie, raza, chip, fecha_nacimiento, peso, color, genero, talla, estado_reproductivo, animal_servicio, fallecido, foto_path
   on public.mascotas
   for each row execute function public.red_trg_publicar_mascota();
+
+-- ── ESTADO DE VINCULACIÓN POR ESTABLECIMIENTO ───────────────
+-- Tener la ficha NO es lo mismo que tener derecho a abrirla. Sin esto,
+-- una clínica podía quedarse con el tutor de otra ("Registrar como
+-- nuevo de todas formas", o una importación CSV, que ni consultaba la
+-- red) y usarlo con acceso completo sin haber pasado nunca por la
+-- verificación de identidad: la vinculación existía pero era opcional.
+--
+--   red_vinculado = true  → la clínica abre y edita la ficha.
+--   red_vinculado = false → la ficha se ve en el buscador (hay que
+--                           poder reclamarla) pero no da acceso a nada
+--                           hasta red_verificar_identidad +
+--                           red_vincular_con_token.
+--
+-- Nace en false SOLO si esa identidad ya vivía en otro establecimiento.
+-- Si la persona es nueva en la red, o no tiene cédula (sin identidad
+-- canónica no hay a quién reclamarle), esta clínica es el origen y la
+-- ficha nace utilizable.
+alter table public.propietarios add column if not exists red_vinculado boolean;
+
+create index if not exists propietarios_red_vinculado_idx
+  on public.propietarios (establecimiento_id, red_vinculado);
+
+-- Backfill deliberadamente permisivo: todo lo preexistente queda
+-- vinculado y la regla aplica solo hacia adelante. No es pereza — en
+-- producción 80 de los 95 tutores de la clínica real comparten
+-- red_persona_id con la clínica de pruebas (ambas importaron la misma
+-- lista de clientes por CSV antes de que la red existiera), así que
+-- cualquier regla retroactiva basada en "identidad compartida" dejaría
+-- a esa clínica sin acceso a la mayoría de sus propios pacientes.
+update public.propietarios set red_vinculado = true where red_vinculado is null;
+
+-- El bloqueo no puede vivir solo en index.html: con la anon key se le
+-- habla a PostgREST directo. Se cubren las dos tablas de identidad; la
+-- historia clínica cuelga de `mascotas`, así que sin poder crear
+-- mascota tampoco se le puede colgar nada.
+--
+-- Ojo: esta función se evalúa DENTRO de una policy, así que la ejecuta
+-- el rol que consulta (`authenticated`). No le quites el EXECUTE por
+-- higiene como sí se hace con red_upsert_persona más abajo — acá
+-- revocarlo rompe las policies de `mascotas` con "permission denied".
+create or replace function public.propietario_vinculado(p_id uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select red_vinculado from public.propietarios where id = p_id), true);
+$$;
+
+-- Estas tres policies reemplazan a las del núcleo clínico (más arriba
+-- en este archivo). Se re-crean acá y no allá porque dependen de
+-- propietario_vinculado()/red_vinculado, que no existen todavía a esa
+-- altura del schema.
+drop policy if exists "propietarios_update_member" on public.propietarios;
+create policy "propietarios_update_member"
+  on public.propietarios for update
+  using (public.user_is_member_of(establecimiento_id) and coalesce(red_vinculado, true))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascotas_insert_member" on public.mascotas;
+create policy "mascotas_insert_member"
+  on public.mascotas for insert
+  with check (
+    public.user_is_member_of(establecimiento_id)
+    and public.propietario_vinculado(propietario_id)
+  );
+
+drop policy if exists "mascotas_update_member" on public.mascotas;
+create policy "mascotas_update_member"
+  on public.mascotas for update
+  using (
+    public.user_is_member_of(establecimiento_id)
+    and public.propietario_vinculado(propietario_id)
+  )
+  with check (public.user_is_member_of(establecimiento_id));
 
 -- ── AUDITORÍA Y RATE LIMITING ───────────────────────────────
 -- Una búsqueda por cédula es un oráculo de enumeración ("¿existe
@@ -2374,7 +2463,10 @@ begin
   select * into v_persona from public.red_personas where id = v_ver.persona_id;
 
   -- Si la clínica ya tenía a esta persona (p. ej. dos vinculaciones
-  -- seguidas), se reutiliza su propietario en vez de duplicarlo.
+  -- seguidas, o una ficha que quedó creada SIN vincular) se reutiliza su
+  -- propietario en vez de duplicarlo, y se desbloquea. Este es el único
+  -- camino que pone red_vinculado en true después de creada la fila: la
+  -- policy de update de `propietarios` impide hacerlo por PostgREST.
   select * into v_prop from public.propietarios
    where red_persona_id = v_persona.id and establecimiento_id = v_ver.establecimiento_id
    limit 1;
@@ -2382,13 +2474,19 @@ begin
   if v_prop.id is null then
     insert into public.propietarios (
       establecimiento_id, doc_tipo, doc_numero, movil, email, nombre, direccion, ciudad,
-      contacto_autorizado, telefono_alterno, telefono_opcional, created_by, red_persona_id
+      contacto_autorizado, telefono_alterno, telefono_opcional, created_by, red_persona_id,
+      red_vinculado
     ) values (
       v_ver.establecimiento_id, v_persona.doc_tipo, v_persona.doc_numero, v_persona.movil,
       v_persona.email, coalesce(v_persona.nombre, 'Sin nombre'), v_persona.direccion, v_persona.ciudad,
       v_persona.contacto_autorizado, v_persona.telefono_alterno, v_persona.telefono_opcional,
-      auth.uid(), v_persona.id
+      auth.uid(), v_persona.id, true
     ) returning * into v_prop;
+  elsif not coalesce(v_prop.red_vinculado, true) then
+    update public.propietarios
+       set red_vinculado = true, updated_at = now()
+     where id = v_prop.id
+     returning * into v_prop;
   end if;
 
   for v_rm in
