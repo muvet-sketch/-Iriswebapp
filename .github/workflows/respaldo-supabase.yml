@@ -114,7 +114,7 @@ jobs:
           echo "Cifrado: $(du -h "$nombre.zip.gpg" | cut -f1)"
 
       - name: Subir respaldo cifrado
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: iris-respaldo-${{ env.SELLO }}
           path: ${{ env.ARCHIVO_CIFRADO }}
