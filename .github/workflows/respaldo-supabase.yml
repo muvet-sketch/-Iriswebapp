@@ -38,7 +38,7 @@ jobs:
       PGCONNECT_TIMEOUT: '30'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Verificar que los 3 secretos estén configurados
         run: |
@@ -57,6 +57,12 @@ jobs:
       # El servidor es PostgreSQL 17.x y pg_dump se niega a volcar un servidor
       # más nuevo que él. ubuntu-latest trae el cliente 16, así que hay que
       # instalar el 17 desde el repositorio oficial de PostgreSQL.
+      #
+      # No basta con instalarlo: hay que poner /usr/lib/postgresql/17/bin
+      # ADELANTE en el PATH. Si se deja que resuelva solo, `pg_dump` puede
+      # seguir siendo el 16 que ya venía en la imagen, y el síntoma es
+      # confuso — psql conecta sin problema (no valida versiones) y el
+      # respaldo truena recién en el primer pg_dump.
       - name: Instalar cliente de PostgreSQL 17
         run: |
           set -euo pipefail
@@ -67,7 +73,9 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          echo "pg_dump por defecto: $(command -v pg_dump) -> $(pg_dump --version)"
+          echo "pg_dump 17 explícito: $(/usr/lib/postgresql/17/bin/pg_dump --version)"
 
       # El respaldo se arma en RUNNER_TEMP, fuera del árbol del repo, para que
       # no haya forma de que datos clínicos terminen en un commit.

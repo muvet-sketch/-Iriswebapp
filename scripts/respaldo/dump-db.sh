@@ -17,9 +17,41 @@ set -euo pipefail
 DEST="$RESPALDO_DIR/base-de-datos"
 mkdir -p "$DEST"
 
+# Preflight. Sin esto el fallo aparece a mitad del volcado con un mensaje que
+# no dice qué hacer; acá se detiene antes de empezar y se explica.
+echo "==> Herramientas"
+echo "    psql:    $(command -v psql)    $(psql --version)"
+echo "    pg_dump: $(command -v pg_dump) $(pg_dump --version)"
+
+echo "==> Conexión"
+# Se imprime solo host y puerto (nunca la contraseña) porque el error más
+# probable de configuración es haber copiado el URI del *Transaction* pooler
+# (puerto 6543), donde pg_dump no funciona, en vez del *Session* pooler (5432).
+destino_visible="$(printf '%s' "$SUPABASE_DB_URL" | sed -E 's#^(postgres(ql)?://)[^@]*@#\1***@#')"
+echo "    $destino_visible"
+case "$SUPABASE_DB_URL" in
+  *:6543*)
+    echo "!! El URI apunta al puerto 6543 (Transaction pooler)." >&2
+    echo "   pg_dump necesita el Session pooler (puerto 5432)." >&2
+    echo "   Dashboard > Connect > Session pooler, y actualiza el secreto SUPABASE_DB_URL." >&2
+    exit 1
+    ;;
+esac
+
 echo "==> Versión del servidor"
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -Atc 'select version()' \
   | tee "$DEST/version-servidor.txt"
+
+# pg_dump aborta si su versión mayor es menor que la del servidor. Se compara
+# acá para dar el mensaje útil en vez del genérico de pg_dump.
+mayor_cliente="$(pg_dump --version | grep -oE '[0-9]+' | head -1)"
+mayor_servidor="$(sed -E 's/^PostgreSQL ([0-9]+).*/\1/' "$DEST/version-servidor.txt")"
+if [ "$mayor_cliente" -lt "$mayor_servidor" ]; then
+  echo "!! pg_dump es $mayor_cliente y el servidor es $mayor_servidor: pg_dump se negaría a volcar." >&2
+  echo "   Falta poner /usr/lib/postgresql/$mayor_servidor/bin adelante en el PATH." >&2
+  exit 1
+fi
+echo "    cliente $mayor_cliente vs. servidor $mayor_servidor: compatible"
 
 # Conteo EXACTO de filas por tabla (no n_live_tup, que es una estimación del
 # planner). Es la referencia contra la que verificar-respaldo.mjs comprueba que
