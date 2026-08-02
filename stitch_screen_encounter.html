@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+
+<html class="light" lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IRIS - Expediente de Max</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:wght@400;500;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#006e22",
+                        "primary-container": "#1c8933",
+                        "secondary": "#426741",
+                        "surface": "#f6fbf0",
+                        "background": "#f6fbf0",
+                        "on-background": "#171d16",
+                        "outline": "#6f7a6c",
+                        "outline-variant": "#becab9",
+                        "error": "#ba1a1a",
+                        "on-tertiary-fixed": "#3f001a",
+                        "on-tertiary-fixed-variant": "#861a44",
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.25rem",
+                        lg: "0.5rem",
+                        xl: "1rem",
+                        "2xl": "1.5rem"
+                    },
+                    spacing: {
+                        "margin-mobile": "16px",
+                        "margin-desktop": "32px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "stack-lg": "24px",
+                        "container-max": "1440px"
+                    },
+                    fontFamily: {
+                        body: ["Inter", "sans-serif"],
+                        display: ["Roboto Flex", "sans-serif"]
+                    }
+                }
+            }
+        };
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-header {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+        }
+        .active-tab-indicator {
+            position: relative;
+        }
+        .active-tab-indicator::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background-color: #006e22;
+            border-radius: 3px 3px 0 0;
+        }
+        .active-nav-indicator {
+            position: relative;
+        }
+        .active-nav-indicator::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background-color: #006e22;
+            border-radius: 4px 4px 0 0;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .soap-line::before {
+            content: '';
+            position: absolute;
+            left: 19px;
+            top: 24px;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, #006e22 0%, #e0e3e5 100%);
+            opacity: 0.3;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body min-h-screen">
+<!-- Top Navigation Bar -->
+<header class="h-20 w-full sticky top-0 z-50 bg-on-tertiary-fixed border-b border-white/10 flex items-center px-6 lg:px-12 shadow-xl">
+<!-- Brand Logo -->
+<div class="flex items-center gap-3 mr-12 shrink-0">
+<div class="w-10 h-10 bg-primary-container rounded-xl flex items-center justify-center">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">pets</span>
+</div>
+<div>
+<h1 class="font-display text-xl font-bold text-white leading-none">IRIS</h1>
+<p class="text-[10px] text-white opacity-50 tracking-widest uppercase">Veterinary SaaS</p>
+</div>
+</div>
+<!-- Navigation Links -->
+<nav class="flex-1 flex items-center gap-8 h-full">
+<a class="flex items-center gap-2 text-white/60 hover:text-white transition-all text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-xl">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-2 text-white/60 hover:text-white transition-all text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-xl">medical_services</span>
+<span>Consultorio</span>
+</a>
+<a class="flex items-center gap-2 text-white font-bold h-full border-b-4 border-primary active-nav-indicator pt-1 text-sm" href="#">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings: 'FILL' 1;">pets</span>
+<span>Pacientes</span>
+</a>
+<a class="flex items-center gap-2 text-white/60 hover:text-white transition-all text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-xl">bed</span>
+<span>Hospitalización</span>
+</a>
+<a class="flex items-center gap-2 text-white/60 hover:text-white transition-all text-sm font-medium" href="#">
+<span class="material-symbols-outlined text-xl">inventory_2</span>
+<span>Inventario</span>
+</a>
+</nav>
+<!-- User Profile & Actions -->
+<div class="flex items-center gap-6 ml-6">
+<div class="flex items-center gap-3 p-1.5 px-3 rounded-xl bg-white/5 border border-white/10">
+<img alt="Profile" class="w-8 h-8 rounded-full object-cover border border-white/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDYiISofAXOQ4zIrSZNscqPcYQKYgSHzekx7VvgWAAJFaYIlZoxE8zMlcZwtWEmxZIcfGI0KJq--k0I6Yg_DpLa2GcQEwZnj0d4CqTwxmNLsca_d7ITi6ftsL3nMq_Glb3FHIw5Be4sWu08qo5JK0DtcT18ATqaG6YicMFkk7WrJpg5fcMQL1Gvzwa6YBWDiVMyn9U-It6944njN-ddMk3DEnh_46I3qMJw-9oUIY7er9ts9r4YfsU2aA"/>
+<div class="hidden md:block">
+<p class="text-white font-bold text-xs">Dra. Elena R.</p>
+<p class="text-white/40 text-[10px]">Vet Jefe</p>
+</div>
+</div>
+<button class="flex items-center gap-2 text-white/50 hover:text-white transition-colors" title="Cerrar Sesión">
+<span class="material-symbols-outlined text-xl">logout</span>
+<span class="text-xs font-medium hidden lg:block">Cerrar Sesión</span>
+</button>
+</div>
+</header>
+<!-- Secondary Header for Search & Actions -->
+<div class="h-14 w-full bg-white/80 backdrop-blur-md border-b border-outline-variant flex justify-between items-center px-6 lg:px-12">
+<div class="flex items-center gap-4 flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg">search</span>
+<input class="w-full bg-surface-variant/20 border-outline-variant/30 rounded-full py-1.5 pl-10 pr-4 text-sm focus:ring-2 focus:ring-primary/20" placeholder="Buscar expediente..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-outline-variant/30 text-secondary">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span class="text-xs font-semibold">Clínica Central</span>
+</div>
+<button class="w-8 h-8 flex items-center justify-center rounded-full text-on-surface-variant hover:bg-surface transition-all">
+<span class="material-symbols-outlined text-lg">notifications</span>
+</button>
+<button class="bg-primary text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 hover:shadow-lg transition-all active:scale-95">
+<span class="material-symbols-outlined text-[18px]">add</span>
+            Nueva Consulta
+        </button>
+</div>
+</div>
+<main class="p-margin-mobile lg:p-margin-desktop bg-[#f0f4f0]/30 min-h-[calc(100vh-8.5rem)]">
+<div class="max-w-container-max mx-auto space-y-6">
+<!-- Glassmorphic Patient Header -->
+<div class="glass-header p-6 rounded-2xl shadow-sm flex flex-col md:flex-row gap-6 items-start md:items-center relative overflow-hidden">
+<div class="absolute -top-10 -right-10 w-48 h-48 bg-primary/5 rounded-full blur-3xl"></div>
+<div class="relative">
+<div class="w-24 h-24 rounded-full border-2 border-white shadow-xl overflow-hidden">
+<img alt="Max" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBdI6kBcZA8znnzsijvWuA69lbH5stPOUFOCLsIsSqbLlbrrZUDUTjQLEQa8IQFrOlvvegPJsaMFeX6y5cjs7ZafT5kfSCnCDy-qfF9jbQBL4S_AySV309kc2IHs8hfCMQtEfQJLaRC-x-LZVwhEjFCYaZWrT4JM0ngxQrdUcsp4knxVMYSN0Tqdh4Ys0UeoR-kyz6HtP9_drOKhUeQsvuVbWVZSv3vEBWdNHeBEf5nKf4aLEZheAYLWw"/>
+</div>
+<div class="absolute bottom-0 right-0 bg-primary text-white p-1 rounded-full shadow-lg border-2 border-white cursor-pointer hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[14px]">edit</span>
+</div>
+</div>
+<div class="flex-1 space-y-3">
+<div class="flex items-center gap-3">
+<h2 class="font-display text-2xl font-bold text-on-surface">Max</h2>
+<span class="px-2 py-0.5 rounded-md bg-white/50 border border-white text-[10px] font-bold text-on-surface-variant uppercase tracking-tighter">#VET-9021</span>
+<span class="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span> Activo
+                    </span>
+</div>
+<div class="flex flex-wrap gap-x-5 gap-y-1 text-on-surface-variant text-xs font-medium">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-primary">pets</span> Canino — Golden Retriever
+                    </div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-primary">event</span> 4 años (05/2019)
+                    </div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-primary">monitor_weight</span> <span class="text-primary font-bold">32.0 kg</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px] text-primary">fingerprint</span> Chip: ...5678
+                    </div>
+</div>
+<!-- High Contrast Alerts -->
+<div class="flex flex-wrap gap-2 pt-1">
+<div class="flex items-center gap-2 px-3 py-1 rounded-lg bg-red-600 text-white shadow-sm">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">warning</span>
+<span class="text-[11px] font-bold uppercase tracking-tight">Alerta: Alergia a Penicilina</span>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 rounded-lg bg-amber-400 text-amber-950 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">nutrition</span>
+<span class="text-[11px] font-bold uppercase tracking-tight">Plan: Dieta Renal Requerida</span>
+</div>
+</div>
+</div>
+<div class="bg-white/40 p-4 rounded-xl border border-white/60 min-w-[200px]">
+<p class="text-[10px] font-bold text-on-surface-variant/60 uppercase mb-1">Responsable</p>
+<p class="font-bold text-sm text-on-surface mb-3">Carlos Mendoza</p>
+<div class="flex gap-2">
+<button class="flex-1 bg-white border border-outline-variant/30 text-on-surface text-xs font-bold py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-surface transition-all">
+<span class="material-symbols-outlined text-sm">call</span> Llamar
+                    </button>
+<button class="w-10 bg-primary text-white py-2 rounded-lg flex items-center justify-center hover:shadow-lg transition-all">
+<span class="material-symbols-outlined text-sm">message</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Tab Navigation -->
+<div class="border-b border-outline-variant">
+<nav class="flex gap-8 overflow-x-auto no-scrollbar">
+<button class="pb-3 px-1 text-primary font-bold active-tab-indicator text-sm flex items-center gap-2 whitespace-nowrap">
+<span class="material-symbols-outlined text-lg">description</span> Historia SOIP
+                </button>
+<button class="pb-3 px-1 text-on-surface-variant/60 font-semibold hover:text-primary transition-colors text-sm flex items-center gap-2 whitespace-nowrap">
+<span class="material-symbols-outlined text-lg">vaccines</span> Inmunizaciones
+                </button>
+<button class="pb-3 px-1 text-on-surface-variant/60 font-semibold hover:text-primary transition-colors text-sm flex items-center gap-2 whitespace-nowrap">
+<span class="material-symbols-outlined text-lg">biotech</span> Laboratorio
+                </button>
+<button class="pb-3 px-1 text-on-surface-variant/60 font-semibold hover:text-primary transition-colors text-sm flex items-center gap-2 whitespace-nowrap">
+<span class="material-symbols-outlined text-lg">folder_open</span> Documentos
+                </button>
+</nav>
+</div>
+<!-- Main SOAP Content -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- 4-Section SOAP Vertical Flow -->
+<div class="lg:col-span-8 space-y-4 relative soap-line">
+<!-- S - Subjetivo -->
+<div class="relative pl-10 group">
+<div class="absolute left-0 top-0 w-10 h-10 rounded-full bg-white border-2 border-primary flex items-center justify-center z-10 shadow-sm group-hover:scale-110 transition-transform">
+<span class="text-primary font-display font-bold">S</span>
+</div>
+<div class="glass-card rounded-2xl p-6 space-y-3">
+<div class="flex justify-between items-center">
+<h3 class="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> Subjetivo
+                            </h3>
+<span class="text-[10px] text-on-surface-variant/60 font-medium">15 Oct 2023 • 10:30 AM</span>
+</div>
+<div class="bg-surface/50 p-4 rounded-xl border border-outline-variant/10">
+<p class="text-sm text-on-surface leading-relaxed">
+                                "Paciente presenta cojera grado 3/5 en miembro pélvico derecho tras ejercicio intenso (juego en el parque). Dueño reporta vocalización de dolor al intentar subir al vehículo. Ha estado menos activo en las últimas 4 horas."
+                            </p>
+</div>
+</div>
+</div>
+<!-- O - Objetivo -->
+<div class="relative pl-10 group">
+<div class="absolute left-0 top-0 w-10 h-10 rounded-full bg-white border-2 border-primary flex items-center justify-center z-10 shadow-sm group-hover:scale-110 transition-transform">
+<span class="text-primary font-display font-bold">O</span>
+</div>
+<div class="glass-card rounded-2xl p-6 space-y-5">
+<h3 class="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> Objetivo (Vitals &amp; Physical)
+                        </h3>
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+<div class="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex flex-col items-center">
+<span class="material-symbols-outlined text-emerald-600 mb-1 text-xl">thermostat</span>
+<p class="text-[10px] font-bold text-emerald-700/60 uppercase">Temp</p>
+<p class="text-lg font-bold text-emerald-900">38.5°C</p>
+<div class="mt-1 w-full h-1 bg-emerald-200 rounded-full overflow-hidden">
+<div class="w-1/2 h-full bg-emerald-500"></div>
+</div>
+</div>
+<div class="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex flex-col items-center">
+<span class="material-symbols-outlined text-emerald-600 mb-1 text-xl">favorite</span>
+<p class="text-[10px] font-bold text-emerald-700/60 uppercase">FC</p>
+<p class="text-lg font-bold text-emerald-900">92 bpm</p>
+<div class="mt-1 w-full h-1 bg-emerald-200 rounded-full overflow-hidden">
+<div class="w-2/3 h-full bg-emerald-500"></div>
+</div>
+</div>
+<div class="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex flex-col items-center">
+<span class="material-symbols-outlined text-emerald-600 mb-1 text-xl">air</span>
+<p class="text-[10px] font-bold text-emerald-700/60 uppercase">FR</p>
+<p class="text-lg font-bold text-emerald-900">24 rpm</p>
+<div class="mt-1 w-full h-1 bg-emerald-200 rounded-full overflow-hidden">
+<div class="w-1/3 h-full bg-emerald-500"></div>
+</div>
+</div>
+<div class="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex flex-col items-center">
+<span class="material-symbols-outlined text-emerald-600 mb-1 text-xl">monitor_weight</span>
+<p class="text-[10px] font-bold text-emerald-700/60 uppercase">Peso</p>
+<p class="text-lg font-bold text-emerald-900">32 kg</p>
+<div class="mt-1 w-full h-1 bg-emerald-200 rounded-full overflow-hidden">
+<div class="w-full h-full bg-emerald-500"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- A - Interpretación -->
+<div class="relative pl-10 group">
+<div class="absolute left-0 top-0 w-10 h-10 rounded-full bg-white border-2 border-primary flex items-center justify-center z-10 shadow-sm group-hover:scale-110 transition-transform">
+<span class="text-primary font-display font-bold">A</span>
+</div>
+<div class="glass-card rounded-2xl p-6 space-y-4">
+<h3 class="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> Interpretación
+                        </h3>
+<div class="flex flex-wrap gap-2">
+<div class="px-4 py-2 rounded-xl bg-primary/5 border border-primary/20 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">medical_information</span>
+</div>
+<div>
+<p class="text-xs font-bold text-primary">Ruptura Ligamento Cruzado Anterior</p>
+<p class="text-[10px] text-on-surface-variant font-medium">Sospecha clínica alta (Prueba cajón +)</p>
+</div>
+</div>
+<div class="px-4 py-2 rounded-xl bg-surface border border-outline-variant/30 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-surface-variant flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-[18px]">healing</span>
+</div>
+<div>
+<p class="text-xs font-bold text-on-surface">Inflamación Articular</p>
+<p class="text-[10px] text-on-surface-variant font-medium">Derrame sinovial detectado</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- P - Plan -->
+<div class="relative pl-10 group">
+<div class="absolute left-0 top-0 w-10 h-10 rounded-full bg-white border-2 border-primary flex items-center justify-center z-10 shadow-sm group-hover:scale-110 transition-transform">
+<span class="text-primary font-display font-bold">P</span>
+</div>
+<div class="glass-card rounded-2xl p-6 space-y-4">
+<h3 class="text-[11px] font-bold text-on-surface-variant uppercase tracking-widest flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> Plan Terapéutico
+                        </h3>
+<div class="grid sm:grid-cols-2 gap-3">
+<div class="p-3 rounded-xl border border-primary bg-primary/5 flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-[20px]">check_circle</span>
+<div>
+<p class="text-xs font-bold text-primary">Meloxicam (0.1 mg/kg)</p>
+<p class="text-[10px] text-primary/70">Cada 24h vía oral - 7 días</p>
+</div>
+</div>
+<div class="p-3 rounded-xl border border-outline-variant/30 bg-white flex items-start gap-3">
+<span class="material-symbols-outlined text-on-surface-variant/40 text-[20px]">radio_button_unchecked</span>
+<div>
+<p class="text-xs font-bold text-on-surface">Radiografía Digital</p>
+<p class="text-[10px] text-on-surface-variant">Sede Norte - Pendiente</p>
+</div>
+</div>
+<div class="p-3 rounded-xl border border-primary bg-primary/5 flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-[20px]">check_circle</span>
+<div>
+<p class="text-xs font-bold text-primary">Reposo Absoluto</p>
+<p class="text-[10px] text-primary/70">Evitar saltos y escaleras</p>
+</div>
+</div>
+<div class="p-3 rounded-xl border border-outline-variant/30 bg-white flex items-start gap-3">
+<span class="material-symbols-outlined text-on-surface-variant/40 text-[20px]">radio_button_unchecked</span>
+<div>
+<p class="text-xs font-bold text-on-surface">Control Quirúrgico</p>
+<p class="text-[10px] text-on-surface-variant">Evaluar según resultados RX</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Sidebar Content -->
+<div class="lg:col-span-4 space-y-6">
+<!-- Quick Actions -->
+<div class="glass-card rounded-2xl p-5 space-y-4 shadow-sm">
+<h4 class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Acciones Rápidas</h4>
+<div class="grid grid-cols-2 gap-2">
+<button class="flex flex-col items-center gap-2 p-3 rounded-xl bg-surface border border-outline-variant/20 hover:bg-white hover:shadow-md transition-all">
+<span class="material-symbols-outlined text-primary">print</span>
+<span class="text-[10px] font-bold">Imprimir</span>
+</button>
+<button class="flex flex-col items-center gap-2 p-3 rounded-xl bg-surface border border-outline-variant/20 hover:bg-white hover:shadow-md transition-all">
+<span class="material-symbols-outlined text-primary">send</span>
+<span class="text-[10px] font-bold">WhatsApp</span>
+</button>
+</div>
+<button class="w-full py-3 rounded-xl bg-primary text-white text-xs font-bold shadow-lg shadow-primary/20 hover:brightness-110 active:scale-95 transition-all">
+                        Finalizar Consulta
+                    </button>
+</div>
+<!-- Medical Summary -->
+<div class="bg-on-tertiary-fixed rounded-2xl p-6 text-white relative overflow-hidden shadow-xl">
+<div class="absolute -bottom-10 -right-10 w-32 h-32 bg-white/5 rounded-full"></div>
+<h4 class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-4">Contexto Histórico</h4>
+<div class="space-y-4">
+<div class="flex justify-between items-center border-b border-white/10 pb-4">
+<div>
+<p class="text-[10px] opacity-50">Visitas 2023</p>
+<p class="text-2xl font-bold">12</p>
+</div>
+<div class="text-right">
+<p class="text-[10px] opacity-50">Último Peso</p>
+<p class="text-xl font-bold">32.0 kg</p>
+</div>
+</div>
+<div class="space-y-3">
+<p class="text-[10px] font-bold opacity-50 uppercase">Próximo Hito</p>
+<div class="p-3 bg-white/10 rounded-xl flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">event_repeat</span>
+</div>
+<div class="flex-1">
+<p class="text-xs font-bold">Refuerzo Rabia</p>
+<p class="text-[10px] opacity-50">30 Oct 2023</p>
+</div>
+<span class="px-2 py-0.5 rounded-full bg-white/20 text-[8px] font-bold">PRÓXIMO</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Location Snapshot -->
+<div class="rounded-2xl overflow-hidden border border-outline-variant/30 h-40 relative group">
+<img alt="Location" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQFcrBEKsOXjtKfaeKOZ4jvQaf5vhM3YbO3bXWUV_rdaOwbj0r-cVsHohCE-iTKsJtYSk_f3dvwTl86hjyVAcLhullU-oqdsHUcXXzSTv6mJY2tosF7fAuTNUcYQXh-p2kODFzKurBmt5emMYJk30GAt2ZPXOvxG6l1qrKsFIrEM8UCUrLEoCFMQW9lBA2DONOIjnw3YywsQ4MVVY2uRckj4hCDAnQNXrRZ6RQmi11-fMhrqTdQQa1MA"/>
+<div class="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-all flex items-end p-4">
+<div class="bg-white/90 backdrop-blur-sm p-2 rounded-lg flex items-center gap-2 shadow-lg">
+<span class="material-symbols-outlined text-primary text-sm">location_on</span>
+<span class="text-[10px] font-bold">Sede Central</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Contextual FAB -->
+<div class="fixed bottom-6 right-6 flex flex-col gap-3 z-50">
+<button class="w-12 h-12 bg-white text-on-surface-variant rounded-2xl shadow-xl flex items-center justify-center hover:scale-110 transition-all border border-outline-variant/30">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">camera</span>
+</button>
+<button class="w-14 h-14 bg-primary text-white rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all">
+<span class="material-symbols-outlined text-2xl">add</span>
+</button>
+</div>
+<script>
+    // Smooth scaling on interactions
+    document.querySelectorAll('button, a').forEach(elem => {
+        elem.addEventListener('mousedown', () => elem.classList.add('scale-95'));
+        elem.addEventListener('mouseup', () => elem.classList.remove('scale-95'));
+        elem.addEventListener('mouseleave', () => elem.classList.remove('scale-95'));
+    });
+
+    // Tab simulation
+    const tabs = document.querySelectorAll('nav button');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => {
+                t.classList.remove('text-primary', 'font-bold', 'active-tab-indicator');
+                t.classList.add('text-on-surface-variant/60', 'font-semibold');
+            });
+            tab.classList.add('text-primary', 'font-bold', 'active-tab-indicator');
+            tab.classList.remove('text-on-surface-variant/60', 'font-semibold');
+        });
+    });
+</script>
+</body></html>

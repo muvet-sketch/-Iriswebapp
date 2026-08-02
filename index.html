@@ -2126,47 +2126,379 @@
 
     /* Tablero de trabajo (workspace de consulta) — pantalla completa, mismo
        patrón que .kardex-view: oculta .consultorio-wrapper mientras está
-       activo (ver abrirTableroTrabajo()/cerrarTableroAConsultorio()). */
+       activo (ver abrirTableroTrabajo()/cerrarTableroAConsultorio()).
+
+       Estilo visual adoptado del diseño Stitch "Encounter: Horizontal Nav
+       Edition" (stitch_screen_encounter.html/.png en la raíz del repo):
+       barra de acciones fija arriba, hero de vidrio del paciente, strip
+       HORIZONTAL de módulos (antes columna izquierda .tablero-nav-col) y
+       el registro SOIP como riel vertical con una tarjeta por letra.
+       Ojo: el mockup de Stitch usa verde #006e22 y Tailwind; acá todo se
+       reconstruye con las variables de paleta ya existentes para que el
+       acento siga siendo --clinic-accent (configurable por clínica) —
+       no se hardcodea ningún color nuevo ni se carga Tailwind. */
     .tablero-view {
       flex: 1; display: none; height: 100%; width: 100%; overflow-y: auto;
       background-color: var(--bg-app);
     }
     .tablero-view.active { display: flex; flex-direction: column; }
+
+    /* Barra de acciones — sticky sobre el scroll de .tablero-view para que
+       "Finalizar consulta" quede siempre alcanzable sin volver arriba
+       (el formulario SOIP es largo). Sustituye al "FAB contextual" del
+       mockup, que duplicaría botones que ya viven acá. */
     .tablero-header {
-      background-color: var(--surface); border-bottom: 1px solid var(--border);
-      padding: 16px 24px; flex-shrink: 0;
+      position: sticky; top: 0; z-index: 30;
+      background-color: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(14px) saturate(140%);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: space-between;
       gap: 16px; flex-wrap: wrap;
     }
-    .tablero-header-left { display: flex; align-items: center; gap: 16px; }
+    .tablero-header-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
     .tablero-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .tablero-body { flex: 1; padding: 20px 24px; }
+    .tablero-header-title { display: flex; flex-direction: column; gap: 1px; }
+    .tablero-header-kicker {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.12em; color: var(--clinic-accent);
+    }
+    .tablero-header-sub { font-size: 14px; font-weight: 700; color: var(--text-1); }
 
+    .tablero-body { flex: 1; padding: 20px 24px 48px; position: relative; }
+    /* Halos suaves de acento detrás de las tarjetas de vidrio — es lo que
+       hace que el efecto glass se lea sobre un fondo casi blanco. */
+    .tablero-body::before {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(680px 340px at 10% -8%, rgba(var(--clinic-accent-rgb), 0.12), transparent 70%),
+        radial-gradient(520px 300px at 95% 2%, rgba(var(--clinic-accent-rgb), 0.07), transparent 70%);
+    }
+    .tablero-body > * { position: relative; }
+
+    /* ── Hero del paciente (glass card) ───────────────────────────── */
+    .tablero-hero {
+      background-color: rgba(255, 255, 255, 0.76);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 18px 20px;
+      display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    }
+    .tablero-hero-photo .pet-photo-circle { border-width: 3px; box-shadow: var(--shadow-md); }
+    .tablero-hero-id { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 8px; }
+    .tablero-hero-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .tablero-hero-name { font-size: 22px; font-weight: 700; color: var(--text-1); line-height: 1.1; }
+    .tablero-hero-code {
+      font-family: monospace; font-size: 11px; color: var(--text-2);
+      background-color: var(--surface-container-low); border: 1px solid var(--border);
+      padding: 2px 8px; border-radius: var(--radius-sm);
+    }
+    .tablero-hero-live {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: var(--radius-full);
+      background-color: rgba(var(--clinic-accent-rgb), 0.10);
+      color: var(--clinic-accent); font-size: 11px; font-weight: 700;
+    }
+    .tablero-hero-live-dot {
+      width: 6px; height: 6px; border-radius: 50%; background-color: var(--clinic-accent);
+      animation: tableroPulse 1.8s ease-in-out infinite;
+    }
+    @keyframes tableroPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+    .tablero-hero-meta {
+      display: flex; flex-wrap: wrap; gap: 6px 20px;
+      font-size: 12.5px; font-weight: 500; color: var(--text-2);
+    }
+    .tablero-hero-meta-item { display: inline-flex; align-items: center; gap: 6px; }
+    .tablero-hero-meta-item i { color: var(--clinic-accent); }
+    .tablero-hero-meta-item strong { color: var(--text-1); font-weight: 700; }
+
+    /* Chips de alerta — solo se pintan cuando hay algo real que mostrar
+       (fallecido, problemas activos, vencimientos ya pasados). Ver
+       tableroAlertChipsHtml(): nada de alertas inventadas. */
+    .tablero-hero-alerts { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tablero-alert-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: var(--radius-sm);
+      font-size: 11px; font-weight: 700; letter-spacing: 0.01em;
+    }
+    .tablero-alert-chip.danger { background-color: var(--danger); color: #fff; }
+    .tablero-alert-chip.warning { background-color: rgba(245, 158, 11, 0.18); color: #92400E; border: 1px solid rgba(245, 158, 11, 0.35); }
+    .tablero-alert-chip.info { background-color: rgba(var(--clinic-accent-rgb), 0.10); color: var(--clinic-accent); border: 1px solid rgba(var(--clinic-accent-rgb), 0.22); }
+
+    .tablero-hero-owner {
+      min-width: 210px;
+      background-color: rgba(255, 255, 255, 0.55);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+    }
+    .tablero-hero-owner-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--text-2); margin-bottom: 3px;
+    }
+    .tablero-hero-owner-name { font-size: 13.5px; font-weight: 700; color: var(--text-1); }
+    .tablero-hero-owner-phone { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+    .tablero-hero-owner-actions { display: flex; gap: 6px; margin-top: 10px; }
+    .tablero-hero-owner-actions .btn-outline { padding: 6px 10px; font-size: 11.5px; flex: 1; justify-content: center; }
+
+    /* ── Strip horizontal de módulos clínicos ─────────────────────── */
+    /* Reemplaza a la vieja columna .tablero-nav-col: mismos 10 módulos de
+       TABLERO_NAV_ORDEN, pero en una fila desplazable para devolverle
+       ancho al registro SOIP (ver renderTableroNavList()). */
+    .tablero-modstrip {
+      display: flex; gap: 8px; overflow-x: auto;
+      margin-top: 16px; padding: 2px 2px 8px;
+      scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .tablero-modstrip::-webkit-scrollbar { display: none; }
+    .tablero-modchip {
+      flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 14px; border-radius: var(--radius-full);
+      border: 1px solid var(--border); background-color: var(--surface);
+      font-size: 12.5px; font-weight: 600; color: var(--text-2);
+      white-space: nowrap; cursor: pointer; transition: var(--transition);
+    }
+    .tablero-modchip:hover { color: var(--clinic-accent); border-color: rgba(var(--clinic-accent-rgb), 0.4); }
+    .tablero-modchip.active {
+      background-color: var(--clinic-accent); border-color: var(--clinic-accent); color: #fff;
+      box-shadow: 0 4px 12px rgba(var(--clinic-accent-rgb), 0.28);
+    }
+    .tablero-modchip-count {
+      min-width: 20px; text-align: center; padding: 1px 6px; border-radius: var(--radius-full);
+      background-color: var(--surface-container); color: var(--text-2);
+      font-size: 11px; font-weight: 700;
+    }
+    .tablero-modchip.active .tablero-modchip-count { background-color: rgba(255, 255, 255, 0.24); color: #fff; }
+
+    /* ── Grid principal (SOIP + panel lateral) ────────────────────── */
     .tablero-grid {
       display: grid;
-      grid-template-columns: 232px 1.5fr 1fr;
-      gap: 16px;
+      grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);
+      gap: 18px;
       align-items: start;
+      margin-top: 4px;
     }
+    .tablero-side-col { display: flex; flex-direction: column; gap: 16px; }
 
-    .tablero-nav-col,
-    .tablero-center-col,
-    .tablero-side-col {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+    /* Riel vertical SOIP: una tarjeta por letra colgando de una línea que
+       degrada hacia abajo (equivalente al .soap-line del mockup). */
+    .tablero-soip-rail {
+      position: relative;
+      display: flex; flex-direction: column; gap: 14px;
+      padding-left: 54px;
+      min-width: 0;
     }
+    .tablero-soip-rail::before {
+      content: ''; position: absolute; left: 19px; top: 30px; bottom: 30px; width: 2px;
+      background: linear-gradient(to bottom, var(--clinic-accent) 0%, rgba(var(--clinic-accent-rgb), 0) 100%);
+      opacity: 0.35;
+    }
+    .tablero-step { position: relative; min-width: 0; }
+    .tablero-step-badge {
+      position: absolute; left: -54px; top: 14px;
+      width: 40px; height: 40px; border-radius: 50%;
+      background-color: var(--surface); border: 2px solid var(--clinic-accent);
+      color: var(--clinic-accent); font-size: 16px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      z-index: 2; box-shadow: var(--shadow-sm); transition: var(--transition);
+    }
+    .tablero-step:hover .tablero-step-badge { transform: scale(1.08); }
+    /* "Diligenciado" — lo alterna el oninput de cada textarea en
+       abrirTableroTrabajo(), da avance visible del flujo S→O→I→P. */
+    .tablero-step.filled .tablero-step-badge { background-color: var(--clinic-accent); color: #fff; }
 
-    /* Lista de navegación por módulo clínico — clon de .sidebar-menu/
-       .sidebar-item (mismo look & feel que el sidebar de 18), pero acotada
-       a los 10 módulos relevantes durante una consulta activa. */
-    .tablero-nav-col .sidebar-menu { padding: 4px; }
+    .tablero-card {
+      background-color: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 18px 20px;
+    }
+    .tablero-card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 12px;
+    }
+    .tablero-card-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.12em; color: var(--text-2);
+    }
+    .tablero-card-title::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%;
+      background-color: var(--clinic-accent); flex-shrink: 0;
+    }
+    .tablero-card-title .soap-required { letter-spacing: 0; }
 
+    .tablero-soip-rail .soap-meta-row { gap: 14px; flex-wrap: wrap; }
+    .tablero-soip-rail .soap-meta-row .input-group { min-width: 200px; }
+    .tablero-soip-rail .soap-textarea {
+      background-color: rgba(255, 255, 255, 0.6);
+      border-radius: var(--radius);
+      min-height: 96px;
+    }
+    .tablero-soip-rail .soap-exam-toggle { padding-bottom: 0; }
+
+    /* Signos vitales como tiles (equivalente a las tarjetas de vitals del
+       mockup, pero editables: el input vive dentro del tile). */
+    /* minmax(98px) para que los 7 signos vitales entren en una sola fila en
+       pantallas de escritorio y bajen de a poco al angostarse. */
     .tablero-vitals-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(98px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
     }
+    .tablero-vital-tile {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background-color: var(--surface-container-low);
+      padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+      transition: var(--transition);
+    }
+    .tablero-vital-tile:focus-within {
+      border-color: var(--clinic-accent); background-color: var(--surface);
+      box-shadow: 0 0 0 3px rgba(var(--clinic-accent-rgb), 0.12);
+    }
+    .tablero-vital-label {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-2);
+    }
+    .tablero-vital-label i { color: var(--clinic-accent); }
+    .tablero-vital-input-row { display: flex; align-items: baseline; gap: 4px; }
+    .tablero-vital-input {
+      width: 100%; min-width: 0; border: none; background: transparent; outline: none;
+      padding: 0; font-family: inherit; font-size: 17px; font-weight: 700; color: var(--text-1);
+    }
+    .tablero-vital-input::placeholder { color: var(--text-2); opacity: 0.45; font-weight: 600; }
+    .tablero-vital-input::-webkit-outer-spin-button,
+    .tablero-vital-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .tablero-vital-input[type="number"] { -moz-appearance: textfield; }
+    .tablero-vital-unit { font-size: 11px; font-weight: 600; color: var(--text-2); flex-shrink: 0; }
+
+    /* Slider por signo vital — segunda vía de captura junto al teclado.
+       Arranca en un valor neutro (data-neutro, el mismo del placeholder)
+       pero el tile solo se marca .has-value cuando hay un número real:
+       un vital que no se midió tiene que guardarse vacío, no con la
+       posición por defecto del slider (ver setVitalDesdeSlider()). */
+    .tablero-vital-range {
+      -webkit-appearance: none; appearance: none;
+      display: block; width: 100%; height: 14px;
+      margin: 4px 0 0; padding: 0; background: transparent; cursor: pointer;
+    }
+    .tablero-vital-range::-webkit-slider-runnable-track {
+      height: 4px; border-radius: var(--radius-full);
+      background-color: var(--surface-container-high);
+    }
+    .tablero-vital-range::-moz-range-track {
+      height: 4px; border-radius: var(--radius-full);
+      background-color: var(--surface-container-high);
+    }
+    .tablero-vital-range::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+      background-color: var(--clinic-accent); border: 2px solid var(--surface);
+      box-shadow: 0 1px 3px rgba(19, 27, 46, 0.28);
+      transition: transform 0.15s ease;
+    }
+    .tablero-vital-range::-moz-range-thumb {
+      width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--surface);
+      background-color: var(--clinic-accent); box-shadow: 0 1px 3px rgba(19, 27, 46, 0.28);
+      transition: transform 0.15s ease;
+    }
+    .tablero-vital-range:active::-webkit-slider-thumb { transform: scale(1.25); }
+    .tablero-vital-range:active::-moz-range-thumb { transform: scale(1.25); }
+    .tablero-vital-range:focus-visible { outline: 2px solid var(--clinic-accent); outline-offset: 3px; border-radius: var(--radius-full); }
+    /* Sin dato todavía: apagado, para que no se lea como un valor medido. */
+    .tablero-vital-tile:not(.has-value) .tablero-vital-range { opacity: 0.4; }
+    .tablero-vital-tile.has-value .tablero-vital-range::-webkit-slider-runnable-track { background-color: rgba(var(--clinic-accent-rgb), 0.2); }
+    .tablero-vital-tile.has-value .tablero-vital-range::-moz-range-track { background-color: rgba(var(--clinic-accent-rgb), 0.2); }
+
+    .tablero-vital-scale {
+      display: flex; justify-content: space-between;
+      font-size: 9px; font-weight: 600; color: var(--text-2); opacity: 0.55;
+    }
+    /* Ocupa el hueco del slider en el tile de TLLC (texto libre) para que
+       la fila de tiles no quede despareja. */
+    .tablero-vital-hint {
+      margin-top: auto; padding-top: 6px;
+      font-size: 9px; font-weight: 600; color: var(--text-2); opacity: 0.55;
+    }
+
+    /* ── Panel lateral ────────────────────────────────────────────── */
+    /* Tarjeta oscura "Contexto histórico" — reutiliza los tonos del
+       sidebar (--sidebar-bg/--sidebar-active), que ya son el borgoña
+       profundo del sistema; es el equivalente del bloque oscuro del
+       mockup sin introducir un color nuevo. Ver renderTableroContexto().
+       Vive DENTRO del hero del paciente (columna del medio, entre la
+       identidad y el responsable), no en el panel lateral — de ahí la
+       variante compacta .tablero-hero-context más abajo. */
+    .tablero-context-card {
+      background: linear-gradient(150deg, var(--sidebar-bg) 0%, var(--sidebar-active) 100%);
+      color: var(--sidebar-text);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 18px 20px;
+      position: relative; overflow: hidden;
+    }
+    .tablero-context-card::after {
+      content: ''; position: absolute; right: -48px; bottom: -48px;
+      width: 150px; height: 150px; border-radius: 50%;
+      background-color: rgba(255, 255, 255, 0.06);
+    }
+    .tablero-context-card > * { position: relative; }
+    .tablero-context-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.12em; opacity: 0.55;
+    }
+    .tablero-context-stats {
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+      margin-top: 14px; padding-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .tablero-context-stat-num { font-size: 24px; font-weight: 700; line-height: 1.1; }
+    .tablero-context-stat-sub { font-size: 10px; opacity: 0.55; }
+    .tablero-context-hito {
+      display: flex; align-items: center; gap: 10px; margin-top: 10px;
+      padding: 10px 12px; border-radius: var(--radius);
+      background-color: rgba(255, 255, 255, 0.10);
+    }
+    .tablero-context-hito-icon {
+      width: 30px; height: 30px; border-radius: var(--radius-sm); flex-shrink: 0;
+      background-color: rgba(255, 255, 255, 0.14);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .tablero-context-hito-title { font-size: 12px; font-weight: 700; }
+    .tablero-context-hito-date { font-size: 10px; opacity: 0.6; margin-top: 1px; }
+    .tablero-context-hito-tag {
+      flex-shrink: 0; padding: 2px 8px; border-radius: var(--radius-full);
+      background-color: rgba(255, 255, 255, 0.2); font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .tablero-context-empty { font-size: 12px; opacity: 0.6; margin-top: 10px; }
+
+    /* Variante compacta de la tarjeta anterior cuando va dentro del hero
+       del paciente: ocupa el hueco entre .tablero-hero-id y
+       .tablero-hero-owner, así que no puede crecer libre como cuando
+       estaba en el panel lateral. Solo cambia el tamaño — colores y
+       contenido son los mismos (renderTableroContexto() no distingue). */
+    .tablero-hero-context {
+      flex: 0 1 320px; min-width: 250px; align-self: stretch;
+      padding: 14px 16px;
+    }
+    .tablero-hero-context::after { right: -56px; bottom: -56px; width: 130px; height: 130px; }
+    .tablero-hero-context .tablero-context-label { font-size: 9.5px; }
+    .tablero-hero-context .tablero-context-stats { margin-top: 10px; padding-bottom: 10px; }
+    .tablero-hero-context .tablero-context-stat-num { font-size: 21px; }
+    .tablero-hero-context .tablero-context-label + .tablero-context-hito,
+    .tablero-hero-context .tablero-context-hito { margin-top: 8px; padding: 8px 10px; }
+    .tablero-hero-context .tablero-context-hito-icon { width: 26px; height: 26px; }
+    .tablero-hero-context .tablero-context-empty { font-size: 11.5px; margin-top: 8px; }
 
     .tablero-breed-insight {
       margin-top: 12px;
@@ -2176,48 +2508,53 @@
       color: var(--text-2);
       line-height: 1.5;
     }
-    .tablero-breed-insight strong { color: var(--text-1); }
+    .tablero-breed-insight strong { color: var(--text-1); display: flex; align-items: center; gap: 5px; }
 
     .tablero-problem-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 10px;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
+      padding: 9px 11px;
+      margin-bottom: 6px;
+      border-radius: var(--radius-sm);
+      background-color: var(--surface-container-low);
       font-size: 13px;
       color: var(--text-1);
     }
-
-    .tablero-problem-item:last-child { border-bottom: none; }
+    .tablero-problem-item:last-child { margin-bottom: 0; }
 
     /* Panel de detalle "Navegación rápida" — mini-lista de registros del
-       módulo seleccionado en .tablero-nav-col, ver renderTableroModuloDetalle() */
+       módulo seleccionado en el strip, ver renderTableroModuloDetalle() */
     .tablero-quicknav-header-row {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 8px; margin-bottom: 8px;
+      gap: 8px; margin-bottom: 10px;
     }
-    .tablero-quicknav-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text-1); }
+    .tablero-quicknav-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--text-1); }
     .tablero-quicknav-record {
       display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      padding: 8px 0; border-bottom: 1px solid var(--border); cursor: pointer;
+      padding: 9px 11px; margin-bottom: 6px; border-radius: var(--radius-sm);
+      background-color: var(--surface-container-low); cursor: pointer;
+      transition: var(--transition);
     }
-    .tablero-quicknav-record:last-child { border-bottom: none; }
+    .tablero-quicknav-record:hover { background-color: rgba(var(--clinic-accent-rgb), 0.07); }
     .tablero-quicknav-record:hover .tablero-quicknav-record-title { color: var(--clinic-accent); }
     .tablero-quicknav-record-title { font-size: 13px; font-weight: 600; color: var(--text-1); }
     .tablero-quicknav-record-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
 
-    @media (max-width: 1300px) {
-      .tablero-grid { grid-template-columns: 200px 1fr; }
-      .tablero-grid > .tablero-side-col { grid-column: 1 / -1; order: 3; }
-    }
-    @media (max-width: 860px) {
+    @media (max-width: 1150px) {
       .tablero-grid { grid-template-columns: 1fr; }
-      /* En una sola columna: nav de módulos, luego SOIP, luego Navegación
-         rápida/Lista de problemas — mismo criterio de reordenar solo en mobile. */
-      .tablero-grid > .tablero-nav-col { grid-column: 1; order: 1; }
-      .tablero-grid > .tablero-center-col { grid-column: 1; order: 2; }
-      .tablero-grid > .tablero-side-col { grid-column: 1; order: 3; }
+      /* En una sola columna: primero el registro SOIP, después el panel
+         lateral — mismo criterio de reordenar solo en pantallas chicas. */
+      .tablero-grid > .tablero-soip-rail { order: 1; }
+      .tablero-grid > .tablero-side-col { order: 2; }
+    }
+    @media (max-width: 720px) {
+      .tablero-body { padding: 16px 14px 40px; }
+      .tablero-header { padding: 12px 14px; }
+      .tablero-soip-rail { padding-left: 0; }
+      .tablero-soip-rail::before { display: none; }
+      .tablero-step-badge { position: static; margin-bottom: 8px; }
     }
 
     .info-label {
@@ -5216,17 +5553,16 @@
            ver abrirTableroTrabajo()/cerrarTableroAConsultorio()). Reemplaza
            al viejo pane embebido #subtab-tablero. -->
       <div class="tablero-view" id="tablero-view">
+        <!-- Barra de acciones (sticky) — ver nota de CSS: reemplaza al FAB
+             del mockup de Stitch, para no duplicar botones. -->
         <div class="tablero-header">
           <div class="tablero-header-left">
             <button class="btn-outline back-btn" onclick="cerrarTableroAConsultorio()">
               <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver
             </button>
-            <div class="pet-photo-circle-wrap" style="width:56px;height:56px;">
-              <div class="pet-photo-circle" id="tablero-pet-photo" style="width:56px;height:56px;font-size:18px;">?</div>
-            </div>
-            <div>
-              <div class="pet-name-title" id="tablero-pet-name">—</div>
-              <div class="pet-meta-item" id="tablero-pet-meta" style="color:var(--text-2);font-size:12px;">—</div>
+            <div class="tablero-header-title">
+              <span class="tablero-header-kicker">Tablero de trabajo</span>
+              <span class="tablero-header-sub">Registro de consulta</span>
             </div>
             <div class="role-sim-widget">
               <div class="role-sim-select-wrap">
@@ -5251,130 +5587,191 @@
         </div>
 
         <div class="tablero-body">
+
+          <!-- Hero del paciente (identidad + alertas + responsable) —
+               ver mountTableroHeader() -->
+          <div class="tablero-hero">
+            <div class="pet-photo-circle-wrap tablero-hero-photo" style="width:76px;height:76px;">
+              <div class="pet-photo-circle" id="tablero-pet-photo" style="width:76px;height:76px;font-size:24px;">?</div>
+            </div>
+            <div class="tablero-hero-id">
+              <div class="tablero-hero-name-row">
+                <span class="tablero-hero-name" id="tablero-pet-name">—</span>
+                <span class="tablero-hero-code" id="tablero-pet-code">—</span>
+                <span class="tablero-hero-live"><span class="tablero-hero-live-dot"></span> Consulta en curso</span>
+              </div>
+              <div class="tablero-hero-meta" id="tablero-pet-meta"></div>
+              <div class="tablero-hero-alerts" id="tablero-pet-alerts"></div>
+            </div>
+            <div class="tablero-context-card tablero-hero-context" id="tablero-contexto-card"></div>
+            <div class="tablero-hero-owner" id="tablero-pet-owner"></div>
+          </div>
+
+          <!-- Strip horizontal de módulos clínicos (acota los 18 del
+               sidebar normal a los 10 relevantes durante una consulta
+               activa — ver TABLERO_QUICKNAV_MODULOS/renderTableroNavList) -->
+          <div class="tablero-modstrip" id="tablero-nav-list">
+            <!-- Dinámico por JS -->
+          </div>
+
           <div class="tablero-grid">
 
-            <!-- Columna izquierda: navegación por módulo clínico (acota los
-                 18 del sidebar normal a los 10 relevantes durante una
-                 consulta activa — ver TABLERO_QUICKNAV_MODULOS) -->
-            <div class="tablero-nav-col">
-              <div class="card">
-                <div class="card-header">
-                  <span class="card-title"><i data-lucide="layout-list" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Módulos</span>
-                </div>
-                <nav class="sidebar-menu" id="tablero-nav-list">
-                  <!-- Dinámico por JS — ver renderTableroNavList() -->
-                </nav>
-              </div>
-            </div>
+            <!-- Registro de consulta (SOIP) como riel vertical -->
+            <div class="tablero-soip-rail">
 
-            <!-- Columna central: Registro de consulta (SOIP) -->
-            <div class="tablero-center-col">
-              <div class="card">
-                <div class="card-header">
-                  <span class="card-title"><i data-lucide="stethoscope" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Registro de consulta</span>
-                </div>
-
-                <div class="soap-meta-row">
-                  <div class="input-group">
-                    <label class="input-label" for="tablero-soap-fecha">Fecha y hora de consulta</label>
-                    <input type="datetime-local" id="tablero-soap-fecha" class="input-control" style="padding-left:12px;">
-                  </div>
-                  <div class="input-group">
-                    <label class="input-label" for="tablero-soap-motivo">Motivo de consulta</label>
-                    <select id="tablero-soap-motivo" class="soap-select-control">
-                      <option value="Consulta general">Consulta general</option>
-                      <option value="Urgencia">Urgencia</option>
-                      <option value="Vacunación">Vacunación</option>
-                      <option value="Control">Control</option>
-                      <option value="Revisión">Revisión</option>
-                      <option value="Otro">Otro</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="soap-block" style="margin-top:18px;">
-                  <div class="soap-letter">S</div>
-                  <div class="soap-block-body">
-                    <label class="soap-block-label">Subjetivo</label>
-                    <textarea class="soap-textarea" id="tablero-soap-s" placeholder="Anamnesis, motivo relatado por el propietario, duración de signos, medicamentos administrados en casa"></textarea>
-                  </div>
-                </div>
-
-                <div class="soap-block" style="margin-top:18px;">
-                  <div class="soap-letter">O</div>
-                  <div class="soap-block-body">
-                    <label class="soap-block-label">Objetivo</label>
-                    <div class="tablero-vitals-grid">
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-vital-temp">Temp (°C)</label>
-                        <input type="number" step="0.1" id="tablero-soap-vital-temp" class="input-control" style="padding-left:12px;" placeholder="38.5">
-                      </div>
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-vital-fc">FC (lpm)</label>
-                        <input type="number" id="tablero-soap-vital-fc" class="input-control" style="padding-left:12px;" placeholder="140">
-                      </div>
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-vital-fr">FR (rpm)</label>
-                        <input type="number" id="tablero-soap-vital-fr" class="input-control" style="padding-left:12px;" placeholder="28">
-                      </div>
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-vital-crt">TLLC</label>
-                        <input type="text" id="tablero-soap-vital-crt" class="input-control" style="padding-left:12px;" placeholder="< 2s">
-                      </div>
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-vital-pas">PAS (mmHg)</label>
-                        <input type="number" id="tablero-soap-vital-pas" class="input-control" style="padding-left:12px;" placeholder="120">
-                      </div>
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-vital-pad">PAD (mmHg)</label>
-                        <input type="number" id="tablero-soap-vital-pad" class="input-control" style="padding-left:12px;" placeholder="80">
-                      </div>
-                      <div class="input-group">
-                        <label class="input-label" for="tablero-soap-vital-pam">PAM (mmHg)</label>
-                        <input type="number" id="tablero-soap-vital-pam" class="input-control" style="padding-left:12px;" placeholder="93">
-                      </div>
+              <div class="tablero-step">
+                <div class="tablero-step-badge"><i data-lucide="calendar-clock" style="width:18px;height:18px;"></i></div>
+                <div class="tablero-card">
+                  <div class="soap-meta-row">
+                    <div class="input-group">
+                      <label class="input-label" for="tablero-soap-fecha">Fecha y hora de consulta</label>
+                      <input type="datetime-local" id="tablero-soap-fecha" class="input-control" style="padding-left:12px;">
                     </div>
-                    <textarea class="soap-textarea" id="tablero-soap-o" style="margin-top:8px;" placeholder="Hallazgos del examen físico, mucosas, hidratación, etc."></textarea>
+                    <div class="input-group">
+                      <label class="input-label" for="tablero-soap-motivo">Motivo de consulta</label>
+                      <select id="tablero-soap-motivo" class="soap-select-control">
+                        <option value="Consulta general">Consulta general</option>
+                        <option value="Urgencia">Urgencia</option>
+                        <option value="Vacunación">Vacunación</option>
+                        <option value="Control">Control</option>
+                        <option value="Revisión">Revisión</option>
+                        <option value="Otro">Otro</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-
-                <div class="soap-block" style="margin-top:18px;">
-                  <div class="soap-letter">I</div>
-                  <div class="soap-block-body">
-                    <label class="soap-block-label">Interpretación <span class="soap-required">*</span></label>
-                    <textarea class="soap-textarea" id="tablero-soap-i" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
-                  </div>
-                </div>
-
-                <div class="soap-block" style="margin-top:18px;">
-                  <div class="soap-letter">P</div>
-                  <div class="soap-block-body">
-                    <label class="soap-block-label">Plan <span class="soap-required">*</span></label>
-                    <textarea class="soap-textarea" id="tablero-soap-p" placeholder="Plan terapéutico, procedimientos realizados, seguimiento (fecha próximo control), observaciones"></textarea>
-                  </div>
-                </div>
-
-                <div style="margin-top:12px;">
-                  <div class="soap-exam-toggle" id="tablero-soap-exam-toggle" onclick="toggleExamSystems('tablero-soap-exam-toggle', 'tablero-soap-exam-body')">
-                    <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
-                    <span>+ Examen físico por sistema</span>
-                  </div>
-                  <div class="soap-exam-body" id="tablero-soap-exam-body"></div>
                 </div>
               </div>
+
+              <div class="tablero-step" data-tablero-step="s">
+                <div class="tablero-step-badge">S</div>
+                <div class="tablero-card">
+                  <div class="tablero-card-head">
+                    <span class="tablero-card-title">Subjetivo <span class="soap-required">*</span></span>
+                  </div>
+                  <textarea class="soap-textarea" id="tablero-soap-s" placeholder="Anamnesis, motivo relatado por el propietario, duración de signos, medicamentos administrados en casa"></textarea>
+                </div>
+              </div>
+
+              <div class="tablero-step" data-tablero-step="o">
+                <div class="tablero-step-badge">O</div>
+                <div class="tablero-card">
+                  <div class="tablero-card-head">
+                    <span class="tablero-card-title">Objetivo · signos vitales</span>
+                  </div>
+                  <!-- Cada tile numérico trae un slider bajo el número
+                       (ver resetVitalSliders()/setVitalDesdeSlider()): min/max/
+                       step y el valor neutro salen de estos atributos, el JS
+                       no duplica los rangos. TLLC no lleva slider porque es
+                       texto libre ("< 2s"). -->
+                  <div class="tablero-vitals-grid">
+                    <div class="tablero-vital-tile">
+                      <label class="tablero-vital-label" for="tablero-soap-vital-temp"><i data-lucide="thermometer" style="width:13px;height:13px;"></i> Temp</label>
+                      <span class="tablero-vital-input-row">
+                        <input type="number" step="0.1" id="tablero-soap-vital-temp" class="tablero-vital-input" placeholder="38.5">
+                        <span class="tablero-vital-unit">°C</span>
+                      </span>
+                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-temp" data-neutro="38.5" min="32" max="43" step="0.1" value="38.5" aria-label="Temperatura" oninput="setVitalDesdeSlider(this)">
+                      <span class="tablero-vital-scale"><span>32</span><span>43</span></span>
+                    </div>
+                    <div class="tablero-vital-tile">
+                      <label class="tablero-vital-label" for="tablero-soap-vital-fc"><i data-lucide="heart-pulse" style="width:13px;height:13px;"></i> FC</label>
+                      <span class="tablero-vital-input-row">
+                        <input type="number" id="tablero-soap-vital-fc" class="tablero-vital-input" placeholder="140">
+                        <span class="tablero-vital-unit">lpm</span>
+                      </span>
+                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-fc" data-neutro="140" min="40" max="300" step="1" value="140" aria-label="Frecuencia cardíaca" oninput="setVitalDesdeSlider(this)">
+                      <span class="tablero-vital-scale"><span>40</span><span>300</span></span>
+                    </div>
+                    <div class="tablero-vital-tile">
+                      <label class="tablero-vital-label" for="tablero-soap-vital-fr"><i data-lucide="wind" style="width:13px;height:13px;"></i> FR</label>
+                      <span class="tablero-vital-input-row">
+                        <input type="number" id="tablero-soap-vital-fr" class="tablero-vital-input" placeholder="28">
+                        <span class="tablero-vital-unit">rpm</span>
+                      </span>
+                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-fr" data-neutro="28" min="6" max="120" step="1" value="28" aria-label="Frecuencia respiratoria" oninput="setVitalDesdeSlider(this)">
+                      <span class="tablero-vital-scale"><span>6</span><span>120</span></span>
+                    </div>
+                    <div class="tablero-vital-tile">
+                      <label class="tablero-vital-label" for="tablero-soap-vital-crt"><i data-lucide="droplet" style="width:13px;height:13px;"></i> TLLC</label>
+                      <span class="tablero-vital-input-row">
+                        <input type="text" id="tablero-soap-vital-crt" class="tablero-vital-input" placeholder="< 2s">
+                      </span>
+                      <span class="tablero-vital-hint">Texto libre</span>
+                    </div>
+                    <div class="tablero-vital-tile">
+                      <label class="tablero-vital-label" for="tablero-soap-vital-pas"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAS</label>
+                      <span class="tablero-vital-input-row">
+                        <input type="number" id="tablero-soap-vital-pas" class="tablero-vital-input" placeholder="120">
+                        <span class="tablero-vital-unit">mmHg</span>
+                      </span>
+                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-pas" data-neutro="120" min="40" max="260" step="1" value="120" aria-label="Presión arterial sistólica" oninput="setVitalDesdeSlider(this)">
+                      <span class="tablero-vital-scale"><span>40</span><span>260</span></span>
+                    </div>
+                    <div class="tablero-vital-tile">
+                      <label class="tablero-vital-label" for="tablero-soap-vital-pad"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAD</label>
+                      <span class="tablero-vital-input-row">
+                        <input type="number" id="tablero-soap-vital-pad" class="tablero-vital-input" placeholder="80">
+                        <span class="tablero-vital-unit">mmHg</span>
+                      </span>
+                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-pad" data-neutro="80" min="20" max="180" step="1" value="80" aria-label="Presión arterial diastólica" oninput="setVitalDesdeSlider(this)">
+                      <span class="tablero-vital-scale"><span>20</span><span>180</span></span>
+                    </div>
+                    <div class="tablero-vital-tile">
+                      <label class="tablero-vital-label" for="tablero-soap-vital-pam"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAM</label>
+                      <span class="tablero-vital-input-row">
+                        <input type="number" id="tablero-soap-vital-pam" class="tablero-vital-input" placeholder="93">
+                        <span class="tablero-vital-unit">mmHg</span>
+                      </span>
+                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-pam" data-neutro="93" min="30" max="200" step="1" value="93" aria-label="Presión arterial media" oninput="setVitalDesdeSlider(this)">
+                      <span class="tablero-vital-scale"><span>30</span><span>200</span></span>
+                    </div>
+                  </div>
+                  <textarea class="soap-textarea" id="tablero-soap-o" placeholder="Hallazgos del examen físico, mucosas, hidratación, etc."></textarea>
+                  <div style="margin-top:8px;">
+                    <div class="soap-exam-toggle" id="tablero-soap-exam-toggle" onclick="toggleExamSystems('tablero-soap-exam-toggle', 'tablero-soap-exam-body')">
+                      <i data-lucide="chevron-right" style="width:16px;height:16px;"></i>
+                      <span>+ Examen físico por sistema</span>
+                    </div>
+                    <div class="soap-exam-body" id="tablero-soap-exam-body"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tablero-step" data-tablero-step="i">
+                <div class="tablero-step-badge">I</div>
+                <div class="tablero-card">
+                  <div class="tablero-card-head">
+                    <span class="tablero-card-title">Interpretación <span class="soap-required">*</span></span>
+                  </div>
+                  <textarea class="soap-textarea" id="tablero-soap-i" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
+                </div>
+              </div>
+
+              <div class="tablero-step" data-tablero-step="p">
+                <div class="tablero-step-badge">P</div>
+                <div class="tablero-card">
+                  <div class="tablero-card-head">
+                    <span class="tablero-card-title">Plan terapéutico <span class="soap-required">*</span></span>
+                  </div>
+                  <textarea class="soap-textarea" id="tablero-soap-p" placeholder="Plan terapéutico, procedimientos realizados, seguimiento (fecha próximo control), observaciones"></textarea>
+                </div>
+              </div>
+
             </div>
 
-            <!-- Columna derecha: Navegación rápida (detalle del módulo
-                 seleccionado a la izquierda) + Lista de problemas -->
+            <!-- Panel lateral: Navegación rápida (detalle del módulo
+                 seleccionado en el strip) + Lista de problemas. La tarjeta
+                 "Contexto histórico" vive ahora dentro del hero del
+                 paciente, entre la identidad y el responsable. -->
             <div class="tablero-side-col">
-              <div class="card">
+              <div class="tablero-card">
                 <div id="tablero-quicknav-body"></div>
               </div>
 
-              <div class="card">
-                <div class="card-header">
-                  <span class="card-title"><i data-lucide="list-checks" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Lista de problemas</span>
-                  <button class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="toggleTableroNuevoProblema()"><i data-lucide="plus" style="width:12px;height:12px;"></i></button>
+              <div class="tablero-card">
+                <div class="tablero-quicknav-header-row">
+                  <span class="tablero-quicknav-title"><i data-lucide="list-checks" style="width:14px;height:14px;color:var(--clinic-accent);"></i> Lista de problemas</span>
+                  <button class="btn-outline" style="padding:5px 8px;font-size:11px;" onclick="toggleTableroNuevoProblema()"><i data-lucide="plus" style="width:12px;height:12px;"></i></button>
                 </div>
                 <div id="tablero-problem-list"></div>
                 <div id="tablero-add-problem-form" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
@@ -10925,8 +11322,11 @@
     // principal de captura SOIP (el modal clásico se conserva intacto por si
     // se usa desde otro lugar). Reutiliza EXAM_SYSTEMS/renderExamSystems() y
     // guardarConsulta() con un prefijo de ids distinto ('tablero-soap-').
-    let tableroActiveModulo = null; // key del módulo seleccionado en .tablero-nav-col (ver TABLERO_QUICKNAV_MODULOS)
+    let tableroActiveModulo = null; // key del módulo seleccionado en el strip .tablero-modstrip (ver TABLERO_QUICKNAV_MODULOS)
 
+    // Hero del paciente del Tablero — identidad + meta con iconos + chips
+    // de alerta + tarjeta del responsable. Reemplaza a la franja delgada
+    // que vivía dentro de .tablero-header (ver diseño Stitch adoptado).
     function mountTableroHeader(petKey) {
       const data = patientData[petKey];
       const photoEl = document.getElementById('tablero-pet-photo');
@@ -10938,7 +11338,166 @@
         photoEl.className = `pet-photo-circle ${data.avatarClass}`;
       }
       document.getElementById('tablero-pet-name').textContent = data.name;
-      document.getElementById('tablero-pet-meta').textContent = `${data.species} · ${data.breed} · Propietario: ${data.owner}`;
+      document.getElementById('tablero-pet-code').textContent = data.chip ? `#${data.chip}` : 'Sin microchip';
+
+      const metaItem = (icon, html) => `
+        <span class="tablero-hero-meta-item">
+          <i data-lucide="${icon}" style="width:14px;height:14px;"></i> ${html}
+        </span>`;
+      document.getElementById('tablero-pet-meta').innerHTML = [
+        metaItem(data.avatarClass === 'cat' ? 'cat' : 'dog', `${data.species} — ${data.breed}`),
+        metaItem('calendar', edadTextoParaMostrar(data) || '—'),
+        metaItem('scale', `<strong>${data.weight || '—'}</strong>`),
+        data.genero ? metaItem('user', data.genero) : ''
+      ].filter(Boolean).join('');
+
+      document.getElementById('tablero-pet-alerts').innerHTML = tableroAlertChipsHtml(data, petKey);
+      mountTableroOwnerCard(petKey);
+    }
+
+    // Chips de alerta del hero — SOLO datos reales del paciente (nada de
+    // alergias/planes inventados como en el mockup): estado de fallecido,
+    // problemas activos de la lista de problemas y vencimientos ya pasados
+    // de EVENTOS_SEGUIMIENTO. Si no hay nada, no se pinta la fila.
+    function tableroAlertChipsHtml(data, petKey) {
+      const chip = (tone, icon, texto) => `
+        <span class="tablero-alert-chip ${tone}">
+          <i data-lucide="${icon}" style="width:13px;height:13px;"></i> ${texto}
+        </span>`;
+      const chips = [];
+
+      if (data.fallecido) chips.push(chip('danger', 'heart-crack', 'Paciente fallecido'));
+
+      // Hoy en local (mismo criterio que VENTAS_HOY — no usar toISOString(),
+      // que en Colombia adelanta el día a partir de las 19:00).
+      const d = new Date();
+      const hoyISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const vencidos = EVENTOS_SEGUIMIENTO.filter(e => e.petKey === petKey && e.estado === 'pendiente' && e.fechaSugeridaISO < hoyISO);
+      if (vencidos.length) {
+        chips.push(chip('danger', 'alarm-clock', `${vencidos.length} vencimiento${vencidos.length === 1 ? '' : 's'} pendiente${vencidos.length === 1 ? '' : 's'}`));
+      }
+
+      const activos = (data.problemas || []).filter(p => p.estado === 'activo');
+      activos.slice(0, 2).forEach(p => chips.push(chip('warning', 'alert-triangle', p.texto)));
+      if (activos.length > 2) chips.push(chip('warning', 'more-horizontal', `+${activos.length - 2} problema${activos.length - 2 === 1 ? '' : 's'} activo${activos.length - 2 === 1 ? '' : 's'}`));
+
+      if (data.animalServicio) chips.push(chip('info', 'shield', 'Animal de servicio'));
+
+      return chips.join('');
+    }
+
+    // Tarjeta "Responsable" del hero — reutiliza getPropietarioDeMascota()
+    // y los flujos ya existentes (perfil del propietario / Mensajes al
+    // propietario), no duplica lógica de contacto.
+    function mountTableroOwnerCard(petKey) {
+      const data = patientData[petKey];
+      const p = getPropietarioDeMascota(petKey);
+      const nombre = (p && p.nombre) || data.owner || '—';
+      const tel = (p && p.movil) || data.ownerPhone || '';
+      document.getElementById('tablero-pet-owner').innerHTML = `
+        <div class="tablero-hero-owner-label">Responsable</div>
+        <div class="tablero-hero-owner-name">${nombre}</div>
+        ${tel ? `<div class="tablero-hero-owner-phone"><i data-lucide="phone" style="width:11px;height:11px;vertical-align:-1px;"></i> ${tel}</div>` : ''}
+        <div class="tablero-hero-owner-actions">
+          ${p ? `<button class="btn-outline" onclick="abrirPerfilPropietario('${p.id}')"><i data-lucide="user" style="width:12px;height:12px;"></i> Perfil</button>` : ''}
+          <button class="btn-outline" onclick="openMensajeModal('${petKey}')"><i data-lucide="message-square" style="width:12px;height:12px;"></i> Mensaje</button>
+        </div>
+      `;
+    }
+
+    // Tarjeta oscura "Contexto histórico" del panel lateral — todo
+    // derivado de datos reales del paciente (consultas registradas, último
+    // peso del histórico y próximo evento pendiente de EVENTOS_SEGUIMIENTO).
+    function renderTableroContexto(petKey) {
+      const data = patientData[petKey];
+      const consultas = (data.consultas || []).length;
+      const historico = data.pesoHistorico || [];
+      const ultimoPeso = historico.length ? `${historico[historico.length - 1].peso} kg` : (data.weight || '—');
+
+      const TIPO_EVENTO_LABEL = {
+        vacunacion: 'Próxima vacunación', desparasitacion: 'Próxima desparasitación', control: 'Próximo control',
+        imagenes_diagnosticas: 'Próximas imágenes diagnósticas', examenes_laboratorio: 'Próximos exámenes de laboratorio',
+        revision: 'Próxima revisión', consulta_especializada: 'Próxima consulta especializada', otro: 'Próximo seguimiento'
+      };
+      const d = new Date();
+      const hoyISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const pendientes = EVENTOS_SEGUIMIENTO
+        .filter(e => e.petKey === petKey && e.estado === 'pendiente')
+        .sort((a, b) => a.fechaSugeridaISO.localeCompare(b.fechaSugeridaISO));
+
+      const hitosHtml = pendientes.length
+        ? pendientes.slice(0, 2).map(e => `
+            <div class="tablero-context-hito">
+              <div class="tablero-context-hito-icon"><i data-lucide="calendar-clock" style="width:15px;height:15px;"></i></div>
+              <div style="flex:1;min-width:0;">
+                <div class="tablero-context-hito-title">${TIPO_EVENTO_LABEL[e.tipoEvento] || 'Próximo evento'}</div>
+                <div class="tablero-context-hito-date">${formatFechaCorta(e.fechaSugeridaISO)}</div>
+              </div>
+              <span class="tablero-context-hito-tag">${e.fechaSugeridaISO < hoyISO ? 'Vencido' : 'Próximo'}</span>
+            </div>`).join('')
+        : `<div class="tablero-context-empty">Sin vencimientos programados para este paciente.</div>`;
+
+      document.getElementById('tablero-contexto-card').innerHTML = `
+        <div class="tablero-context-label">Contexto histórico</div>
+        <div class="tablero-context-stats">
+          <div>
+            <div class="tablero-context-stat-num">${consultas}</div>
+            <div class="tablero-context-stat-sub">Consultas registradas</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="tablero-context-stat-num">${ultimoPeso}</div>
+            <div class="tablero-context-stat-sub">Último peso</div>
+          </div>
+        </div>
+        <div class="tablero-context-label" style="margin-top:14px;">Próximos hitos</div>
+        ${hitosHtml}
+      `;
+    }
+
+    // ── SIGNOS VITALES: SLIDER ⇄ NÚMERO (bloque Objetivo del Tablero) ──
+    // Cada tile numérico tiene un <input type="range"> bajo el número; los
+    // dos sentidos se sincronizan. Regla que NO hay que romper: el slider
+    // arranca en su valor neutro (data-neutro) solo como posición visual —
+    // hasta que el usuario lo arrastra o escribe el número, el campo queda
+    // VACÍO. Si el slider escribiera su valor por defecto al abrir el
+    // Tablero, cada consulta se guardaría con 6 signos vitales que nadie
+    // midió (y guardarConsulta() los persiste tal cual en Supabase).
+    function tableroVitalTileDe(el) { return el.closest('.tablero-vital-tile'); }
+
+    // Slider → número
+    function setVitalDesdeSlider(range) {
+      const input = document.getElementById(range.getAttribute('data-vital-for'));
+      if (!input) return;
+      input.value = range.value;
+      tableroVitalTileDe(range).classList.add('has-value');
+    }
+
+    // Número → slider. Si el campo queda vacío (o con basura), el slider
+    // vuelve a su posición neutra y el tile se apaga.
+    function syncVitalSliderDesdeInput(input) {
+      const range = document.querySelector(`.tablero-vital-range[data-vital-for="${input.id}"]`);
+      if (!range) return;
+      const tile = tableroVitalTileDe(range);
+      const valor = parseFloat(input.value);
+      if (input.value.trim() === '' || isNaN(valor)) {
+        range.value = range.getAttribute('data-neutro');
+        tile.classList.remove('has-value');
+        return;
+      }
+      // Un valor fuera del rango del slider es válido igual (el número
+      // manda, no se recorta): el thumb solo se pega al extremo.
+      range.value = Math.min(Math.max(valor, parseFloat(range.min)), parseFloat(range.max));
+      tile.classList.add('has-value');
+    }
+
+    // Reset al abrir el Tablero — corre DESPUÉS de vaciar los inputs.
+    function resetVitalSliders() {
+      document.querySelectorAll('#tablero-view .tablero-vital-range').forEach(range => {
+        range.value = range.getAttribute('data-neutro');
+        tableroVitalTileDe(range).classList.remove('has-value');
+        const input = document.getElementById(range.getAttribute('data-vital-for'));
+        if (input) input.oninput = () => syncVitalSliderDesdeInput(input);
+      });
     }
 
     // Tablero de trabajo — pantalla completa de consulta (mismo patrón que
@@ -10967,13 +11526,22 @@
       document.getElementById('tablero-soap-motivo').value = 'Consulta general';
       ['tablero-soap-s', 'tablero-soap-o', 'tablero-soap-i', 'tablero-soap-p'].forEach(id => {
         const el = document.getElementById(id);
+        // El badge del riel SOIP se rellena cuando la letra ya tiene
+        // contenido — avance visible del flujo S→O→I→P (clase .filled).
+        const step = document.querySelector(`.tablero-step[data-tablero-step="${id.slice(-1)}"]`);
         el.value = '';
         el.classList.remove('field-error');
-        el.oninput = () => { if (el.value.trim() !== '') el.classList.remove('field-error'); };
+        if (step) step.classList.remove('filled');
+        el.oninput = () => {
+          const lleno = el.value.trim() !== '';
+          if (lleno) el.classList.remove('field-error');
+          if (step) step.classList.toggle('filled', lleno);
+        };
       });
       ['tablero-soap-vital-temp', 'tablero-soap-vital-fc', 'tablero-soap-vital-fr', 'tablero-soap-vital-crt', 'tablero-soap-vital-pas', 'tablero-soap-vital-pad', 'tablero-soap-vital-pam'].forEach(id => {
         document.getElementById(id).value = '';
       });
+      resetVitalSliders();
 
       renderExamSystems('tablero-soap-exam-body');
       document.getElementById('tablero-soap-exam-toggle').classList.remove('expanded');
@@ -10983,6 +11551,7 @@
       document.getElementById('tablero-add-problem-form').style.display = 'none';
 
       mountTableroHeader(selectedPetKey);
+      renderTableroContexto(selectedPetKey);
       renderTableroNavList();
       tableroActiveModulo = null;
       renderNavegacionRapidaDefault();
@@ -11020,33 +11589,20 @@
     }
 
     function renderNavegacionRapidaDefault() {
-      document.querySelectorAll('#tablero-nav-list .sidebar-item').forEach(item => item.classList.remove('active'));
+      document.querySelectorAll('#tablero-nav-list .tablero-modchip').forEach(item => item.classList.remove('active'));
       const data = patientData[selectedPetKey];
-      const eventos = EVENTOS_SEGUIMIENTO.filter(e => e.petKey === selectedPetKey && e.estado === 'pendiente');
-      const TIPO_EVENTO_LABEL = {
-        vacunacion: 'Próxima vacunación', desparasitacion: 'Próxima desparasitación', control: 'Próximo control',
-        imagenes_diagnosticas: 'Próximas imágenes diagnósticas', examenes_laboratorio: 'Próximos exámenes de laboratorio',
-        revision: 'Próxima revisión', consulta_especializada: 'Próxima consulta especializada', otro: 'Próximo seguimiento'
-      };
-      const eventosHtml = eventos.length
-        ? `<div class="info-label" style="margin-top:8px;">Próximos vencimientos</div>` +
-          eventos.map(e => `<div class="info-value">${TIPO_EVENTO_LABEL[e.tipoEvento] || 'Próximo evento'} — ${formatFechaCorta(e.fechaSugeridaISO)}</div>`).join('')
-        : '';
 
       document.getElementById('tablero-quicknav-body').innerHTML = `
-        <div class="card-header">
-          <span class="card-title"><i data-lucide="zap" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Navegación rápida</span>
+        <div class="tablero-quicknav-header-row">
+          <span class="tablero-quicknav-title"><i data-lucide="zap" style="width:14px;height:14px;color:var(--clinic-accent);"></i> Navegación rápida</span>
         </div>
-        <div class="info-label">Microchip / Código</div>
-        <div class="info-value">${data.chip || '—'}</div>
-        ${eventosHtml}
-        <p style="font-size:12px;color:var(--text-2);margin-top:4px;">Selecciona un módulo del menú izquierdo para consultar sus registros o cargar uno nuevo.</p>
+        <p style="font-size:12px;color:var(--text-2);line-height:1.5;">Selecciona un módulo del strip superior para consultar sus registros o cargar uno nuevo sin salir de la consulta.</p>
         ${especieInsightHtml(data)}
       `;
       lucide.createIcons();
     }
 
-    // Módulos clínicos del nav de .tablero-nav-col — subconjunto de los 18
+    // Módulos clínicos del strip horizontal del Tablero — subconjunto de los 18
     // del sidebar normal, enfocado en lo que se consulta/registra durante
     // una consulta activa. Cada entrada reutiliza el modal de crear/editar
     // que ya tiene ese módulo completo (no se duplica lógica de guardado).
@@ -11151,30 +11707,31 @@
       }
     };
 
+    // Strip horizontal de módulos (antes columna .tablero-nav-col con
+    // .sidebar-item/.sidebar-counter) — mismos módulos y misma semántica de
+    // contador, solo cambia la presentación a chips desplazables.
     function renderTableroNavList() {
       const data = patientData[selectedPetKey];
       document.getElementById('tablero-nav-list').innerHTML = TABLERO_NAV_ORDEN.map(key => {
         const cfg = TABLERO_QUICKNAV_MODULOS[key];
         const count = cfg.getRecords(data, selectedPetKey).length;
         return `
-          <div class="sidebar-item" data-tablero-modulo="${key}" onclick="switchTableroModulo('${key}')">
-            <div class="sidebar-label-group">
-              <i data-lucide="${cfg.icon}" class="sidebar-icon"></i>
-              <span>${cfg.label}</span>
-            </div>
-            <span class="sidebar-counter">${count}</span>
-          </div>
+          <button type="button" class="tablero-modchip" data-tablero-modulo="${key}" onclick="switchTableroModulo('${key}')">
+            <i data-lucide="${cfg.icon}" style="width:14px;height:14px;"></i>
+            <span>${cfg.label}</span>
+            <span class="tablero-modchip-count">${count}</span>
+          </button>
         `;
       }).join('');
       lucide.createIcons();
     }
 
-    // Click en un módulo del nav izquierdo del Tablero — actualiza la card
+    // Click en un chip del strip de módulos del Tablero — actualiza la card
     // "Navegación rápida" con la mini-lista de registros de ese módulo (ver
     // TABLERO_QUICKNAV_MODULOS), sin salir de la pantalla de consulta.
     function switchTableroModulo(key) {
       tableroActiveModulo = key;
-      document.querySelectorAll('#tablero-nav-list .sidebar-item').forEach(item => {
+      document.querySelectorAll('#tablero-nav-list .tablero-modchip').forEach(item => {
         item.classList.toggle('active', item.getAttribute('data-tablero-modulo') === key);
       });
       renderTableroModuloDetalle(key);
@@ -11237,7 +11794,7 @@
       if (selectedPetKey !== petKey || !document.getElementById('tablero-view').classList.contains('active')) return;
       if (tableroActiveModulo === key) renderTableroModuloDetalle(key);
       const cfg = TABLERO_QUICKNAV_MODULOS[key];
-      const counterEl = document.querySelector(`#tablero-nav-list .sidebar-item[data-tablero-modulo="${key}"] .sidebar-counter`);
+      const counterEl = document.querySelector(`#tablero-nav-list .tablero-modchip[data-tablero-modulo="${key}"] .tablero-modchip-count`);
       if (counterEl) counterEl.textContent = cfg.getRecords(patientData[petKey], petKey).length;
     }
 
@@ -11256,6 +11813,14 @@
       const data = patientData[petKey];
       const problemas = data.problemas || [];
       const container = document.getElementById('tablero-problem-list');
+      // Los problemas activos también salen como chips de alerta en el hero
+      // (ver tableroAlertChipsHtml) — se repintan en el mismo paso para que
+      // agregar/resolver un problema se refleje arriba al instante.
+      const alertsEl = document.getElementById('tablero-pet-alerts');
+      if (alertsEl) {
+        alertsEl.innerHTML = tableroAlertChipsHtml(data, petKey);
+        lucide.createIcons();
+      }
       if (!problemas.length) {
         container.innerHTML = `<p style="font-size:12px;color:var(--text-2);">Sin problemas registrados.</p>`;
         return;

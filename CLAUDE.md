@@ -271,6 +271,57 @@ cierra el script") en vez del literal `</script>`.
     otra pantalla de tipo "kardex" (pantalla completa fuera del
     patient-view), agrégaselo también, si no, no hay forma de probar
     la restricción de rol sin salir de esa pantalla.
+- Patrón del **Tablero de trabajo** (`#tablero-view`, pantalla completa de
+  "Registro de consulta", misma mecánica de ocultar `.consultorio-wrapper`
+  que el Kardex). Su estilo visual se adoptó del mockup de Stitch
+  `stitch_screen_encounter.html`/`.png` (raíz del repo, "Encounter:
+  Horizontal Nav Edition"), pero **reconstruido con las variables de
+  paleta existentes** — el mockup trae Tailwind y verde `#006e22`
+  hardcodeado; acá el acento sigue siendo `--clinic-accent` y la tarjeta
+  oscura reusa `--sidebar-bg`/`--sidebar-active`. Si se retoma ese mockup
+  para otra pantalla, mismo criterio: tomar la ESTRUCTURA, no sus colores
+  ni su CSS.
+  - Estructura: barra de acciones **sticky** (`.tablero-header`, con
+    Volver/rol simulado/Imprimir/Compartir/Finalizar — reemplaza al FAB
+    del mockup, no lo dupliques) → hero de vidrio del paciente
+    (`.tablero-hero`, `mountTableroHeader()`) → **strip horizontal** de
+    módulos (`.tablero-modstrip`/`.tablero-modchip`, antes era la columna
+    `.tablero-nav-col`) → grid de 2 columnas: riel SOIP
+    (`.tablero-soip-rail` + una `.tablero-step`/`.tablero-card` por letra)
+    y panel lateral (contexto histórico + Navegación rápida + Lista de
+    problemas).
+  - Los chips de alerta del hero (`tableroAlertChipsHtml()`) y la tarjeta
+    "Contexto histórico" (`renderTableroContexto()`) salen SOLO de datos
+    reales del paciente (fallecido, problemas activos, vencimientos de
+    `EVENTOS_SEGUIMIENTO`, conteo de consultas, último `pesoHistorico`) —
+    el mockup muestra alertas de alergia/dieta inventadas, no las
+    reintroduzcas como texto fijo.
+  - Microchip y próximos vencimientos ya NO se repiten en "Navegación
+    rápida": viven en el hero y en la tarjeta de contexto. Mismo criterio
+    que la fusión de `.pet-header-card` — antes de agregar un dato al
+    panel lateral, verificar que no esté ya arriba.
+  - Los ids de los campos (`tablero-soap-*`, incluidos los 7
+    `-vital-*`) son contrato con `guardarConsulta('tablero-soap-', …)` —
+    la maqueta cambió, los ids no. Los inputs de vitales usan
+    `.tablero-vital-input` dentro de `.tablero-vital-tile` (ya no
+    `.input-control`), pero siguen siendo los mismos ids.
+  - Los 6 vitales numéricos (todos menos TLLC, que es texto libre) tienen
+    además un `<input type="range">` bajo el número
+    (`.tablero-vital-range`), sincronizado en ambos sentidos con
+    `setVitalDesdeSlider()` / `syncVitalSliderDesdeInput()` y reseteado
+    por `resetVitalSliders()` al abrir el Tablero. **Invariante que no se
+    puede romper:** el slider arranca en `data-neutro` solo como posición
+    visual — mientras el campo esté vacío el tile NO lleva `.has-value` y
+    el número sigue vacío. Si el slider escribiera su valor por defecto al
+    abrir la pantalla, cada consulta se guardaría con 6 signos vitales que
+    nadie midió, y `guardarConsulta()` los persiste tal cual en
+    `consultas.vital_*`. Por lo mismo, un número fuera del rango del
+    slider es válido y se conserva: el thumb se pega al extremo, el valor
+    NO se recorta. `min`/`max`/`step`/`data-neutro` viven solo en el HTML
+    — el JS los lee del DOM, no los duplica.
+  - El badge de cada letra se rellena (`.tablero-step.filled`) desde el
+    `oninput` que ya fijaba `abrirTableroTrabajo()` para limpiar
+    `field-error` — un solo handler por textarea, no agregues otro.
 
 ## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·
