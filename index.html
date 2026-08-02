@@ -43,37 +43,45 @@
   <style>
     /* VARIABLES DE DISEÑO (SISTEMA DE COLOR CRÍTICO - STITCH) */
     :root {
-      --clinic-accent: #0F766E;       /* Simula color_primario de la clínica (Teal por defecto) */
-      --clinic-accent-light: #14B8A6; /* Accent secundario/brillante (Fresh Mint) */
-      --bg-app: #faf8ff;              /* Fondo de aplicación Stitch */
+      --clinic-accent: #0F766E;       /* Color primario clínico Stitch (Deep Teal) */
+      --clinic-accent-light: #10B981; /* Accent secundario/brillante (Fresh Mint/Emerald) */
+      --bg-app: #FAF8FF;              /* Fondo de aplicación Stitch */
       --surface: #FFFFFF;             /* Superficie Level 1 (Blanco puro) */
       --border: rgba(189, 201, 198, 0.4); /* outline_variant con transparencia suave */
-      --border-solid: #bdc9c6;        /* outline_variant sólido */
-      --text-1: #131b2e;              /* on_surface (azul/negro clínico oscuro) */
-      --text-2: #3e4947;              /* on_surface_variant (gris verdoso) */
+      --border-solid: #BDC9C6;        /* outline_variant sólido */
+      --text-1: #131B2E;              /* on_surface (azul/negro clínico oscuro) */
+      --text-2: #3E4947;              /* on_surface_variant (gris verdoso) */
       --danger: #EF4444;              /* emergency_red */
       --warning: #F59E0B;             /* caution_amber */
-      --success: #14B8A6;             /* fresh_mint */
+      --success: #10B981;             /* fresh_mint / emerald */
+
+      /* Colores temáticos Stitch Sidebar/Header */
+      --sidebar-bg: #3D0C1A;          /* Borgoña/Marrón profundo Stitch */
+      --sidebar-hover: #4A1525;
+      --sidebar-active: #5C1D30;
+      --sidebar-text: #FAF8FF;
+      --sidebar-text-muted: #D1D5DB;
       
       /* Superficies tonales de Stitch */
       --surface-base: #F8FAFC;
-      --surface-container-lowest: #ffffff;
-      --surface-container-low: #f2f3ff;
-      --surface-container: #eaedff;
-      --surface-container-high: #e2e7ff;
-      --surface-container-highest: #dae2fd;
-      --surface-dim: #d2d9f4;
+      --surface-container-lowest: #FFFFFF;
+      --surface-container-low: #F2F3FF;
+      --surface-container: #EAEDFF;
+      --surface-container-high: #E2E7FF;
+      --surface-container-highest: #DAE2FD;
+      --surface-dim: #D2D9F4;
 
       /* Variables calculadas/derivadas */
       --clinic-accent-rgb: 15, 118, 110;
-      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-      --shadow-md: 0px 2px 4px rgba(15, 23, 42, 0.05); /* Level 1 shadow */
-      --shadow-lg: 0px 10px 25px rgba(15, 23, 42, 0.1);  /* Level 2 shadow */
+      --shadow-sm: 0 1px 3px rgba(19, 27, 46, 0.05);
+      --shadow-md: 0px 4px 16px rgba(19, 27, 46, 0.06); /* Elevación Level 1 Stitch */
+      --shadow-lg: 0px 12px 32px rgba(19, 27, 46, 0.12);  /* Elevación Level 2 Stitch */
       
-      /* Escalas de redondeado */
-      --radius-sm: 4px;
-      --radius: 8px;                  /* 0.5rem (Estándar) */
-      --radius-lg: 16px;              /* 1rem (Contenedores grandes / modales) */
+      /* Escalas de redondeado Stitch */
+      --radius-sm: 6px;
+      --radius: 12px;                 /* Estándar Stitch */
+      --radius-lg: 18px;              /* Contenedores grandes / modales */
+      --radius-full: 999px;
       
       --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }
@@ -103,10 +111,12 @@
       color: inherit;
     }
 
-    /* HEADER (Fijo arriba, 64px) */
+    /* HEADER (Fijo arriba, 64px) - ESTILO STITCH */
     header {
       height: 64px;
-      background-color: var(--surface);
+      background-color: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
@@ -115,6 +125,7 @@
       position: relative;
       z-index: 50;
       flex-shrink: 0;
+      box-shadow: var(--shadow-sm);
     }
 
     .header-left {
@@ -924,7 +935,7 @@
       display: flex;
       align-items: center;
       padding: 0 24px;
-      gap: 4px;
+      gap: 6px;
       flex-shrink: 0;
       z-index: 40;
     }
@@ -934,7 +945,7 @@
       border: none;
       padding: 0 16px;
       height: 38px;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       font-size: 13px;
       font-weight: 500;
       color: var(--text-2);
@@ -948,12 +959,12 @@
 
     .tab-btn:hover {
       color: var(--text-1);
-      background-color: #F8FAFC;
+      background-color: var(--surface-base);
     }
 
     .tab-btn.active {
       color: var(--clinic-accent);
-      background-color: rgba(var(--clinic-accent-rgb), 0.08);
+      background-color: rgba(var(--clinic-accent-rgb), 0.1);
       font-weight: 600;
     }
 
@@ -971,8 +982,8 @@
       min-width: 240px;
       background-color: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      box-shadow: var(--shadow-md);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
       padding: 6px;
       z-index: 50;
     }
@@ -994,7 +1005,7 @@
       cursor: pointer;
       transition: var(--transition);
     }
-    .tab-dropdown-item:hover { background-color: #F8FAFC; }
+    .tab-dropdown-item:hover { background-color: var(--surface-base); }
     .tab-dropdown-divider { height: 1px; background-color: var(--border); margin: 6px 4px; }
     .tab-dropdown-submenu-wrap { position: relative; }
     .tab-dropdown-submenu {
@@ -1005,8 +1016,8 @@
       min-width: 220px;
       background-color: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      box-shadow: var(--shadow-md);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
       padding: 6px;
     }
     .tab-dropdown-submenu-wrap:hover .tab-dropdown-submenu { display: block; }
@@ -1049,7 +1060,7 @@
       color: var(--text-2);
       width: 64px;
       height: 64px;
-      border-radius: 12px;
+      border-radius: var(--radius);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1093,9 +1104,8 @@
 
     .section-header {
       display: flex;
-      justify-content: justify-between;
-      align-items: center;
       justify-content: space-between;
+      align-items: center;
     }
 
     .section-title-group h1 {
@@ -1111,24 +1121,25 @@
     }
 
     .btn-primary {
-      background-color: var(--clinic-accent);
-      color: var(--surface);
+      background: linear-gradient(135deg, var(--clinic-accent) 0%, var(--clinic-accent-light) 100%);
+      color: #FFFFFF;
       border: none;
-      padding: 8px 16px;
+      padding: 9px 18px;
       border-radius: var(--radius);
-      font-weight: 500;
+      font-weight: 600;
       font-size: 13px;
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 8px;
-      box-shadow: 0 1px 2px rgba(var(--clinic-accent-rgb), 0.1);
+      box-shadow: 0 4px 12px rgba(var(--clinic-accent-rgb), 0.22);
       transition: var(--transition);
     }
 
     .btn-primary:hover {
-      background-color: var(--clinic-accent-light);
+      box-shadow: 0 6px 16px rgba(var(--clinic-accent-rgb), 0.32);
       transform: translateY(-1px);
+      filter: brightness(1.04);
     }
 
     /* Panel de Búsqueda */
@@ -5852,13 +5863,18 @@
                   <label class="input-label" for="cierre-caja-fecha">Fecha a cerrar</label>
                   <input type="date" id="cierre-caja-fecha" class="input-control" style="padding-left:12px;" onchange="onCambiarFechaCierreCaja()">
                 </div>
+                <div class="input-group" style="max-width:220px;">
+                  <label class="input-label" for="cierre-caja-base">Base de caja (efectivo inicial)</label>
+                  <input type="number" id="cierre-caja-base" class="input-control" style="padding-left:12px;" oninput="actualizarBaseCajaManual(this.value)" placeholder="0">
+                </div>
                 <span id="cierre-caja-estado-badge"></span>
               </div>
+              <div id="cierre-caja-base-hint" style="font-size:12.5px;color:var(--text-2);margin:-6px 0 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;"></div>
 
               <div class="ventas-kpi-grid" id="cierre-caja-kpi-grid" style="margin-bottom:18px;"></div>
 
               <table class="results-table">
-                <thead><tr><th>Tipo</th><th>Forma de pago</th><th>Valor sistema</th><th>Valor contado</th><th>Diferencia</th></tr></thead>
+                <thead><tr><th>Tipo</th><th>Forma de pago</th><th>Valor sistema</th></tr></thead>
                 <tbody id="cierre-caja-table-body"></tbody>
               </table>
 
@@ -5867,7 +5883,7 @@
                   <i data-lucide="wallet" style="width:15px;height:15px;color:var(--clinic-accent);"></i> Total por método de pago
                 </div>
                 <table class="results-table">
-                  <thead><tr><th>Método de pago</th><th>Ingresos</th><th>Egresos</th><th>Total sistema</th><th>Total contado</th><th>Diferencia</th></tr></thead>
+                  <thead><tr><th>Método de pago</th><th>Base</th><th>Ingresos</th><th>Egresos</th><th>Total sistema</th><th>Total contado</th><th>Diferencia</th></tr></thead>
                   <tbody id="cierre-caja-metodos-body"></tbody>
                 </table>
               </div>
@@ -19895,17 +19911,22 @@
 
     // Cierres de caja (arqueos) — uno por fecha. `filas` guarda el
     // desglose Tipo+Forma de pago con el valor de sistema (suma de
-    // VENTAS_MOVIMIENTOS de esa fecha) y el valor contado manualmente,
-    // ver "MÓDULO: VENTAS — CIERRE DE CAJA" más abajo para el flujo
-    // completo. Dos ejemplos mock: un día ya cerrado (valores cuadrados)
-    // y un día dejado pendiente (contado sin diligenciar todavía).
+    // VENTAS_MOVIMIENTOS de esa fecha); `contadoPorMetodo` lo contado
+    // manualmente, un valor por método de pago; `baseEfectivo` con cuánto
+    // se abrió la caja y `saldoFinalEfectivo` con cuánto quedó (la base del
+    // día siguiente). Ver "MÓDULO: VENTAS — CIERRE DE CAJA" más abajo para
+    // el flujo completo. Dos ejemplos mock: un día ya cerrado (valores
+    // cuadrados) y un día dejado pendiente (contado sin diligenciar todavía).
     const VENTAS_ARQUEOS = [
       { fecha: '2026-07-04', estado: 'Cerrado',
-        filas: [ { tipo: 'Egreso', metodoPago: 'Transferencia', sistemaValor: 2500000, contado: 2500000 } ],
-        sistemaIngresos: 0, sistemaEgresos: 2500000, contadoIngresos: 0, contadoEgresos: 2500000,
+        filas: [ { tipo: 'Egreso', metodoPago: 'Transferencia', sistemaValor: 2500000 } ],
+        contadoPorMetodo: { Transferencia: -2500000, Efectivo: 150000 },
+        baseEfectivo: 150000, saldoFinalEfectivo: 150000,
+        sistemaIngresos: 0, sistemaEgresos: 2500000, contadoIngresos: -2350000, contadoEgresos: 0,
         cerradoPor: 'Dr. Sebastián Ríos', cerradoEn: '2026-07-04T19:05:00' },
       { fecha: '2026-06-25', estado: 'Pendiente',
-        filas: [ { tipo: 'Egreso', metodoPago: 'Transferencia', sistemaValor: 1800000, contado: null } ],
+        filas: [ { tipo: 'Egreso', metodoPago: 'Transferencia', sistemaValor: 1800000 } ],
+        contadoPorMetodo: {}, baseEfectivo: 150000, saldoFinalEfectivo: 150000,
         sistemaIngresos: 0, sistemaEgresos: 1800000, contadoIngresos: 0, contadoEgresos: 0,
         cerradoPor: null, cerradoEn: null }
     ];
@@ -21413,22 +21434,30 @@
         <tr>
           <td>${f.tipo}</td><td>${f.metodoPago}</td>
           <td style="text-align:right;">${formatCOP(f.sistemaValor)}</td>
-          <td style="text-align:right;">${f.contado == null ? '—' : formatCOP(f.contado)}</td>
-        </tr>`).join('') : `<tr><td colspan="4" style="text-align:center;color:var(--text-2);">Sin filas</td></tr>`;
-      const metodos = agruparTotalesPorMetodoPago(a.filas);
+        </tr>`).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--text-2);">Sin filas</td></tr>`;
+      const baseEfectivo = Number(a.baseEfectivo) || 0;
+      const metodos = construirFilasMetodoArqueo(a.filas, contadoPorMetodoDeArqueo(a), baseEfectivo);
+      const sumar = campo => metodos.reduce((s, t) => s + (t[campo] || 0), 0);
+      const faltaContado = metodos.some(t => t.contado == null);
       const metodosHTML = metodos.length ? metodos.map(t => `
         <tr>
           <td>${t.metodoPago}</td>
+          <td style="text-align:right;">${t.metodoPago === CIERRE_METODO_BASE ? formatCOP(t.base) : '—'}</td>
           <td style="text-align:right;">${formatCOP(t.ingresos)}</td>
           <td style="text-align:right;">${formatCOP(t.egresos)}</td>
-          <td style="text-align:right;font-weight:700;">${formatCOP(t.neto)}</td>
+          <td style="text-align:right;font-weight:700;">${formatCOP(t.sistema)}</td>
+          <td style="text-align:right;">${t.contado == null ? '—' : formatCOP(t.contado)}</td>
+          <td style="text-align:right;">${t.diferencia == null ? '—' : formatCOPDiff(t.diferencia)}</td>
         </tr>`).join('') + `
         <tr>
           <td style="font-weight:700;">Total general</td>
-          <td style="text-align:right;font-weight:700;">${formatCOP(metodos.reduce((s, t) => s + t.ingresos, 0))}</td>
-          <td style="text-align:right;font-weight:700;">${formatCOP(metodos.reduce((s, t) => s + t.egresos, 0))}</td>
-          <td style="text-align:right;font-weight:700;">${formatCOP(metodos.reduce((s, t) => s + t.neto, 0))}</td>
-        </tr>` : `<tr><td colspan="4" style="text-align:center;color:var(--text-2);">Sin filas</td></tr>`;
+          <td style="text-align:right;font-weight:700;">${formatCOP(sumar('base'))}</td>
+          <td style="text-align:right;font-weight:700;">${formatCOP(sumar('ingresos'))}</td>
+          <td style="text-align:right;font-weight:700;">${formatCOP(sumar('egresos'))}</td>
+          <td style="text-align:right;font-weight:700;">${formatCOP(sumar('sistema'))}</td>
+          <td style="text-align:right;font-weight:700;">${faltaContado ? '—' : formatCOP(sumar('contado'))}</td>
+          <td style="text-align:right;font-weight:700;">${faltaContado ? '—' : formatCOPDiff(sumar('contado') - sumar('sistema'))}</td>
+        </tr>` : `<tr><td colspan="7" style="text-align:center;color:var(--text-2);">Sin filas</td></tr>`;
       const movsHTML = movs.length ? movs.map(m => `
         <tr>
           <td>${m.tipo}</td><td>${m.categoria}</td><td>${m.concepto}</td>
@@ -21440,17 +21469,19 @@
         <div class="info-label">Estado</div><div class="info-value">${a.estado}</div>
         ${a.cerradoPor ? `<div class="info-label">Cerrado por</div><div class="info-value">${a.cerradoPor}</div>` : ''}
         ${a.cerradoEn ? `<div class="info-label">Cerrado en</div><div class="info-value">${new Date(a.cerradoEn).toLocaleString('es-CO')}</div>` : ''}
+        <div class="info-label">Base de caja (efectivo inicial)</div><div class="info-value">${formatCOP(baseEfectivo)}</div>
         <div class="info-label">Ingresos (sistema)</div><div class="info-value">${formatCOP(a.sistemaIngresos)}</div>
         <div class="info-label">Egresos (sistema)</div><div class="info-value">${formatCOP(a.sistemaEgresos)}</div>
         <div class="info-label">Neto (sistema)</div><div class="info-value" style="font-weight:700;">${formatCOP(a.sistemaIngresos - a.sistemaEgresos)}</div>
+        <div class="info-label">Efectivo que queda en caja (base del día siguiente)</div><div class="info-value" style="font-weight:700;">${formatCOP(saldoFinalEfectivoDeArqueo(a))}</div>
         <div class="info-label" style="margin-top:6px;">Desglose por tipo y forma de pago</div>
         <table class="results-table" style="margin-bottom:14px;">
-          <thead><tr><th>Tipo</th><th>Forma de pago</th><th style="text-align:right;">Sistema</th><th style="text-align:right;">Contado</th></tr></thead>
+          <thead><tr><th>Tipo</th><th>Forma de pago</th><th style="text-align:right;">Sistema</th></tr></thead>
           <tbody>${filasHTML}</tbody>
         </table>
         <div class="info-label">Total por método de pago</div>
         <table class="results-table" style="margin-bottom:14px;">
-          <thead><tr><th>Método de pago</th><th style="text-align:right;">Ingresos</th><th style="text-align:right;">Egresos</th><th style="text-align:right;">Total</th></tr></thead>
+          <thead><tr><th>Método de pago</th><th style="text-align:right;">Base</th><th style="text-align:right;">Ingresos</th><th style="text-align:right;">Egresos</th><th style="text-align:right;">Total sistema</th><th style="text-align:right;">Contado</th><th style="text-align:right;">Dif.</th></tr></thead>
           <tbody>${metodosHTML}</tbody>
         </table>
         <div class="info-label">Detalle de movimientos del día</div>
@@ -21507,19 +21538,40 @@
     // ── MÓDULO: VENTAS — CIERRE DE CAJA (ARQUEO) ──────────────────
     // Agrupa VENTAS_MOVIMIENTOS de una fecha por Tipo+Forma de pago
     // (criterio pedido: "se agrupen por tipo, forma de pago; sumando
-    // individualmente ingresos y egresos"). El cierre solo se completa
-    // cuando TODAS las filas tienen un valor contado y ese valor coincide
-    // exactamente con el valor de sistema; si no cuadra, el día se puede
-    // guardar como Pendiente (guardarCierreCajaPendiente) y retomarse
-    // después sin perder lo ya contado. El botón "Cerrar día" NO se
-    // deshabilita de forma preventiva por esta razón (a diferencia del
-    // bloqueo por ventana de 24h, ver cierreBloqueado más abajo) — se
-    // deja SIEMPRE clickeable mientras el día no esté bloqueado, y es
-    // intentarCerrarCaja() quien valida y hace showToast() con el motivo
-    // exacto por el que no cerró (sin filas / falta contado / no cuadra).
-    // Si se agrega otro flujo de "acción con condiciones" similar, seguir
-    // este criterio en vez de deshabilitar el botón sin explicación.
-    let cierreCajaState = { fecha: VENTAS_HOY, filas: [] };
+    // individualmente ingresos y egresos"). Esa primera tabla es hoy SOLO
+    // informativa: el arqueo se digita en la segunda tabla ("Total por
+    // método de pago"), un input por método en la columna "Total contado"
+    // — el usuario cuenta la caja UNA vez por método, no una vez por cada
+    // combinación Tipo+Forma de pago. Por eso `cierreCajaState.filas` ya
+    // no lleva `contado`: el contado vive en `contadoPorMetodo`
+    // (mapa metodoPago → valor neto contado, puede ser negativo cuando el
+    // método tuvo más egresos que ingresos, ej. Transferencia).
+    // El cierre solo se completa cuando TODOS los métodos tienen un valor
+    // contado y ese valor coincide exactamente con su total de sistema; si
+    // no cuadra, el día se puede guardar como Pendiente
+    // (guardarCierreCajaPendiente) y retomarse después sin perder lo ya
+    // contado. El botón "Cerrar día" NO se deshabilita de forma preventiva
+    // por esta razón (a diferencia del bloqueo por ventana de 24h, ver
+    // cierreBloqueado más abajo) — se deja SIEMPRE clickeable mientras el
+    // día no esté bloqueado, y es intentarCerrarCaja() quien valida y hace
+    // showToast() con el motivo exacto por el que no cerró (sin filas /
+    // falta contado / no cuadra). Si se agrega otro flujo de "acción con
+    // condiciones" similar, seguir este criterio en vez de deshabilitar el
+    // botón sin explicación.
+    //
+    // BASE DE CAJA: el día NO arranca en cero. La plata que quedó contada
+    // en efectivo al cerrar el día anterior es la base con la que se abre
+    // el siguiente, así que el total de sistema del efectivo es
+    // `base + ingresos - egresos` y es contra ESE número que se compara lo
+    // contado. La base es derivada, no digitada: sale del `saldoFinalEfectivo`
+    // del arqueo inmediatamente anterior (ver baseCajaDesdeCierreAnterior) y
+    // el input solo se habilita cuando NO existe ningún cierre previo — el
+    // caso del primer día de uso, donde alguien tiene que decir con cuánto
+    // se abrió. Solo aplica a Efectivo: tarjeta/transferencia/débito no se
+    // "guardan en el cajón", su contado es el neto que reporta el banco o el
+    // datáfono ese día y arrancan siempre en cero.
+    const CIERRE_METODO_BASE = 'Efectivo';
+    let cierreCajaState = { fecha: VENTAS_HOY, filas: [], contadoPorMetodo: {}, baseEfectivo: 0, baseDerivadaDe: null, baseEditable: true };
 
     function agruparMovimientosParaArqueo(fecha) {
       const map = new Map();
@@ -21534,75 +21586,188 @@
 
     // Segundo nivel de agregación del arqueo: toma las MISMAS filas
     // (agrupadas por Tipo+Forma de pago) y las colapsa por Forma de pago,
-    // cruzando Ingresos contra Egresos para dar el total real que quedó en
-    // cada método (efectivo, tarjeta, transferencia...). No vuelve a leer
-    // VENTAS_MOVIMIENTOS a propósito: así el "contado" que el usuario está
-    // digitando fila por fila se refleja acá en vivo, y la misma función
-    // sirve para un arqueo ya guardado (colilla impresa), que solo conserva
-    // sus filas, no los movimientos originales.
+    // cruzando Ingresos contra Egresos para dar el movimiento neto de cada
+    // método (efectivo, tarjeta, transferencia...). No vuelve a leer
+    // VENTAS_MOVIMIENTOS a propósito: la misma función sirve para un arqueo
+    // ya guardado (colilla impresa), que solo conserva sus filas, no los
+    // movimientos originales.
     function agruparTotalesPorMetodoPago(filas) {
       const map = new Map();
       (filas || []).forEach(f => {
-        if (!map.has(f.metodoPago)) map.set(f.metodoPago, { metodoPago: f.metodoPago, ingresos: 0, egresos: 0, contadoIngresos: 0, contadoEgresos: 0, faltaContado: false });
+        if (!map.has(f.metodoPago)) map.set(f.metodoPago, { metodoPago: f.metodoPago, ingresos: 0, egresos: 0 });
         const t = map.get(f.metodoPago);
-        if (f.tipo === 'Ingreso') { t.ingresos += f.sistemaValor; t.contadoIngresos += (f.contado || 0); }
-        else { t.egresos += f.sistemaValor; t.contadoEgresos += (f.contado || 0); }
-        if (f.contado == null) t.faltaContado = true;
+        if (f.tipo === 'Ingreso') t.ingresos += f.sistemaValor; else t.egresos += f.sistemaValor;
       });
       return Array.from(map.values())
-        .map(t => ({ ...t, neto: t.ingresos - t.egresos, contadoNeto: t.contadoIngresos - t.contadoEgresos }))
+        .map(t => ({ ...t, neto: t.ingresos - t.egresos }))
         .sort((a, b) => a.metodoPago.localeCompare(b.metodoPago));
     }
 
+    // Vista definitiva del arqueo: los totales por método + la base de caja
+    // (solo Efectivo) + lo contado + la diferencia. Es la que pinta la tabla
+    // en pantalla, la que valida el cierre y la que arma la colilla, así que
+    // recibe explícitamente `contadoPorMetodo` y `baseEfectivo` en vez de
+    // leerlos del state — un arqueo guardado los trae en su propio registro.
+    // Si hay base pero ese día no tuvo NINGÚN movimiento en efectivo, la fila
+    // de Efectivo se agrega igual: la plata sigue en el cajón y hay que
+    // contarla para poder cerrar.
+    function construirFilasMetodoArqueo(filas, contadoPorMetodo, baseEfectivo) {
+      const base = Number(baseEfectivo) || 0;
+      const totales = agruparTotalesPorMetodoPago(filas);
+      if (base && !totales.some(t => t.metodoPago === CIERRE_METODO_BASE)) {
+        totales.push({ metodoPago: CIERRE_METODO_BASE, ingresos: 0, egresos: 0, neto: 0 });
+        totales.sort((a, b) => a.metodoPago.localeCompare(b.metodoPago));
+      }
+      const contados = contadoPorMetodo || {};
+      return totales.map(t => {
+        const baseFila = t.metodoPago === CIERRE_METODO_BASE ? base : 0;
+        const sistema = baseFila + t.neto;
+        const contado = contados[t.metodoPago] == null ? null : Number(contados[t.metodoPago]);
+        return { ...t, base: baseFila, sistema, contado, diferencia: contado == null ? null : contado - sistema };
+      });
+    }
+
+    // Compatibilidad con arqueos viejos: antes el contado se digitaba por
+    // fila (Tipo+Forma de pago) y vivía dentro de `filas`. Si el registro no
+    // trae `contadoPorMetodo`, se reconstruye colapsando esas filas
+    // (ingresos contados − egresos contados), y solo se da por contado un
+    // método cuando TODAS sus filas tenían valor — igual que antes.
+    function contadoPorMetodoDeArqueo(a) {
+      if (a && a.contadoPorMetodo && Object.keys(a.contadoPorMetodo).length) return { ...a.contadoPorMetodo };
+      const acc = {};
+      (a && a.filas || []).forEach(f => {
+        if (!(f.metodoPago in acc)) acc[f.metodoPago] = { neto: 0, completo: true };
+        if (f.contado == null) acc[f.metodoPago].completo = false;
+        else acc[f.metodoPago].neto += (f.tipo === 'Ingreso' ? f.contado : -f.contado);
+      });
+      const out = {};
+      Object.entries(acc).forEach(([metodo, v]) => { if (v.completo) out[metodo] = v.neto; });
+      return out;
+    }
+
+    // Plata que quedó en el cajón al terminar ese día = lo contado en
+    // efectivo si el arqueo se diligenció, y si no el valor de sistema
+    // (base + ingresos − egresos). Se guarda en el registro
+    // (`saldoFinalEfectivo`) para no tener que recalcular la cadena entera,
+    // pero se recalcula igual para los arqueos previos a esta función.
+    function saldoFinalEfectivoDeArqueo(a) {
+      if (!a) return 0;
+      if (a.saldoFinalEfectivo != null) return Number(a.saldoFinalEfectivo) || 0;
+      const metodos = construirFilasMetodoArqueo(a.filas, contadoPorMetodoDeArqueo(a), a.baseEfectivo || 0);
+      const efectivo = metodos.find(m => m.metodoPago === CIERRE_METODO_BASE);
+      if (!efectivo) return Number(a.baseEfectivo) || 0;
+      return efectivo.contado != null ? efectivo.contado : efectivo.sistema;
+    }
+
+    // Cierre inmediatamente anterior a `fecha` (el más reciente con fecha
+    // estrictamente menor), sin importar si quedó Cerrado o Pendiente: la
+    // plata del cajón no depende de que el arqueo se haya alcanzado a
+    // cerrar. Devuelve también los días intermedios con movimientos de
+    // efectivo que quedaron SIN arqueo, para poder advertir que la base
+    // está incompleta en vez de arrastrar un número silenciosamente malo.
+    function baseCajaDesdeCierreAnterior(fecha) {
+      const anterior = VENTAS_ARQUEOS
+        .filter(a => a.fecha < fecha)
+        .sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+      if (!anterior) return null;
+      const diasSinCerrar = Array.from(new Set(VENTAS_MOVIMIENTOS
+        .filter(m => m.fecha > anterior.fecha && m.fecha < fecha && m.metodoPago === CIERRE_METODO_BASE)
+        .map(m => m.fecha)))
+        .filter(f => !VENTAS_ARQUEOS.some(a => a.fecha === f))
+        .sort();
+      return { fecha: anterior.fecha, estado: anterior.estado, saldo: saldoFinalEfectivoDeArqueo(anterior), diasSinCerrar };
+    }
+
     function renderCierreCajaTotalesPorMetodo() {
-      const totales = agruparTotalesPorMetodoPago(cierreCajaState.filas);
+      const totales = construirFilasMetodoArqueo(cierreCajaState.filas, cierreCajaState.contadoPorMetodo, cierreCajaState.baseEfectivo);
+      const bloqueado = cierreBloqueado(cierreCajaState.fecha);
       const tbody = document.getElementById('cierre-caja-metodos-body');
       if (!totales.length) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No hay movimientos registrados para esta fecha</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-2);">No hay movimientos registrados para esta fecha</td></tr>`;
         return;
       }
-      const filasHTML = totales.map(t => {
-        const diff = t.faltaContado ? null : (t.contadoNeto - t.neto);
-        return `
+      const filasHTML = totales.map(t => `
         <tr>
           <td style="font-weight:600;">${t.metodoPago}</td>
+          <td style="color:var(--text-2);">${t.metodoPago === CIERRE_METODO_BASE ? formatCOP(t.base) : '—'}</td>
           <td style="color:var(--success);">${formatCOP(t.ingresos)}</td>
           <td style="color:var(--danger);">${formatCOP(t.egresos)}</td>
-          <td style="font-weight:600;">${formatCOP(t.neto)}</td>
-          <td>${t.faltaContado ? '—' : formatCOP(t.contadoNeto)}</td>
-          <td style="font-weight:600;color:${diff == null ? 'var(--text-2)' : (diff === 0 ? 'var(--success)' : 'var(--danger)')};">${diff == null ? '—' : formatCOPDiff(diff)}</td>
-        </tr>`;
-      }).join('');
+          <td style="font-weight:600;">${formatCOP(t.sistema)}</td>
+          <td><input type="number" class="input-control" style="padding-left:12px;max-width:160px;" id="cierre-contado-${cssIdSafe(t.metodoPago)}" value="${t.contado == null ? '' : t.contado}" ${bloqueado ? 'disabled' : ''} oninput="actualizarContadoMetodoCierreCaja('${escapeJsAttr(t.metodoPago)}', this.value)" placeholder="0"></td>
+          <td id="cierre-diff-${cssIdSafe(t.metodoPago)}" style="font-weight:600;color:${t.diferencia == null ? 'var(--text-2)' : (t.diferencia === 0 ? 'var(--success)' : 'var(--danger)')};">${t.diferencia == null ? '—' : formatCOPDiff(t.diferencia)}</td>
+        </tr>`).join('');
       const g = totales.reduce((s, t) => ({
-        ingresos: s.ingresos + t.ingresos, egresos: s.egresos + t.egresos,
-        contadoNeto: s.contadoNeto + t.contadoNeto, faltaContado: s.faltaContado || t.faltaContado
-      }), { ingresos: 0, egresos: 0, contadoNeto: 0, faltaContado: false });
-      const gNeto = g.ingresos - g.egresos;
-      const gDiff = g.faltaContado ? null : (g.contadoNeto - gNeto);
+        base: s.base + t.base, ingresos: s.ingresos + t.ingresos, egresos: s.egresos + t.egresos,
+        sistema: s.sistema + t.sistema, contado: s.contado + (t.contado || 0), faltaContado: s.faltaContado || t.contado == null
+      }), { base: 0, ingresos: 0, egresos: 0, sistema: 0, contado: 0, faltaContado: false });
+      const gDiff = g.faltaContado ? null : (g.contado - g.sistema);
       tbody.innerHTML = filasHTML + `
         <tr style="border-top:2px solid var(--border);">
           <td style="font-weight:700;">Total general</td>
+          <td style="font-weight:700;color:var(--text-2);">${formatCOP(g.base)}</td>
           <td style="font-weight:700;color:var(--success);">${formatCOP(g.ingresos)}</td>
           <td style="font-weight:700;color:var(--danger);">${formatCOP(g.egresos)}</td>
-          <td style="font-weight:700;">${formatCOP(gNeto)}</td>
-          <td style="font-weight:700;">${g.faltaContado ? '—' : formatCOP(g.contadoNeto)}</td>
-          <td style="font-weight:700;color:${gDiff == null ? 'var(--text-2)' : (gDiff === 0 ? 'var(--success)' : 'var(--danger)')};">${gDiff == null ? '—' : formatCOPDiff(gDiff)}</td>
+          <td style="font-weight:700;">${formatCOP(g.sistema)}</td>
+          <td id="cierre-metodos-total-contado" style="font-weight:700;">${g.faltaContado ? '—' : formatCOP(g.contado)}</td>
+          <td id="cierre-metodos-total-diff" style="font-weight:700;color:${gDiff == null ? 'var(--text-2)' : (gDiff === 0 ? 'var(--success)' : 'var(--danger)')};">${gDiff == null ? '—' : formatCOPDiff(gDiff)}</td>
         </tr>`;
+    }
+
+    // Los métodos de pago son texto libre del catálogo ('Débito automático'),
+    // así que no sirven tal cual como id de elemento ni dentro de un onclick:
+    // cssIdSafe() los aplana a [a-z0-9-] para el id y escapeJsAttr() los deja
+    // pasables como string JS dentro de un atributo HTML (comilla simple para
+    // el JS, comilla doble y & para el atributo).
+    function cssIdSafe(txt) { return String(txt).replace(/[^a-zA-Z0-9]+/g, '-'); }
+    function escapeJsAttr(txt) {
+      return String(txt).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    }
+
+    // De dónde sale la base del día que se está abriendo. Tres casos:
+    //  'congelada' — el día ya está Cerrado: se conserva la base con la que
+    //     se cerró y NO se re-deriva. Un cierre firmado no puede cambiar de
+    //     números porque después se corrija un día anterior; además los
+    //     arqueos previos a esta función no tienen base (null → 0) y
+    //     re-derivarlos les inventaría diferencias que nunca existieron.
+    //  'heredada' — hay un cierre anterior: la base es su saldo final en
+    //     efectivo, siempre recalculado, para que corregir el día de ayer
+    //     dentro de la ventana de 24h arrastre el de hoy.
+    //  'manual' — no hay ningún cierre anterior (primer día de uso): es el
+    //     único caso en que el input de base se habilita.
+    function resolverBaseCierreCaja(fecha, existente, anterior) {
+      if (existente && existente.estado === 'Cerrado') {
+        return { base: existente.baseEfectivo != null ? Number(existente.baseEfectivo) : 0, fuente: 'congelada' };
+      }
+      if (anterior) return { base: anterior.saldo, fuente: 'heredada' };
+      return { base: existente && existente.baseEfectivo != null ? Number(existente.baseEfectivo) : 0, fuente: 'manual' };
     }
 
     function abrirCierreCajaEnFecha(fecha) {
       document.getElementById('cierre-caja-fecha').value = fecha;
       const existente = VENTAS_ARQUEOS.find(a => a.fecha === fecha);
-      const filasSistema = agruparMovimientosParaArqueo(fecha);
+      const anterior = baseCajaDesdeCierreAnterior(fecha);
+      const base = resolverBaseCierreCaja(fecha, existente, anterior);
       cierreCajaState = {
         fecha,
-        filas: filasSistema.map(f => {
-          const guardada = existente && existente.filas.find(g => g.tipo === f.tipo && g.metodoPago === f.metodoPago);
-          return { ...f, contado: guardada && guardada.contado != null ? guardada.contado : null };
-        })
+        filas: agruparMovimientosParaArqueo(fecha),
+        contadoPorMetodo: existente ? contadoPorMetodoDeArqueo(existente) : {},
+        baseEfectivo: base.base,
+        baseFuente: base.fuente,
+        baseDerivadaDe: anterior,
+        baseEditable: base.fuente === 'manual'
       };
       renderCierreCajaTable();
       renderCierreCajaHistorial();
+    }
+
+    function actualizarBaseCajaManual(value) {
+      if (!cierreCajaState.baseEditable) return;
+      cierreCajaState.baseEfectivo = value === '' ? 0 : Number(value);
+      // La base cambia el "Total sistema" del efectivo, así que la tabla de
+      // métodos se repinta entera. Acá sí se puede: el foco está en el input
+      // de base, que vive fuera de esa tabla.
+      renderCierreCajaTotalesPorMetodo();
+      renderCierreCajaResumen();
     }
 
     function onCambiarFechaCierreCaja() {
@@ -21616,38 +21781,56 @@
 
     function calcularResumenCierreCaja() {
       const filas = cierreCajaState.filas;
-      const sumar = (tipo, campo) => filas.filter(f => f.tipo === tipo).reduce((s, f) => s + (campo === 'sistema' ? f.sistemaValor : (f.contado || 0)), 0);
-      const sistemaIngresos = sumar('Ingreso', 'sistema'), sistemaEgresos = sumar('Egreso', 'sistema');
-      const contadoIngresos = sumar('Ingreso', 'contado'), contadoEgresos = sumar('Egreso', 'contado');
-      const todosContados = filas.length > 0 && filas.every(f => f.contado != null);
-      const cuadra = todosContados && filas.every(f => f.contado === f.sistemaValor);
-      return { sistemaIngresos, sistemaEgresos, sistemaNeto: sistemaIngresos - sistemaEgresos, contadoIngresos, contadoEgresos, contadoNeto: contadoIngresos - contadoEgresos, todosContados, cuadra };
+      const sumar = tipo => filas.filter(f => f.tipo === tipo).reduce((s, f) => s + f.sistemaValor, 0);
+      const sistemaIngresos = sumar('Ingreso'), sistemaEgresos = sumar('Egreso');
+      const metodos = construirFilasMetodoArqueo(filas, cierreCajaState.contadoPorMetodo, cierreCajaState.baseEfectivo);
+      const base = Number(cierreCajaState.baseEfectivo) || 0;
+      const efectivo = metodos.find(m => m.metodoPago === CIERRE_METODO_BASE);
+      const efectivoEsperado = efectivo ? efectivo.sistema : base;
+      const contadoTotal = metodos.reduce((s, m) => s + (m.contado || 0), 0);
+      const sistemaTotal = metodos.reduce((s, m) => s + m.sistema, 0);
+      const todosContados = metodos.length > 0 && metodos.every(m => m.contado != null);
+      const cuadra = todosContados && metodos.every(m => m.diferencia === 0);
+      // Con lo que se abre el día siguiente: lo contado en efectivo si ya se
+      // arqueó, y si no lo que el sistema dice que debería haber en el cajón.
+      const saldoFinalEfectivo = efectivo && efectivo.contado != null ? efectivo.contado : efectivoEsperado;
+      return {
+        metodos, base, efectivoEsperado, saldoFinalEfectivo,
+        sistemaIngresos, sistemaEgresos, sistemaNeto: sistemaIngresos - sistemaEgresos,
+        contadoTotal, sistemaTotal, todosContados, cuadra
+      };
     }
 
     function renderCierreCajaTable() {
       const filas = cierreCajaState.filas;
-      const bloqueado = cierreBloqueado(cierreCajaState.fecha);
-      document.getElementById('cierre-caja-table-body').innerHTML = filas.length ? filas.map((f, i) => {
-        const diff = f.contado == null ? null : (f.contado - f.sistemaValor);
-        return `
+      document.getElementById('cierre-caja-table-body').innerHTML = filas.length ? filas.map(f => `
         <tr>
           <td><span class="status-badge ${f.tipo === 'Ingreso' ? 'status-badge-activo' : 'status-badge-pendiente'}">${f.tipo}</span></td>
           <td>${f.metodoPago}</td>
           <td>${formatCOP(f.sistemaValor)}</td>
-          <td><input type="number" class="input-control" style="padding-left:12px;max-width:160px;" id="cierre-contado-${i}" value="${f.contado == null ? '' : f.contado}" ${bloqueado ? 'disabled' : ''} oninput="actualizarContadoCierreCaja(${i}, this.value)" placeholder="0"></td>
-          <td id="cierre-diff-${i}" style="font-weight:600;color:${diff == null ? 'var(--text-2)' : (diff === 0 ? 'var(--success)' : 'var(--danger)')};">${diff == null ? '—' : formatCOPDiff(diff)}</td>
-        </tr>`;
-      }).join('') : `<tr><td colspan="5" style="text-align:center;color:var(--text-2);">No hay movimientos registrados para esta fecha</td></tr>`;
+        </tr>`).join('') : `<tr><td colspan="3" style="text-align:center;color:var(--text-2);">No hay movimientos registrados para esta fecha</td></tr>`;
+      renderCierreCajaTotalesPorMetodo();
       renderCierreCajaResumen();
     }
 
-    function actualizarContadoCierreCaja(i, value) {
-      const fila = cierreCajaState.filas[i];
-      fila.contado = value === '' ? null : Number(value);
-      const diff = fila.contado == null ? null : (fila.contado - fila.sistemaValor);
-      const diffEl = document.getElementById(`cierre-diff-${i}`);
-      diffEl.textContent = diff == null ? '—' : formatCOPDiff(diff);
-      diffEl.style.color = diff == null ? 'var(--text-2)' : (diff === 0 ? 'var(--success)' : 'var(--danger)');
+    // Actualiza la fila del método EN SITIO en vez de repintar la tabla:
+    // el input que el usuario está usando vive ahora dentro de esa misma
+    // tabla (antes estaba en la de Tipo+Forma de pago), así que un
+    // innerHTML por cada tecla le quitaría el foco a mitad del número.
+    function actualizarContadoMetodoCierreCaja(metodo, value) {
+      if (value === '') delete cierreCajaState.contadoPorMetodo[metodo];
+      else cierreCajaState.contadoPorMetodo[metodo] = Number(value);
+      const r = calcularResumenCierreCaja();
+      const fila = r.metodos.find(m => m.metodoPago === metodo);
+      const pintarDiff = (el, diff) => {
+        if (!el) return;
+        el.textContent = diff == null ? '—' : formatCOPDiff(diff);
+        el.style.color = diff == null ? 'var(--text-2)' : (diff === 0 ? 'var(--success)' : 'var(--danger)');
+      };
+      if (fila) pintarDiff(document.getElementById(`cierre-diff-${cssIdSafe(metodo)}`), fila.diferencia);
+      const totalContadoEl = document.getElementById('cierre-metodos-total-contado');
+      if (totalContadoEl) totalContadoEl.textContent = r.todosContados ? formatCOP(r.contadoTotal) : '—';
+      pintarDiff(document.getElementById('cierre-metodos-total-diff'), r.todosContados ? (r.contadoTotal - r.sistemaTotal) : null);
       renderCierreCajaResumen();
     }
 
@@ -21656,12 +21839,15 @@
       const cerrado = diaCerrado(cierreCajaState.fecha);
       const bloqueado = cierreBloqueado(cierreCajaState.fecha);
       document.getElementById('cierre-caja-kpi-grid').innerHTML = `
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Base de caja (efectivo)</div><div class="ventas-kpi-value">${formatCOP(r.base)}</div></div>
         <div class="ventas-kpi-card"><div class="ventas-kpi-label">Ingresos sistema</div><div class="ventas-kpi-value">${formatCOP(r.sistemaIngresos)}</div></div>
         <div class="ventas-kpi-card"><div class="ventas-kpi-label">Egresos sistema</div><div class="ventas-kpi-value">${formatCOP(r.sistemaEgresos)}</div></div>
-        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Neto sistema</div><div class="ventas-kpi-value">${formatCOP(r.sistemaNeto)}</div></div>
-        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Neto contado</div><div class="ventas-kpi-value">${r.todosContados ? formatCOP(r.contadoNeto) : '—'}</div></div>
-        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Diferencia total</div><div class="ventas-kpi-value" style="color:${!r.todosContados ? 'var(--text-2)' : (r.cuadra ? 'var(--success)' : 'var(--danger)')};">${r.todosContados ? formatCOPDiff(r.contadoNeto - r.sistemaNeto) : '—'}</div></div>
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Efectivo esperado en caja</div><div class="ventas-kpi-value">${formatCOP(r.efectivoEsperado)}</div></div>
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Total contado</div><div class="ventas-kpi-value">${r.todosContados ? formatCOP(r.contadoTotal) : '—'}</div></div>
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Diferencia total</div><div class="ventas-kpi-value" style="color:${!r.todosContados ? 'var(--text-2)' : (r.cuadra ? 'var(--success)' : 'var(--danger)')};">${r.todosContados ? formatCOPDiff(r.contadoTotal - r.sistemaTotal) : '—'}</div></div>
+        <div class="ventas-kpi-card"><div class="ventas-kpi-label">Base para el día siguiente</div><div class="ventas-kpi-value">${formatCOP(r.saldoFinalEfectivo)}</div></div>
       `;
+      renderCierreCajaBaseControl(r);
       const badge = document.getElementById('cierre-caja-estado-badge');
       const existente = VENTAS_ARQUEOS.find(a => a.fecha === cierreCajaState.fecha);
       if (bloqueado) {
@@ -21675,8 +21861,36 @@
       }
       document.getElementById('cierre-caja-cerrar-btn').disabled = bloqueado;
       document.getElementById('cierre-caja-pendiente-btn').disabled = bloqueado;
-      renderCierreCajaTotalesPorMetodo();
       lucide.createIcons();
+    }
+
+    // El input de base solo se habilita cuando NO hay ningún cierre anterior
+    // del que heredarla (primer día de uso del módulo). En cualquier otro
+    // caso queda de solo lectura mostrando de dónde salió, para que quede
+    // claro que ese número no se inventa acá — y se advierte si entre ese
+    // cierre y este día quedaron días con efectivo sin arquear, porque esa
+    // plata no está contemplada en la base.
+    function renderCierreCajaBaseControl(r) {
+      const input = document.getElementById('cierre-caja-base');
+      const hint = document.getElementById('cierre-caja-base-hint');
+      const bloqueado = cierreBloqueado(cierreCajaState.fecha);
+      const editable = cierreCajaState.baseEditable && !bloqueado;
+      input.disabled = !editable;
+      input.style.opacity = editable ? '' : '0.7';
+      if (document.activeElement !== input) input.value = (editable && !r.base) ? '' : r.base;
+      const anterior = cierreCajaState.baseDerivadaDe;
+      if (cierreCajaState.baseFuente === 'congelada') {
+        hint.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;"><i data-lucide="lock" style="width:13px;height:13px;"></i> Base con la que se cerró este día: ${formatCOP(r.base)} — queda fija aunque después se corrija un cierre anterior.</span>`;
+        return;
+      }
+      if (!anterior) {
+        hint.innerHTML = `<i data-lucide="info" style="width:13px;height:13px;"></i> No hay cierres anteriores: escribe con cuánto efectivo se abrió la caja. De aquí en adelante la base la hereda el cierre del día anterior.`;
+        return;
+      }
+      const alerta = anterior.diasSinCerrar && anterior.diasSinCerrar.length
+        ? `<span style="color:var(--danger);display:inline-flex;align-items:center;gap:5px;"><i data-lucide="alert-triangle" style="width:13px;height:13px;"></i> Hay ${anterior.diasSinCerrar.length} día(s) con movimientos en efectivo sin cierre entre esa fecha y esta (${anterior.diasSinCerrar.join(', ')}) — ciérralos para que la base quede completa.</span>`
+        : '';
+      hint.innerHTML = `<span style="display:inline-flex;align-items:center;gap:5px;"><i data-lucide="corner-down-right" style="width:13px;height:13px;"></i> Base tomada del cierre del ${anterior.fecha} (${anterior.estado.toLowerCase()}): ${formatCOP(anterior.saldo)}</span>${alerta}`;
     }
 
     async function guardarArqueo(estado) {
@@ -21688,12 +21902,20 @@
       // original se preserva — si no, cada corrección reiniciaría el
       // conteo de las 24h y el cierre nunca quedaría bloqueado de verdad.
       const yaEstabaCerrado = existente && existente.estado === 'Cerrado' && existente.cerradoEn;
+      // contadoIngresos/contadoEgresos son legado: el contado ya no se
+      // digita por tipo sino por método de pago (`contadoPorMetodo`), así
+      // que del split Ingreso/Egreso solo sobrevive el total. Se siguen
+      // escribiendo porque las columnas existen y son not null, y porque el
+      // total contado del día es lo único que se leía de ahí.
       const data = {
         fecha: cierreCajaState.fecha,
         estado,
         filas: cierreCajaState.filas.map(f => ({ ...f })),
+        contadoPorMetodo: { ...cierreCajaState.contadoPorMetodo },
+        baseEfectivo: r.base,
+        saldoFinalEfectivo: r.saldoFinalEfectivo,
         sistemaIngresos: r.sistemaIngresos, sistemaEgresos: r.sistemaEgresos,
-        contadoIngresos: r.contadoIngresos, contadoEgresos: r.contadoEgresos,
+        contadoIngresos: r.contadoTotal, contadoEgresos: 0,
         cerradoPor: estado === 'Cerrado' ? (yaEstabaCerrado ? existente.cerradoPor : (usuario ? usuario.nombre : 'Usuario')) : null,
         cerradoEn: estado === 'Cerrado' ? (yaEstabaCerrado ? existente.cerradoEn : new Date().toISOString()) : null
       };
@@ -21714,8 +21936,11 @@
           if (error) throw error;
           VENTAS_ARQUEOS.unshift({ id: inserted.id, ...data });
         }
-        renderCierreCajaResumen();
-        renderCierreCajaHistorial();
+        // Se relee la fecha entera en vez de solo repintar: al quedar
+        // Cerrado el día su base pasa a estar congelada (ver
+        // resolverBaseCierreCaja) y el estado en pantalla tiene que
+        // reflejarlo sin obligar a recargar.
+        abrirCierreCajaEnFecha(cierreCajaState.fecha);
         renderIngresosEgresosTable();
         if (estado === 'Cerrado') {
           // Auto-descarga la misma colilla que "Imprimir" genera desde el
@@ -21735,16 +21960,18 @@
 
     function guardarCierreCajaPendiente() {
       if (cierreBloqueado(cierreCajaState.fecha)) { showToast(`El cierre de caja del ${cierreCajaState.fecha} ya pasó las 24 horas para modificarse`); return; }
-      if (!cierreCajaState.filas.length) { showToast('No hay movimientos registrados para esta fecha'); return; }
+      // Un día sin movimientos pero con base sí es cerrable: la plata del
+      // cajón sigue ahí y hay que contarla para pasarla al día siguiente.
+      if (!cierreCajaState.filas.length && !cierreCajaState.baseEfectivo) { showToast('No hay movimientos registrados para esta fecha'); return; }
       guardarArqueo('Pendiente');
     }
 
     function intentarCerrarCaja() {
       if (cierreBloqueado(cierreCajaState.fecha)) { showToast(`El cierre de caja del ${cierreCajaState.fecha} ya pasó las 24 horas para modificarse — no se puede volver a cerrar`); return; }
-      const filas = cierreCajaState.filas;
-      if (!filas.length) { showToast('No pudo cerrarse el día: no hay movimientos registrados para esta fecha'); return; }
-      if (filas.some(f => f.contado == null)) { showToast('No pudo cerrarse el día: falta completar el valor contado de una o más filas'); return; }
-      if (filas.some(f => f.contado !== f.sistemaValor)) { showToast('No pudo cerrarse el día: los valores contados no cuadran con el sistema — corrige las diferencias o deja el día pendiente'); return; }
+      const r = calcularResumenCierreCaja();
+      if (!r.metodos.length) { showToast('No pudo cerrarse el día: no hay movimientos registrados para esta fecha'); return; }
+      if (!r.todosContados) { showToast('No pudo cerrarse el día: falta completar el total contado de uno o más métodos de pago'); return; }
+      if (!r.cuadra) { showToast('No pudo cerrarse el día: los valores contados no cuadran con el sistema — corrige las diferencias o deja el día pendiente'); return; }
       guardarArqueo('Cerrado');
     }
 
@@ -24331,13 +24558,20 @@
         factura_id: m.facturaId || null, factura_numero: m.facturaNumero || null
       };
     }
-    // `filas` (desglose Tipo+Forma de pago del arqueo) se guarda tal cual en
-    // la columna jsonb, en camelCase — mismo criterio que `items` de
+    // `filas` (desglose Tipo+Forma de pago del arqueo) y `contado_por_metodo`
+    // (lo contado, un valor por método de pago) se guardan tal cual en sus
+    // columnas jsonb, en camelCase — mismo criterio que `items` de
     // ventas_facturas/ventas_cotizaciones (JSON opaco, sin mapear cada campo
-    // interno a snake_case).
+    // interno a snake_case). base_efectivo/saldo_final_efectivo/
+    // contado_por_metodo son nullable a propósito: null identifica a los
+    // arqueos anteriores a la base de caja, que traían el contado dentro de
+    // `filas` (ver contadoPorMetodoDeArqueo/saldoFinalEfectivoDeArqueo).
     function construirArqueoDesdeFila(r) {
       return {
         id: r.id, fecha: r.fecha, estado: r.estado, filas: Array.isArray(r.filas) ? r.filas : [],
+        contadoPorMetodo: (r.contado_por_metodo && typeof r.contado_por_metodo === 'object') ? r.contado_por_metodo : null,
+        baseEfectivo: r.base_efectivo == null ? null : Number(r.base_efectivo),
+        saldoFinalEfectivo: r.saldo_final_efectivo == null ? null : Number(r.saldo_final_efectivo),
         sistemaIngresos: Number(r.sistema_ingresos) || 0, sistemaEgresos: Number(r.sistema_egresos) || 0,
         contadoIngresos: Number(r.contado_ingresos) || 0, contadoEgresos: Number(r.contado_egresos) || 0,
         cerradoPor: r.cerrado_por || null, cerradoEn: r.cerrado_en || null
@@ -24346,6 +24580,8 @@
     function filaSupabaseDesdeArqueo(a) {
       return {
         fecha: a.fecha, estado: a.estado, filas: a.filas,
+        contado_por_metodo: a.contadoPorMetodo || {},
+        base_efectivo: a.baseEfectivo || 0, saldo_final_efectivo: a.saldoFinalEfectivo || 0,
         sistema_ingresos: a.sistemaIngresos || 0, sistema_egresos: a.sistemaEgresos || 0,
         contado_ingresos: a.contadoIngresos || 0, contado_egresos: a.contadoEgresos || 0,
         cerrado_por: a.cerradoPor || null, cerrado_en: a.cerradoEn || null

@@ -1364,23 +1364,46 @@ create policy "movimientos_delete_member"
 -- la ventana de 24h de modificación tras cerrar. `filas` guarda el
 -- desglose Tipo+Forma de pago en JSON opaco (camelCase), igual que
 -- `items` de ventas_facturas/ventas_cotizaciones.
+-- `contado_por_metodo` es lo que el usuario cuenta al cerrar: un valor por
+-- método de pago ({"Efectivo": 470000, "Transferencia": -2500000}), puede
+-- ser negativo cuando ese método tuvo más egresos que ingresos. Antes el
+-- contado se digitaba por fila y vivía dentro de `filas`; los arqueos de
+-- esa época tienen estas tres columnas en null y el front los reconstruye
+-- (ver contadoPorMetodoDeArqueo en index.html) — por eso son nullable y no
+-- se hizo backfill.
+-- `base_efectivo` es la plata con la que se abrió el cajón, heredada del
+-- `saldo_final_efectivo` del arqueo anterior (solo efectivo: los demás
+-- métodos no se guardan en la caja). El front la re-deriva al abrir la
+-- pantalla; acá se guarda como foto del día para la colilla impresa.
+-- contado_ingresos/contado_egresos quedaron como legado: desde que el
+-- contado es por método ya no hay split Ingreso/Egreso, así que
+-- contado_ingresos guarda el TOTAL contado del día y contado_egresos 0.
 create table if not exists public.arqueos (
-  id                 uuid primary key default gen_random_uuid(),
-  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
-  fecha              date not null,
-  estado             text not null check (estado in ('Cerrado','Pendiente')),
-  filas              jsonb not null default '[]'::jsonb,
-  sistema_ingresos   numeric not null default 0,
-  sistema_egresos    numeric not null default 0,
-  contado_ingresos   numeric not null default 0,
-  contado_egresos    numeric not null default 0,
-  cerrado_por        text,
-  cerrado_en         timestamptz,
-  created_by         uuid references auth.users (id) on delete set null,
-  created_at         timestamptz not null default now(),
-  updated_at         timestamptz not null default now(),
+  id                   uuid primary key default gen_random_uuid(),
+  establecimiento_id   uuid not null references public.establecimientos (id) on delete cascade,
+  fecha                date not null,
+  estado               text not null check (estado in ('Cerrado','Pendiente')),
+  filas                jsonb not null default '[]'::jsonb,
+  contado_por_metodo   jsonb,
+  base_efectivo        numeric,
+  saldo_final_efectivo numeric,
+  sistema_ingresos     numeric not null default 0,
+  sistema_egresos      numeric not null default 0,
+  contado_ingresos     numeric not null default 0,
+  contado_egresos      numeric not null default 0,
+  cerrado_por          text,
+  cerrado_en           timestamptz,
+  created_by           uuid references auth.users (id) on delete set null,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
   unique (establecimiento_id, fecha)
 );
+
+-- Para las bases que ya existían antes de la base de caja (ver
+-- supabase/migrations/20260727_arqueos_base_caja.sql).
+alter table public.arqueos add column if not exists contado_por_metodo   jsonb;
+alter table public.arqueos add column if not exists base_efectivo        numeric;
+alter table public.arqueos add column if not exists saldo_final_efectivo numeric;
 
 create index if not exists arqueos_establecimiento_id_idx on public.arqueos (establecimiento_id);
 

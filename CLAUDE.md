@@ -389,6 +389,41 @@ acordarse de llamar `renderDashboard()` al mutarlo
 (`guardarMovimiento`/`eliminarMovimientoReal`/`confirmarCerrarCuenta`
 ya lo hacen).
 
+**Cierre de día (arqueo) — la caja no arranca en cero y el contado se
+digita UNA vez por método de pago.** Dos invariantes del módulo
+(`VENTAS_ARQUEOS` / tabla `arqueos`):
+- La primera tabla (Tipo + Forma de pago) es SOLO informativa. El
+  arqueo se digita en la segunda ("Total por método de pago"), un input
+  por método en la columna Total contado — `cierreCajaState.filas` ya
+  no lleva `contado`, eso vive en `contadoPorMetodo` (mapa metodoPago →
+  neto contado, **puede ser negativo** si ese método tuvo más egresos
+  que ingresos). `contadoPorMetodoDeArqueo()` reconstruye ese mapa
+  desde el `contado` por fila de los arqueos viejos, así que no borres
+  esa función mientras queden registros previos a la migración
+  `20260727_arqueos_base_caja.sql` (las columnas nuevas son nullable a
+  propósito: null = arqueo de la era anterior, no se hizo backfill).
+- La base de caja es DERIVADA, no digitada: sale del
+  `saldoFinalEfectivo` del arqueo inmediatamente anterior
+  (`baseCajaDesdeCierreAnterior()`). `resolverBaseCierreCaja()` decide
+  entre los 3 casos y no hay otro camino: **congelada** (el día ya está
+  Cerrado → se conserva la base con la que se cerró, porque un cierre
+  firmado no puede cambiar de números y porque los arqueos previos a
+  esta función no tienen base y re-derivarlos les inventaría
+  diferencias que nunca existieron), **heredada** (se recalcula cada
+  vez que se abre la pantalla, para que corregir el día de ayer dentro
+  de la ventana de 24h arrastre el de hoy) y **manual** (no hay ningún
+  cierre anterior — primer día de uso; único caso en que el input de
+  base se habilita). Solo aplica a **Efectivo**:
+  tarjeta/transferencia/débito no se guardan en el cajón, su contado es
+  el neto que reporta el banco o el datáfono ese día. Por eso el total
+  de sistema del efectivo es `base + ingresos − egresos` y es contra
+  ese número que se compara lo contado.
+- Al editar el "Total contado" NO se repinta la tabla de métodos
+  (`actualizarContadoMetodoCierreCaja` actualiza las celdas en sitio):
+  el input está dentro de esa misma tabla y un `innerHTML` por tecla le
+  quitaría el foco al usuario a mitad del número. La de base sí puede
+  repintarla porque su input vive fuera.
+
 El botón **"Registrar propietario"** del buscador de Consultorio está
 también en el header del pane de Agenda (`#btn-registrar-propietario-agenda`),
 reusando el mismo `openRegistrarPropietarioModal()` — va en el header
