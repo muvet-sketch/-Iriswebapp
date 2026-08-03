@@ -2143,12 +2143,35 @@
     }
     .tablero-view.active { display: flex; flex-direction: column; }
 
-    /* Barra de acciones — sticky sobre el scroll de .tablero-view para que
-       "Finalizar consulta" quede siempre alcanzable sin volver arriba
-       (el formulario SOIP es largo). Sustituye al "FAB contextual" del
-       mockup, que duplicaría botones que ya viven acá. */
+    /* Bloque fijo del Tablero: barra de acciones + hero del paciente.
+       El sticky vive acá (en el wrapper) y NO en .tablero-header, para que
+       durante todo el scroll del SOIP —que es largo— sigan visibles tanto
+       "Finalizar consulta" como la identidad del paciente/tutor sobre la
+       que se está escribiendo. Sustituye al "FAB contextual" del mockup de
+       Stitch, que duplicaría botones que ya viven acá.
+       Requisito: .tablero-hero tiene que ser hijo de este wrapper, no de
+       .tablero-body (que es el que scrollea). El fondo opaco es
+       obligatorio: el hero es glass (semitransparente) y sin él se vería
+       el contenido pasando por debajo. */
+    .tablero-sticky-stack {
+      position: sticky; top: 0; z-index: 30; flex-shrink: 0;
+      background-color: var(--bg-app);
+      box-shadow: var(--shadow-md);
+    }
+    /* Padding del hero: lo daba .tablero-body cuando el hero vivía adentro. */
+    .tablero-hero-wrap { padding: 16px 24px; position: relative; }
+    /* Mismo halo de acento que .tablero-body::before — es lo que hace que el
+       efecto glass del hero se lea sobre un fondo casi blanco; al salir del
+       body el hero se quedaba sin él. */
+    .tablero-hero-wrap::before {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background:
+        radial-gradient(680px 340px at 10% -30%, rgba(var(--clinic-accent-rgb), 0.12), transparent 70%),
+        radial-gradient(520px 300px at 95% -10%, rgba(var(--clinic-accent-rgb), 0.07), transparent 70%);
+    }
+    .tablero-hero-wrap > * { position: relative; }
+
     .tablero-header {
-      position: sticky; top: 0; z-index: 30;
       background-color: rgba(255, 255, 255, 0.86);
       backdrop-filter: blur(14px) saturate(140%);
       -webkit-backdrop-filter: blur(14px) saturate(140%);
@@ -2580,6 +2603,7 @@
     @media (max-width: 720px) {
       .tablero-body { padding: 16px 14px 40px; }
       .tablero-header { padding: 12px 14px; }
+      .tablero-hero-wrap { padding: 12px 14px; }
       .tablero-soip-rail { padding-left: 0; }
       .tablero-soip-rail::before { display: none; }
       .tablero-step-badge { position: static; margin-bottom: 8px; }
@@ -5581,59 +5605,69 @@
            ver abrirTableroTrabajo()/cerrarTableroAConsultorio()). Reemplaza
            al viejo pane embebido #subtab-tablero. -->
       <div class="tablero-view" id="tablero-view">
-        <!-- Barra de acciones (sticky) — ver nota de CSS: reemplaza al FAB
-             del mockup de Stitch, para no duplicar botones. -->
-        <div class="tablero-header">
-          <div class="tablero-header-left">
-            <button class="btn-outline back-btn" onclick="cerrarTableroAConsultorio()">
-              <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver
-            </button>
-            <div class="tablero-header-title">
-              <span class="tablero-header-kicker">Tablero de trabajo</span>
-              <span class="tablero-header-sub">Registro de consulta</span>
-            </div>
-            <div class="role-sim-widget">
-              <div class="role-sim-select-wrap">
-                <i data-lucide="eye" style="width:13px;height:13px;"></i>
-                <span>Viendo como:</span>
-                <select class="role-sim-select" onchange="setSimRole(this.value)">
-                  <option value="admin">Administrador</option>
-                  <option value="medico" selected>Médico Veterinario</option>
-                  <option value="auxiliar">Auxiliar</option>
-                  <option value="ventas">Ventas</option>
-                </select>
+        <!-- Bloque fijo (sticky) = barra de acciones + hero del paciente.
+             El sticky vive en el WRAPPER, no en .tablero-header: así la
+             identidad del paciente (foto/nombre/alertas/responsable) sigue
+             visible mientras se baja por el SOIP, que es largo. Por lo
+             mismo el hero ya NO es hijo de .tablero-body — si vuelve ahí
+             adentro se desplaza con el scroll y se pierde. -->
+        <div class="tablero-sticky-stack">
+          <!-- Barra de acciones — ver nota de CSS: reemplaza al FAB
+               del mockup de Stitch, para no duplicar botones. -->
+          <div class="tablero-header">
+            <div class="tablero-header-left">
+              <button class="btn-outline back-btn" onclick="cerrarTableroAConsultorio()">
+                <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver
+              </button>
+              <div class="tablero-header-title">
+                <span class="tablero-header-kicker">Tablero de trabajo</span>
+                <span class="tablero-header-sub">Registro de consulta</span>
+              </div>
+              <div class="role-sim-widget">
+                <div class="role-sim-select-wrap">
+                  <i data-lucide="eye" style="width:13px;height:13px;"></i>
+                  <span>Viendo como:</span>
+                  <select class="role-sim-select" onchange="setSimRole(this.value)">
+                    <option value="admin">Administrador</option>
+                    <option value="medico" selected>Médico Veterinario</option>
+                    <option value="auxiliar">Auxiliar</option>
+                    <option value="ventas">Ventas</option>
+                  </select>
+                </div>
               </div>
             </div>
+            <div class="tablero-header-actions">
+              <button class="btn-outline" style="font-size:12px;padding:7px 12px;" title="Imprimir consulta" onclick="kardexAccionSimple('Imprimir consulta')"><i data-lucide="printer" style="width:13px;height:13px;"></i> Imprimir</button>
+              <button class="btn-outline" style="font-size:12px;padding:7px 12px;" title="Compartir consulta" onclick="kardexAccionSimple('Compartir consulta')"><i data-lucide="share-2" style="width:13px;height:13px;"></i> Compartir</button>
+              <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="guardarConsulta('tablero-soap-', 'tablero-soap-exam-body')">
+                <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
+              </button>
+            </div>
           </div>
-          <div class="tablero-header-actions">
-            <button class="btn-outline" style="font-size:12px;padding:7px 12px;" title="Imprimir consulta" onclick="kardexAccionSimple('Imprimir consulta')"><i data-lucide="printer" style="width:13px;height:13px;"></i> Imprimir</button>
-            <button class="btn-outline" style="font-size:12px;padding:7px 12px;" title="Compartir consulta" onclick="kardexAccionSimple('Compartir consulta')"><i data-lucide="share-2" style="width:13px;height:13px;"></i> Compartir</button>
-            <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="guardarConsulta('tablero-soap-', 'tablero-soap-exam-body')">
-              <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
-            </button>
+
+          <!-- Hero del paciente (identidad + alertas + responsable) —
+               ver mountTableroHeader() -->
+          <div class="tablero-hero-wrap">
+            <div class="tablero-hero">
+              <div class="pet-photo-circle-wrap tablero-hero-photo" style="width:76px;height:76px;">
+                <div class="pet-photo-circle" id="tablero-pet-photo" style="width:76px;height:76px;font-size:24px;">?</div>
+              </div>
+              <div class="tablero-hero-id">
+                <div class="tablero-hero-name-row">
+                  <span class="tablero-hero-name" id="tablero-pet-name">—</span>
+                  <span class="tablero-hero-code" id="tablero-pet-code">—</span>
+                  <span class="tablero-hero-live"><span class="tablero-hero-live-dot"></span> Consulta en curso</span>
+                </div>
+                <div class="tablero-hero-meta" id="tablero-pet-meta"></div>
+                <div class="tablero-hero-alerts" id="tablero-pet-alerts"></div>
+              </div>
+              <div class="tablero-context-card tablero-hero-context" id="tablero-contexto-card"></div>
+              <div class="tablero-hero-owner" id="tablero-pet-owner"></div>
+            </div>
           </div>
         </div>
 
         <div class="tablero-body">
-
-          <!-- Hero del paciente (identidad + alertas + responsable) —
-               ver mountTableroHeader() -->
-          <div class="tablero-hero">
-            <div class="pet-photo-circle-wrap tablero-hero-photo" style="width:76px;height:76px;">
-              <div class="pet-photo-circle" id="tablero-pet-photo" style="width:76px;height:76px;font-size:24px;">?</div>
-            </div>
-            <div class="tablero-hero-id">
-              <div class="tablero-hero-name-row">
-                <span class="tablero-hero-name" id="tablero-pet-name">—</span>
-                <span class="tablero-hero-code" id="tablero-pet-code">—</span>
-                <span class="tablero-hero-live"><span class="tablero-hero-live-dot"></span> Consulta en curso</span>
-              </div>
-              <div class="tablero-hero-meta" id="tablero-pet-meta"></div>
-              <div class="tablero-hero-alerts" id="tablero-pet-alerts"></div>
-            </div>
-            <div class="tablero-context-card tablero-hero-context" id="tablero-contexto-card"></div>
-            <div class="tablero-hero-owner" id="tablero-pet-owner"></div>
-          </div>
 
           <!-- Strip horizontal de módulos clínicos (acota los 18 del
                sidebar normal a los 10 relevantes durante una consulta
