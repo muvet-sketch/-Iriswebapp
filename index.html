@@ -2347,11 +2347,13 @@
 
     /* Signos vitales como tiles (equivalente a las tarjetas de vitals del
        mockup, pero editables: el input vive dentro del tile). */
-    /* minmax(98px) para que los 7 signos vitales entren en una sola fila en
-       pantallas de escritorio y bajen de a poco al angostarse. */
+    /* minmax(106px) para que los 7 signos vitales entren en una sola fila en
+       pantallas de escritorio y bajen de a poco al angostarse. Subió de 98px
+       al agregarse el interruptor "No evaluado" al lado de la etiqueta: con
+       98px el switch le comía el espacio al nombre del vital. */
     .tablero-vitals-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(98px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(106px, 1fr));
       gap: 8px;
       margin-bottom: 12px;
     }
@@ -2431,6 +2433,47 @@
       font-size: 9px; font-weight: 600; color: var(--text-2); opacity: 0.55;
     }
 
+    /* Interruptor "No evaluado" por signo vital.
+       REGLA QUE NO SE PUEDE ROMPER: marcar un vital como no evaluado NO
+       registra nada. Vacía y apaga el campo para que se guarde como null,
+       con lo cual el vital desaparece por completo de la consulta, del
+       resumen del timeline, del modal de Ver y de cualquier impresión o
+       export (los tres renders ya saltan los null). NO existe una columna
+       "no_evaluado" en `consultas` y no hay que crearla: el requisito es
+       que no quede rastro de la variable, no dejar constancia de que se
+       omitió. El estado del interruptor es de PANTALLA — se resetea al
+       abrir el Tablero (resetVitalesNoEvaluados()) y nunca se persiste. */
+    .tablero-vital-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .tablero-vital-head .tablero-vital-label { min-width: 0; }
+    .tablero-vital-ne { position: relative; flex-shrink: 0; }
+    /* El .mini-toggle-input base es display:none (no enfocable). Acá se
+       vuelve una capa transparente encima del track para que el switch
+       siga siendo alcanzable por teclado. */
+    .tablero-vital-ne .mini-toggle-input {
+      display: block; position: absolute; inset: 0; margin: 0;
+      width: 100%; height: 100%; opacity: 0; cursor: pointer;
+    }
+    .tablero-vital-ne .mini-toggle-slider { width: 24px; height: 13px; }
+    .tablero-vital-ne .mini-toggle-slider::before { width: 9px; height: 9px; }
+    /* Gris, no acento: "no evaluado" no es una acción positiva. */
+    .tablero-vital-ne .mini-toggle-input:checked + .mini-toggle-slider { background-color: var(--text-2); }
+    .tablero-vital-ne .mini-toggle-input:checked + .mini-toggle-slider::before { transform: translateX(11px); }
+    .tablero-vital-ne .mini-toggle-input:focus-visible + .mini-toggle-slider {
+      outline: 2px solid var(--clinic-accent); outline-offset: 2px;
+    }
+    .tablero-vital-ne-msg {
+      display: none; padding: 2px 0;
+      font-size: 11px; font-weight: 700; color: var(--text-2); opacity: 0.7;
+    }
+    .tablero-vital-tile.no-evaluado { background-color: transparent; border-style: dashed; }
+    .tablero-vital-tile.no-evaluado .tablero-vital-label { opacity: 0.5; }
+    .tablero-vital-tile.no-evaluado .tablero-vital-input-row,
+    .tablero-vital-tile.no-evaluado .tablero-vital-range,
+    .tablero-vital-tile.no-evaluado .tablero-vital-scale,
+    .tablero-vital-tile.no-evaluado .tablero-vital-hint { display: none; }
+    .tablero-vital-tile.no-evaluado .tablero-vital-ne-msg { display: block; }
+    .tablero-vital-tile.no-evaluado:focus-within { box-shadow: none; border-color: var(--border); background-color: transparent; }
+
     /* ── Panel lateral ────────────────────────────────────────────── */
     /* Tarjeta oscura "Contexto histórico" — reutiliza los tonos del
        sidebar (--sidebar-bg/--sidebar-active), que ya son el borgoña
@@ -2457,30 +2500,19 @@
       font-size: 10px; font-weight: 700; text-transform: uppercase;
       letter-spacing: 0.12em; opacity: 0.55;
     }
-    .tablero-context-stats {
-      display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
-      margin-top: 14px; padding-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    .tablero-context-facts {
+      display: flex; flex-direction: column; gap: 9px;
+      margin-top: 12px;
     }
-    .tablero-context-stat-num { font-size: 24px; font-weight: 700; line-height: 1.1; }
-    .tablero-context-stat-sub { font-size: 10px; opacity: 0.55; }
-    .tablero-context-hito {
-      display: flex; align-items: center; gap: 10px; margin-top: 10px;
-      padding: 10px 12px; border-radius: var(--radius);
-      background-color: rgba(255, 255, 255, 0.10);
+    .tablero-context-fact { display: flex; flex-direction: column; gap: 1px; }
+    .tablero-context-fact-label {
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; opacity: 0.55;
     }
-    .tablero-context-hito-icon {
-      width: 30px; height: 30px; border-radius: var(--radius-sm); flex-shrink: 0;
-      background-color: rgba(255, 255, 255, 0.14);
-      display: flex; align-items: center; justify-content: center;
+    .tablero-context-fact-value {
+      font-size: 12.5px; line-height: 1.35;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     }
-    .tablero-context-hito-title { font-size: 12px; font-weight: 700; }
-    .tablero-context-hito-date { font-size: 10px; opacity: 0.6; margin-top: 1px; }
-    .tablero-context-hito-tag {
-      flex-shrink: 0; padding: 2px 8px; border-radius: var(--radius-full);
-      background-color: rgba(255, 255, 255, 0.2); font-size: 9px; font-weight: 700;
-      text-transform: uppercase; letter-spacing: 0.06em;
-    }
-    .tablero-context-empty { font-size: 12px; opacity: 0.6; margin-top: 10px; }
 
     /* Variante compacta de la tarjeta anterior cuando va dentro del hero
        del paciente: ocupa el hueco entre .tablero-hero-id y
@@ -2493,12 +2525,8 @@
     }
     .tablero-hero-context::after { right: -56px; bottom: -56px; width: 130px; height: 130px; }
     .tablero-hero-context .tablero-context-label { font-size: 9.5px; }
-    .tablero-hero-context .tablero-context-stats { margin-top: 10px; padding-bottom: 10px; }
-    .tablero-hero-context .tablero-context-stat-num { font-size: 21px; }
-    .tablero-hero-context .tablero-context-label + .tablero-context-hito,
-    .tablero-hero-context .tablero-context-hito { margin-top: 8px; padding: 8px 10px; }
-    .tablero-hero-context .tablero-context-hito-icon { width: 26px; height: 26px; }
-    .tablero-hero-context .tablero-context-empty { font-size: 11.5px; margin-top: 8px; }
+    .tablero-hero-context .tablero-context-facts { margin-top: 9px; gap: 7px; }
+    .tablero-hero-context .tablero-context-fact-value { font-size: 12px; }
 
     .tablero-breed-insight {
       margin-top: 12px;
@@ -5665,7 +5693,14 @@
                        texto libre ("< 2s"). -->
                   <div class="tablero-vitals-grid">
                     <div class="tablero-vital-tile">
-                      <label class="tablero-vital-label" for="tablero-soap-vital-temp"><i data-lucide="thermometer" style="width:13px;height:13px;"></i> Temp</label>
+                      <div class="tablero-vital-head">
+                        <label class="tablero-vital-label" for="tablero-soap-vital-temp"><i data-lucide="thermometer" style="width:13px;height:13px;"></i> Temp</label>
+                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
+                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-temp" aria-label="Marcar temperatura como no evaluada" onchange="toggleVitalNoEvaluado(this)">
+                          <span class="mini-toggle-slider"></span>
+                        </label>
+                      </div>
+                      <span class="tablero-vital-ne-msg">No evaluado</span>
                       <span class="tablero-vital-input-row">
                         <input type="number" step="0.1" id="tablero-soap-vital-temp" class="tablero-vital-input" placeholder="38.5">
                         <span class="tablero-vital-unit">°C</span>
@@ -5674,7 +5709,14 @@
                       <span class="tablero-vital-scale"><span>32</span><span>43</span></span>
                     </div>
                     <div class="tablero-vital-tile">
-                      <label class="tablero-vital-label" for="tablero-soap-vital-fc"><i data-lucide="heart-pulse" style="width:13px;height:13px;"></i> FC</label>
+                      <div class="tablero-vital-head">
+                        <label class="tablero-vital-label" for="tablero-soap-vital-fc"><i data-lucide="heart-pulse" style="width:13px;height:13px;"></i> FC</label>
+                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
+                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-fc" aria-label="Marcar frecuencia cardíaca como no evaluada" onchange="toggleVitalNoEvaluado(this)">
+                          <span class="mini-toggle-slider"></span>
+                        </label>
+                      </div>
+                      <span class="tablero-vital-ne-msg">No evaluado</span>
                       <span class="tablero-vital-input-row">
                         <input type="number" id="tablero-soap-vital-fc" class="tablero-vital-input" placeholder="140">
                         <span class="tablero-vital-unit">lpm</span>
@@ -5683,7 +5725,14 @@
                       <span class="tablero-vital-scale"><span>40</span><span>300</span></span>
                     </div>
                     <div class="tablero-vital-tile">
-                      <label class="tablero-vital-label" for="tablero-soap-vital-fr"><i data-lucide="wind" style="width:13px;height:13px;"></i> FR</label>
+                      <div class="tablero-vital-head">
+                        <label class="tablero-vital-label" for="tablero-soap-vital-fr"><i data-lucide="wind" style="width:13px;height:13px;"></i> FR</label>
+                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
+                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-fr" aria-label="Marcar frecuencia respiratoria como no evaluada" onchange="toggleVitalNoEvaluado(this)">
+                          <span class="mini-toggle-slider"></span>
+                        </label>
+                      </div>
+                      <span class="tablero-vital-ne-msg">No evaluado</span>
                       <span class="tablero-vital-input-row">
                         <input type="number" id="tablero-soap-vital-fr" class="tablero-vital-input" placeholder="28">
                         <span class="tablero-vital-unit">rpm</span>
@@ -5692,14 +5741,28 @@
                       <span class="tablero-vital-scale"><span>6</span><span>120</span></span>
                     </div>
                     <div class="tablero-vital-tile">
-                      <label class="tablero-vital-label" for="tablero-soap-vital-crt"><i data-lucide="droplet" style="width:13px;height:13px;"></i> TLLC</label>
+                      <div class="tablero-vital-head">
+                        <label class="tablero-vital-label" for="tablero-soap-vital-crt"><i data-lucide="droplet" style="width:13px;height:13px;"></i> TLLC</label>
+                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
+                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-crt" aria-label="Marcar tiempo de llenado capilar como no evaluado" onchange="toggleVitalNoEvaluado(this)">
+                          <span class="mini-toggle-slider"></span>
+                        </label>
+                      </div>
+                      <span class="tablero-vital-ne-msg">No evaluado</span>
                       <span class="tablero-vital-input-row">
                         <input type="text" id="tablero-soap-vital-crt" class="tablero-vital-input" placeholder="< 2s">
                       </span>
                       <span class="tablero-vital-hint">Texto libre</span>
                     </div>
                     <div class="tablero-vital-tile">
-                      <label class="tablero-vital-label" for="tablero-soap-vital-pas"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAS</label>
+                      <div class="tablero-vital-head">
+                        <label class="tablero-vital-label" for="tablero-soap-vital-pas"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAS</label>
+                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
+                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-pas" aria-label="Marcar presión arterial sistólica como no evaluada" onchange="toggleVitalNoEvaluado(this)">
+                          <span class="mini-toggle-slider"></span>
+                        </label>
+                      </div>
+                      <span class="tablero-vital-ne-msg">No evaluado</span>
                       <span class="tablero-vital-input-row">
                         <input type="number" id="tablero-soap-vital-pas" class="tablero-vital-input" placeholder="120">
                         <span class="tablero-vital-unit">mmHg</span>
@@ -5708,7 +5771,14 @@
                       <span class="tablero-vital-scale"><span>40</span><span>260</span></span>
                     </div>
                     <div class="tablero-vital-tile">
-                      <label class="tablero-vital-label" for="tablero-soap-vital-pad"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAD</label>
+                      <div class="tablero-vital-head">
+                        <label class="tablero-vital-label" for="tablero-soap-vital-pad"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAD</label>
+                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
+                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-pad" aria-label="Marcar presión arterial diastólica como no evaluada" onchange="toggleVitalNoEvaluado(this)">
+                          <span class="mini-toggle-slider"></span>
+                        </label>
+                      </div>
+                      <span class="tablero-vital-ne-msg">No evaluado</span>
                       <span class="tablero-vital-input-row">
                         <input type="number" id="tablero-soap-vital-pad" class="tablero-vital-input" placeholder="80">
                         <span class="tablero-vital-unit">mmHg</span>
@@ -5717,7 +5787,14 @@
                       <span class="tablero-vital-scale"><span>20</span><span>180</span></span>
                     </div>
                     <div class="tablero-vital-tile">
-                      <label class="tablero-vital-label" for="tablero-soap-vital-pam"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAM</label>
+                      <div class="tablero-vital-head">
+                        <label class="tablero-vital-label" for="tablero-soap-vital-pam"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAM</label>
+                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
+                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-pam" aria-label="Marcar presión arterial media como no evaluada" onchange="toggleVitalNoEvaluado(this)">
+                          <span class="mini-toggle-slider"></span>
+                        </label>
+                      </div>
+                      <span class="tablero-vital-ne-msg">No evaluado</span>
                       <span class="tablero-vital-input-row">
                         <input type="number" id="tablero-soap-vital-pam" class="tablero-vital-input" placeholder="93">
                         <span class="tablero-vital-unit">mmHg</span>
@@ -10471,6 +10548,9 @@
       document.getElementById('mascota-chip').value = data.chip || '';
       document.getElementById('mascota-alimentacion').value = data.alimentacion || '';
       document.getElementById('mascota-frecuencia-bano').value = data.frecuenciaBano || '';
+      document.getElementById('mascota-temperamento').value = data.temperamento || '';
+      document.getElementById('mascota-antecedentes').value = data.antecedentes || '';
+      document.getElementById('mascota-alergias').value = data.alergias || '';
       document.getElementById('mascota-animal-servicio').checked = !!data.animalServicio;
       document.getElementById('mascota-fallecido').checked = !!data.fallecido;
 
@@ -10513,6 +10593,9 @@
       const chip = document.getElementById('mascota-chip').value.trim();
       const alimentacion = document.getElementById('mascota-alimentacion').value.trim();
       const frecuenciaBano = document.getElementById('mascota-frecuencia-bano').value.trim();
+      const temperamento = document.getElementById('mascota-temperamento').value.trim();
+      const antecedentes = document.getElementById('mascota-antecedentes').value.trim();
+      const alergias = document.getElementById('mascota-alergias').value.trim();
       const animalServicio = document.getElementById('mascota-animal-servicio').checked;
       const fallecido = document.getElementById('mascota-fallecido').checked;
 
@@ -10524,7 +10607,9 @@
           nombre: name, especie: species || null, raza: breed || null, color: color || null, genero: genero || null,
           peso: weight || null, talla: talla || null, estado_reproductivo: estadoReproductivo || null,
           fecha_nacimiento: fechaNacimiento || null, chip: chip || null, alimentacion: alimentacion || null,
-          frecuencia_bano: frecuenciaBano || null, animal_servicio: animalServicio, fallecido,
+          frecuencia_bano: frecuenciaBano || null, temperamento: temperamento || null,
+          antecedentes: antecedentes || null, alergias: alergias || null,
+          animal_servicio: animalServicio, fallecido,
           updated_at: new Date().toISOString()
         }).eq('id', data.mascotaId);
         if (error) {
@@ -10539,6 +10624,7 @@
       data.name = name; data.species = species; data.breed = breed; data.color = color; data.genero = genero;
       data.weight = weight; data.talla = talla; data.estadoReproductivo = estadoReproductivo;
       data.fechaNacimiento = fechaNacimiento; data.chip = chip; data.alimentacion = alimentacion; data.frecuenciaBano = frecuenciaBano;
+      data.temperamento = temperamento; data.antecedentes = antecedentes; data.alergias = alergias;
       data.animalServicio = animalServicio; data.fallecido = fallecido;
 
       // Refrescar cabeceras/tablas que muestran estos datos
@@ -10713,7 +10799,8 @@
       document.getElementById('registrar-mascota-propietario-label').textContent = `Propietario: ${p.nombre}`;
       ['nueva-mascota-nombre', 'nueva-mascota-raza', 'nueva-mascota-color',
        'nueva-mascota-peso', 'nueva-mascota-chip', 'nueva-mascota-frecuencia-bano',
-       'nueva-mascota-alimentacion', 'nueva-mascota-edad-cantidad', 'nueva-mascota-edad-fecha'].forEach(id => { document.getElementById(id).value = ''; });
+       'nueva-mascota-alimentacion', 'nueva-mascota-temperamento', 'nueva-mascota-antecedentes',
+       'nueva-mascota-alergias', 'nueva-mascota-edad-cantidad', 'nueva-mascota-edad-fecha'].forEach(id => { document.getElementById(id).value = ''; });
       document.getElementById('nueva-mascota-especie').value = 'Canino';
       document.getElementById('nueva-mascota-genero').value = 'Hembra';
       document.getElementById('nueva-mascota-talla').value = 'Pequeña';
@@ -10781,6 +10868,9 @@
         fallecido: document.getElementById('nueva-mascota-fallecido').checked,
         alimentacion: document.getElementById('nueva-mascota-alimentacion').value.trim(),
         frecuenciaBano: document.getElementById('nueva-mascota-frecuencia-bano').value.trim(),
+        temperamento: document.getElementById('nueva-mascota-temperamento').value.trim(),
+        antecedentes: document.getElementById('nueva-mascota-antecedentes').value.trim(),
+        alergias: document.getElementById('nueva-mascota-alergias').value.trim(),
         pesoHistorico: !isNaN(pesoNum) ? [{ fechaISO: hoyISO, fecha: hoyFmt, peso: pesoNum }] : []
       };
 
@@ -10801,6 +10891,8 @@
           estado_reproductivo: datos.estadoReproductivo || null,
           animal_servicio: datos.animalServicio, fallecido: datos.fallecido,
           alimentacion: datos.alimentacion || null, frecuencia_bano: datos.frecuenciaBano || null,
+          temperamento: datos.temperamento || null, antecedentes: datos.antecedentes || null,
+          alergias: datos.alergias || null,
           peso_historico: datos.pesoHistorico,
           created_by: userId
         }).select().single();
@@ -10816,6 +10908,7 @@
           estadoReproductivo: datos.estadoReproductivo,
           animalServicio: datos.animalServicio, fallecido: datos.fallecido,
           alimentacion: datos.alimentacion, frecuenciaBano: datos.frecuenciaBano,
+          temperamento: datos.temperamento, antecedentes: datos.antecedentes, alergias: datos.alergias,
           pesoHistorico: datos.pesoHistorico,
           createdAt: inserted.created_at || new Date().toISOString(),
           ...crearScaffoldClinicoVacio()
@@ -11214,7 +11307,13 @@
         if (fc) parts.push(`FC ${fc} lpm`);
         if (fr) parts.push(`FR ${fr} rpm`);
         if (crt) parts.push(`TLLC ${crt}`);
-        if (pas || pad) parts.push(`PA ${pas || '—'}/${pad || '—'} mmHg`);
+        // Sin guion de relleno cuando falta una de las dos: un "PA —/80"
+        // deja constancia de que la sistólica existe y quedó en blanco, y
+        // un vital no evaluado no puede dejar rastro (ver
+        // toggleVitalNoEvaluado()). Solo se imprime lo que sí se midió.
+        if (pas && pad) parts.push(`PA ${pas}/${pad} mmHg`);
+        else if (pas) parts.push(`PAS ${pas} mmHg`);
+        else if (pad) parts.push(`PAD ${pad} mmHg`);
         if (pam) parts.push(`PAM ${pam} mmHg`);
         if (parts.length) vitalsLine = ` (${parts.join(' · ')})`;
       }
@@ -11405,52 +11504,31 @@
       `;
     }
 
-    // Tarjeta oscura "Contexto histórico" del panel lateral — todo
-    // derivado de datos reales del paciente (consultas registradas, último
-    // peso del histórico y próximo evento pendiente de EVENTOS_SEGUIMIENTO).
+    // Tarjeta oscura "Contexto histórico" del panel lateral — referencia
+    // rápida para llenar el Subjetivo sin tener que ir a buscarla en otro
+    // lado: Temperamento/Antecedentes/Alergias salen de la ficha de la
+    // mascota (editables desde "Editar mascota", ver patrón de campos de
+    // mascota mock más arriba) y el motivo de la última consulta sale
+    // directo de data.consultas[0] (unshift-ordenado, el más reciente
+    // primero — ver guardarConsulta()), sin dato nuevo que mantener.
     function renderTableroContexto(petKey) {
       const data = patientData[petKey];
-      const consultas = (data.consultas || []).length;
-      const historico = data.pesoHistorico || [];
-      const ultimoPeso = historico.length ? `${historico[historico.length - 1].peso} kg` : (data.weight || '—');
+      const ultimaConsulta = (data.consultas || [])[0];
 
-      const TIPO_EVENTO_LABEL = {
-        vacunacion: 'Próxima vacunación', desparasitacion: 'Próxima desparasitación', control: 'Próximo control',
-        imagenes_diagnosticas: 'Próximas imágenes diagnósticas', examenes_laboratorio: 'Próximos exámenes de laboratorio',
-        revision: 'Próxima revisión', consulta_especializada: 'Próxima consulta especializada', otro: 'Próximo seguimiento'
-      };
-      const d = new Date();
-      const hoyISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const pendientes = EVENTOS_SEGUIMIENTO
-        .filter(e => e.petKey === petKey && e.estado === 'pendiente')
-        .sort((a, b) => a.fechaSugeridaISO.localeCompare(b.fechaSugeridaISO));
-
-      const hitosHtml = pendientes.length
-        ? pendientes.slice(0, 2).map(e => `
-            <div class="tablero-context-hito">
-              <div class="tablero-context-hito-icon"><i data-lucide="calendar-clock" style="width:15px;height:15px;"></i></div>
-              <div style="flex:1;min-width:0;">
-                <div class="tablero-context-hito-title">${TIPO_EVENTO_LABEL[e.tipoEvento] || 'Próximo evento'}</div>
-                <div class="tablero-context-hito-date">${formatFechaCorta(e.fechaSugeridaISO)}</div>
-              </div>
-              <span class="tablero-context-hito-tag">${e.fechaSugeridaISO < hoyISO ? 'Vencido' : 'Próximo'}</span>
-            </div>`).join('')
-        : `<div class="tablero-context-empty">Sin vencimientos programados para este paciente.</div>`;
+      const fact = (label, valor) => `
+        <div class="tablero-context-fact">
+          <span class="tablero-context-fact-label">${label}</span>
+          <span class="tablero-context-fact-value">${valor}</span>
+        </div>`;
 
       document.getElementById('tablero-contexto-card').innerHTML = `
         <div class="tablero-context-label">Contexto histórico</div>
-        <div class="tablero-context-stats">
-          <div>
-            <div class="tablero-context-stat-num">${consultas}</div>
-            <div class="tablero-context-stat-sub">Consultas registradas</div>
-          </div>
-          <div style="text-align:right;">
-            <div class="tablero-context-stat-num">${ultimoPeso}</div>
-            <div class="tablero-context-stat-sub">Último peso</div>
-          </div>
+        <div class="tablero-context-facts">
+          ${fact('Temperamento', data.temperamento || 'Sin registrar')}
+          ${fact('Antecedentes', data.antecedentes || 'Sin registrar')}
+          ${fact('Alergias', data.alergias || 'Ninguna registrada')}
+          ${fact('Motivo última consulta', ultimaConsulta ? ultimaConsulta.motivo : 'Sin consultas registradas')}
         </div>
-        <div class="tablero-context-label" style="margin-top:14px;">Próximos hitos</div>
-        ${hitosHtml}
       `;
     }
 
@@ -11488,6 +11566,51 @@
       // manda, no se recorta): el thumb solo se pega al extremo.
       range.value = Math.min(Math.max(valor, parseFloat(range.min)), parseFloat(range.max));
       tile.classList.add('has-value');
+    }
+
+    // ── "No evaluado" por signo vital ─────────────────────────────────
+    // Marcar un vital como no evaluado NO deja constancia de nada: vacía
+    // el campo y lo apaga, así guardarConsulta() lo persiste como null y
+    // el vital desaparece de la consulta, del resumen del timeline, del
+    // modal de Ver y de cualquier impresión/export (los tres renders ya
+    // saltan los null). NO se guarda una marca "no evaluado" en ningún
+    // lado — no hay columna para eso en `consultas` y no debe agregarse:
+    // el requisito es que la variable no quede registrada en absoluto,
+    // no que quede registrada como omitida. Consecuencia deliberada:
+    // después de guardar es indistinguible de "nunca se llenó".
+    // El interruptor es estado de PANTALLA y muere al cerrar el Tablero.
+    function toggleVitalNoEvaluado(checkbox) {
+      const inputId = checkbox.getAttribute('data-vital-ne-for');
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const tile = tableroVitalTileDe(input);
+      const range = document.querySelector(`.tablero-vital-range[data-vital-for="${inputId}"]`);
+      if (checkbox.checked) {
+        input.value = '';                     // lo escrito antes se descarta
+        input.disabled = true;
+        tile.classList.remove('has-value');
+        if (range) { range.value = range.getAttribute('data-neutro'); range.disabled = true; }
+      } else {
+        input.disabled = false;
+        if (range) range.disabled = false;
+      }
+      tile.classList.toggle('no-evaluado', checkbox.checked);
+    }
+
+    // Reset al abrir el Tablero — tiene que correr ANTES de
+    // resetVitalSliders(), que no toca el atributo disabled.
+    function resetVitalesNoEvaluados() {
+      document.querySelectorAll('#tablero-view [data-vital-ne-for]').forEach(cb => {
+        cb.checked = false;
+        const inputId = cb.getAttribute('data-vital-ne-for');
+        const input = document.getElementById(inputId);
+        if (input) {
+          input.disabled = false;
+          tableroVitalTileDe(input).classList.remove('no-evaluado');
+        }
+        const range = document.querySelector(`.tablero-vital-range[data-vital-for="${inputId}"]`);
+        if (range) range.disabled = false;
+      });
     }
 
     // Reset al abrir el Tablero — corre DESPUÉS de vaciar los inputs.
@@ -11538,6 +11661,7 @@
           if (step) step.classList.toggle('filled', lleno);
         };
       });
+      resetVitalesNoEvaluados();
       ['tablero-soap-vital-temp', 'tablero-soap-vital-fc', 'tablero-soap-vital-fr', 'tablero-soap-vital-crt', 'tablero-soap-vital-pas', 'tablero-soap-vital-pad', 'tablero-soap-vital-pam'].forEach(id => {
         document.getElementById(id).value = '';
       });
@@ -11606,11 +11730,14 @@
     // del sidebar normal, enfocado en lo que se consulta/registra durante
     // una consulta activa. Cada entrada reutiliza el modal de crear/editar
     // que ya tiene ese módulo completo (no se duplica lógica de guardado).
-    // "Tareas Pendientes" reemplaza a "Órdenes" en este nav acotado del
-    // Tablero (a pedido de negocio) — Órdenes sigue existiendo como
-    // módulo completo en el sidebar normal de 18, solo dejó de tener
-    // acceso directo desde la consulta activa.
-    const TABLERO_NAV_ORDEN = ['vacunaciones', 'desparasitaciones', 'formulas', 'laboratorio', 'imagenes', 'cirugias', 'seguimientos', 'tareas-pendientes', 'remisiones', 'citas'];
+    // Acotado a pedido de negocio a estos 5 (antes incluía también
+    // cirugias/seguimientos/tareas-pendientes/remisiones/citas) — esos 5
+    // módulos siguen existiendo completos en el sidebar normal de 18 y en
+    // TABLERO_QUICKNAV_MODULOS (no se borraron sus entradas ahí:
+    // refrescarTableroQuicknavSi() las sigue referenciando por key desde
+    // guardarCirugia()/guardarSeguimiento()/etc., aunque ya no tengan chip
+    // en este strip), solo dejaron de tener acceso directo desde acá.
+    const TABLERO_NAV_ORDEN = ['vacunaciones', 'desparasitaciones', 'formulas', 'laboratorio', 'imagenes', 'documentos'];
 
     const TABLERO_QUICKNAV_MODULOS = {
       vacunaciones: {
@@ -11657,6 +11784,20 @@
         openCreate: petKey => openExamenModal('imagen', 'create', petKey),
         openEdit: (petKey, idx) => openExamenModal('imagen', 'edit', petKey, idx),
         viewModuleKey: 'examen'
+      },
+      documentos: {
+        label: 'Documentos', icon: 'folder-open',
+        getRecords: data => (data.documentos || []).map((r, idx) => ({ idx, r })),
+        line: r => r.nombre,
+        sub: r => `${r.fecha} · ${ESTADOS_DOCUMENTO[r.estado] ? ESTADOS_DOCUMENTO[r.estado].label : r.estado}`,
+        openCreate: petKey => openDocumentoModal('create', petKey),
+        openEdit: (petKey, idx) => openDocumentoModal('edit', petKey, idx),
+        viewModuleKey: 'documento',
+        // Único módulo del strip cuyo subtab del sidebar normal no coincide
+        // con su key (`data-subtab="patient-documentos"`, ver switchSubTab())
+        // — el resto usa el mismo string para ambos. abrirModuloCompletoDesdeTablero()
+        // prefiere este campo si existe.
+        subtabKey: 'patient-documentos'
       },
       cirugias: {
         label: 'Cirugías/procedimientos', icon: 'scissors',
@@ -11729,12 +11870,22 @@
     // Click en un chip del strip de módulos del Tablero — actualiza la card
     // "Navegación rápida" con la mini-lista de registros de ese módulo (ver
     // TABLERO_QUICKNAV_MODULOS), sin salir de la pantalla de consulta.
+    // Envuelto en try/catch: si un registro con datos inesperados hace
+    // tronar el render, que quede un mensaje de error visible en el panel
+    // en vez de dejar el contenido por defecto sin cambiar y sin ninguna
+    // pista de que el click sí se procesó.
     function switchTableroModulo(key) {
       tableroActiveModulo = key;
       document.querySelectorAll('#tablero-nav-list .tablero-modchip').forEach(item => {
         item.classList.toggle('active', item.getAttribute('data-tablero-modulo') === key);
       });
-      renderTableroModuloDetalle(key);
+      try {
+        renderTableroModuloDetalle(key);
+      } catch (err) {
+        console.error('[IRIS] Error mostrando el módulo en Navegación rápida:', key, err);
+        document.getElementById('tablero-quicknav-body').innerHTML =
+          `<div class="info-value" style="color:var(--text-2);">No se pudo cargar este módulo — intenta de nuevo.</div>`;
+      }
     }
 
     function renderTableroModuloDetalle(key) {
@@ -11761,7 +11912,7 @@
           <button class="btn-outline" style="padding:5px 8px;font-size:11px;" onclick="abrirTableroRegistroNuevo('${key}')"><i data-lucide="plus" style="width:12px;height:12px;"></i> Registrar</button>
         </div>
         ${listHtml}
-        <button class="btn-outline" style="margin-top:10px;width:100%;padding:7px;font-size:12px;" onclick="abrirModuloCompletoDesdeTablero('${key}')">Ver ${cfg.label.toLowerCase()} completo <i data-lucide="arrow-right" style="width:12px;height:12px;"></i></button>
+        <button class="btn-outline" style="margin-top:10px;width:100%;padding:7px;font-size:12px;" onclick="abrirModuloCompletoDesdeTablero('${cfg.subtabKey || key}')">Ver ${cfg.label.toLowerCase()} completo <i data-lucide="arrow-right" style="width:12px;height:12px;"></i></button>
         ${especieInsightHtml(data)}
       `;
       lucide.createIcons();
@@ -12793,7 +12944,11 @@
       if (record.vitalFc != null) vitalsParts.push(`FC ${record.vitalFc} lpm`);
       if (record.vitalFr != null) vitalsParts.push(`FR ${record.vitalFr} rpm`);
       if (record.vitalCrt) vitalsParts.push(`TLLC ${record.vitalCrt}`);
-      if (record.vitalPas || record.vitalPad) vitalsParts.push(`PA ${record.vitalPas || '—'}/${record.vitalPad || '—'} mmHg`);
+      // Ver la nota en guardarConsulta(): si falta una de las dos, se
+      // imprime solo la que hay — nada de "—" delatando la ausente.
+      if (record.vitalPas != null && record.vitalPad != null) vitalsParts.push(`PA ${record.vitalPas}/${record.vitalPad} mmHg`);
+      else if (record.vitalPas != null) vitalsParts.push(`PAS ${record.vitalPas} mmHg`);
+      else if (record.vitalPad != null) vitalsParts.push(`PAD ${record.vitalPad} mmHg`);
       if (record.vitalPam != null) vitalsParts.push(`PAM ${record.vitalPam} mmHg`);
       const vitalsHTML = vitalsParts.length
         ? `<div class="info-label">Signos vitales</div><div class="info-value">${vitalsParts.join(' · ')}</div>` : '';
@@ -18442,6 +18597,7 @@
         }
 
         renderDocumentosTable(petKey);
+        refrescarTableroQuicknavSi('documentos', petKey);
         closeDocumentoModal();
         showToast(accion === 'firmar' ? 'Documento enviado para firma' : 'Documento guardado como borrador');
 
@@ -24969,6 +25125,7 @@
         estadoReproductivo: r.estado_reproductivo || '',
         animalServicio: !!r.animal_servicio, fallecido: !!r.fallecido,
         alimentacion: r.alimentacion || '', frecuenciaBano: r.frecuencia_bano || '',
+        temperamento: r.temperamento || '', antecedentes: r.antecedentes || '', alergias: r.alergias || '',
         pesoHistorico: Array.isArray(r.peso_historico) ? r.peso_historico : [],
         createdAt: r.created_at || null,
         ...crearScaffoldClinicoVacio()
@@ -25009,7 +25166,11 @@
       if (r.vital_fc != null) vitalsParts.push(`FC ${r.vital_fc} lpm`);
       if (r.vital_fr != null) vitalsParts.push(`FR ${r.vital_fr} rpm`);
       if (r.vital_crt) vitalsParts.push(`TLLC ${r.vital_crt}`);
-      if (r.vital_pas || r.vital_pad) vitalsParts.push(`PA ${r.vital_pas || '—'}/${r.vital_pad || '—'} mmHg`);
+      // Ver la nota en guardarConsulta(): si falta una de las dos, se
+      // imprime solo la que hay — nada de "—" delatando la ausente.
+      if (r.vital_pas != null && r.vital_pad != null) vitalsParts.push(`PA ${r.vital_pas}/${r.vital_pad} mmHg`);
+      else if (r.vital_pas != null) vitalsParts.push(`PAS ${r.vital_pas} mmHg`);
+      else if (r.vital_pad != null) vitalsParts.push(`PAD ${r.vital_pad} mmHg`);
       if (r.vital_pam != null) vitalsParts.push(`PAM ${r.vital_pam} mmHg`);
       const vitalsLine = vitalsParts.length ? ` (${vitalsParts.join(' · ')})` : '';
 
@@ -27270,6 +27431,21 @@
           <input type="text" class="input-control" style="padding-left:12px;" id="mascota-alimentacion">
         </div>
 
+        <div class="input-group">
+          <label class="input-label">Temperamento</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="mascota-temperamento" placeholder="Ej: Tranquilo, se estresa en consulta">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Antecedentes</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="mascota-antecedentes" placeholder="Ej: Cirugías previas, enfermedades crónicas">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Alergias</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="mascota-alergias" placeholder="Ej: Penicilina, pollo — dejar vacío si no tiene">
+        </div>
+
         <div style="display:flex;gap:24px;">
           <label class="mini-toggle">
             <input type="checkbox" id="mascota-animal-servicio" class="mini-toggle-input">
@@ -28971,6 +29147,21 @@
         <div class="input-group">
           <label class="input-label">Alimentación</label>
           <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-alimentacion">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Temperamento</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-temperamento" placeholder="Ej: Tranquilo, se estresa en consulta">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Antecedentes</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-antecedentes" placeholder="Ej: Cirugías previas, enfermedades crónicas">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Alergias</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="nueva-mascota-alergias" placeholder="Ej: Penicilina, pollo — dejar vacío si no tiene">
         </div>
 
         <div style="display:flex;gap:24px;">

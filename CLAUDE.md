@@ -184,9 +184,16 @@ cierra el script") en vez del literal `</script>`.
   - Los campos de mascota mock (`color`, `genero`, `talla`,
     `estadoReproductivo`, `animalServicio`, `fallecido`,
     `alimentacion`, `vivienda`, `frecuenciaBano`, `fotoUrl`,
-    `pesoHistorico`, `ownerPhone`) viven en `patientData[petKey]`
-    junto a los campos originales — son los únicos campos nuevos de
-    mascota agregados hasta ahora; no agregues más sin que se pidan.
+    `pesoHistorico`, `ownerPhone`, `temperamento`, `antecedentes`,
+    `alergias`) viven en `patientData[petKey]` junto a los campos
+    originales — son los únicos campos nuevos de mascota agregados
+    hasta ahora; no agregues más sin que se pidan. Los últimos tres
+    (`temperamento`/`antecedentes`/`alergias`, columnas homónimas en
+    `mascotas`) se agregaron para alimentar la tarjeta "Contexto
+    histórico" del Tablero de trabajo (ver patrón del Tablero más
+    abajo) — mismo criterio de edición que `alimentacion`: inputs de
+    texto libre en ambos modales (`#editar-mascota-modal`/
+    `#registrar-mascota-modal`), sin estructura ni catálogo.
   - "Editar mascota" abre `#editar-mascota-modal`
     (`openEditMascotaModal(petKey)` / `guardarMascotaEdit()`) y
     refresca tanto la ficha de Historia como el header del Kardex si
@@ -288,18 +295,32 @@ cierra el script") en vez del literal `</script>`.
     módulos (`.tablero-modstrip`/`.tablero-modchip`, antes era la columna
     `.tablero-nav-col`) → grid de 2 columnas: riel SOIP
     (`.tablero-soip-rail` + una `.tablero-step`/`.tablero-card` por letra)
-    y panel lateral (contexto histórico + Navegación rápida + Lista de
-    problemas).
-  - Los chips de alerta del hero (`tableroAlertChipsHtml()`) y la tarjeta
-    "Contexto histórico" (`renderTableroContexto()`) salen SOLO de datos
-    reales del paciente (fallecido, problemas activos, vencimientos de
-    `EVENTOS_SEGUIMIENTO`, conteo de consultas, último `pesoHistorico`) —
-    el mockup muestra alertas de alergia/dieta inventadas, no las
-    reintroduzcas como texto fijo.
-  - Microchip y próximos vencimientos ya NO se repiten en "Navegación
-    rápida": viven en el hero y en la tarjeta de contexto. Mismo criterio
-    que la fusión de `.pet-header-card` — antes de agregar un dato al
-    panel lateral, verificar que no esté ya arriba.
+    y panel lateral (Navegación rápida + Lista de problemas).
+  - La tarjeta oscura "Contexto histórico" (`.tablero-context-card`) vive
+    DENTRO del hero, en la columna del medio entre `.tablero-hero-id` y
+    `.tablero-hero-owner` (variante compacta `.tablero-hero-context`) —
+    antes era la primera tarjeta del panel lateral. Sigue siendo la misma
+    tarjeta y el mismo `renderTableroContexto()`, que la busca por id.
+  - Los chips de alerta del hero (`tableroAlertChipsHtml()`) salen SOLO de
+    datos reales del paciente (fallecido, problemas activos, vencimientos
+    de `EVENTOS_SEGUIMIENTO`) — el mockup muestra alertas de alergia/dieta
+    inventadas, no las reintroduzcas como texto fijo ahí.
+  - La tarjeta "Contexto histórico" (`renderTableroContexto()`) muestra 4
+    datos de referencia rápida para llenar el Subjetivo sin ir a
+    buscarlos a otro lado: Temperamento/Antecedentes/Alergias (campos de
+    la ficha de la mascota — `data.temperamento`/`.antecedentes`/
+    `.alergias`, editables desde "Editar mascota"/"Registrar mascota",
+    columnas homónimas en `mascotas`, ver patrón de campos de mascota
+    mock más arriba) y Motivo de la última consulta (`data.consultas[0]`,
+    ya viene ordenado más-reciente-primero por el `unshift` de
+    `guardarConsulta()` — no es un dato nuevo). Antes mostraba
+    consultas registradas/último peso/próximos vencimientos; ese
+    contenido se quitó de acá a pedido del cliente (el peso ya vive en la
+    fila de identidad del hero y los vencimientos vencidos ya salen como
+    chip de alerta) — no lo reintroduzcas sin que se pida.
+  - Microchip ya NO se repite en "Navegación rápida": vive en el hero.
+    Mismo criterio que la fusión de `.pet-header-card` — antes de agregar
+    un dato al panel lateral, verificar que no esté ya arriba.
   - Los ids de los campos (`tablero-soap-*`, incluidos los 7
     `-vital-*`) son contrato con `guardarConsulta('tablero-soap-', …)` —
     la maqueta cambió, los ids no. Los inputs de vitales usan
@@ -319,6 +340,31 @@ cierra el script") en vez del literal `</script>`.
     slider es válido y se conserva: el thumb se pega al extremo, el valor
     NO se recorta. `min`/`max`/`step`/`data-neutro` viven solo en el HTML
     — el JS los lee del DOM, no los duplica.
+  - **"No evaluado" no se registra en ninguna parte.** Cada uno de los 7
+    tiles de vitales tiene un interruptor (`.tablero-vital-ne`, clon
+    reducido de `.mini-toggle`) que marca esa variable como no evaluada:
+    `toggleVitalNoEvaluado()` vacía el input, lo deshabilita, apaga el
+    slider y pone `.no-evaluado` en el tile. Eso es TODO lo que hace.
+    **Requisito explícito del cliente:** un vital marcado así no puede
+    quedar registrado ni ser legible por nadie — ni en la consulta, ni en
+    la historia, ni en un PDF/export. Por eso el mecanismo es "guardarlo
+    como `null`" y NO una marca de omisión: no hay columna `no_evaluado`
+    en `consultas` y no hay que crearla, ni escribir el texto "No
+    evaluado" en `objetivo`/`summary`, ni un flag en el registro en
+    memoria. El estado del interruptor es de PANTALLA y muere al cerrar el
+    Tablero (`resetVitalesNoEvaluados()`, que corre ANTES de
+    `resetVitalSliders()` porque este último no toca `disabled`).
+    Consecuencia deliberada: después de guardar es indistinguible de "el
+    campo nunca se llenó" — así lo pidió el cliente.
+    - Corolario que ya se aplicó: la presión arterial ya no se imprime
+      como `PA —/80` cuando falta una de las dos mitades (ese guion era
+      justamente un rastro de la variable ausente). Se imprime `PA
+      120/80`, o `PAS 120` / `PAD 80` sueltas. Son 3 lugares con la misma
+      lógica y hay que mantenerlos alineados: `guardarConsulta()` (línea
+      del `summary`), `consultaViewContentHTML()` (modal Ver + el PDF de
+      `rowActionImprimir`, que reusa ese mismo HTML) y
+      `construirConsultaDesdeFila()` al recargar desde Supabase.
+      Si se agrega otro par de vitales combinados, mismo criterio.
   - El badge de cada letra se rellena (`.tablero-step.filled`) desde el
     `oninput` que ya fijaba `abrirTableroTrabajo()` para limpiar
     `field-error` — un solo handler por textarea, no agregues otro.
@@ -561,9 +607,29 @@ reemplazó a Órdenes dentro de `TABLERO_QUICKNAV_MODULOS`/
 consulta"/Tablero de trabajo, ver patrón de Kardex arriba aunque el
 Tablero es una pantalla distinta) — Órdenes sigue existiendo intacto
 como módulo completo del sidebar normal, simplemente ya no tiene
-entrada en ese nav acotado de 10 módulos durante una consulta activa;
-si se necesita volver a él desde ahí, es vía "Ver órdenes completo"
-saliendo del Tablero, no hay atajo directo.
+entrada en ese nav acotado durante una consulta activa; si se
+necesita volver a él desde ahí, es vía "Ver órdenes completo" saliendo
+del Tablero, no hay atajo directo. **`TABLERO_NAV_ORDEN` se acotó
+después, a pedido de negocio, de 10 módulos a solo 6**: Vacunaciones/
+Desparasitaciones/Fórmulas médicas/Exámenes de laboratorio/Imágenes
+diagnósticas/Documentos — Cirugías/Seguimientos/Tareas Pendientes/
+Remisiones/Citas ya NO tienen chip en el strip del Tablero. Sus
+entradas en `TABLERO_QUICKNAV_MODULOS` NO se borraron a propósito:
+`refrescarTableroQuicknavSi()` las sigue referenciando por key desde
+`guardarCirugia()`/`guardarSeguimiento()`/`toggleEstadoTareaPendiente()`/
+`guardarRemision()`/el guardado de eventos de Agenda — borrar esas
+entradas rompería esas funciones (llaman a `cfg.getRecords(...)` sin
+guard) aunque el chip ya no exista. Si se vuelve a ampliar el strip,
+solo hace falta agregar la key de vuelta a `TABLERO_NAV_ORDEN`, la
+config ya está completa. La entrada `documentos` es la única del
+strip cuyo `key` no coincide con el subtab real del sidebar
+(`data-subtab="patient-documentos"`, no `"documentos"`, ver
+`switchSubTab()`) — por eso trae un campo extra `subtabKey:
+'patient-documentos'` que `renderTableroModuloDetalle()` prefiere por
+sobre `key` al armar el botón "Ver … completo"
+(`cfg.subtabKey || key`). Si se agrega otro módulo cuyo subtab real no
+sea el mismo string que su key en este objeto, seguí el mismo patrón
+en vez de tocar `abrirModuloCompletoDesdeTablero()`.
 
 **Cirugías/procedimientos y Tareas Pendientes SÍ persisten en Supabase**
 (tablas `cirugias`/`tareas_pendientes`, ver `supabase/schema.sql`) —
