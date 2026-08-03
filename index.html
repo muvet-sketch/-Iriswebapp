@@ -5648,7 +5648,7 @@
               </div>
             </div>
             <div class="tablero-header-actions">
-              <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="guardarConsulta('tablero-soap-', 'tablero-soap-exam-body')">
+              <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="intentarFinalizarConsulta()">
                 <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
               </button>
             </div>
@@ -11275,6 +11275,40 @@
     // ya existente (ver abrirEditarConsultaModal) — null al crear una nueva.
     let editingConsultaContext = null;
 
+    // Gate de "Finalizar consulta" del Tablero: si el paciente no tiene
+    // NINGUNA fórmula médica, en vez de guardar se abre primero el
+    // formulario de fórmula (con la salida "Finalizar consulta sin fórmula"
+    // en su footer, ver openFormulaModal). Al guardar ahí, guardarFormula()
+    // encadena el cierre de la consulta solo.
+    //
+    // El criterio es "el paciente no tiene fórmulas", no "esta consulta no
+    // generó fórmula": una fórmula no queda atada a la consulta en el
+    // modelo actual, así que un paciente con fórmulas previas finaliza
+    // directo, sin interrupción.
+    //
+    // Solo aplica al Tablero. El modal clásico de consulta (prefijo
+    // 'soap-') sigue llamando a guardarConsulta() directo — el gate no
+    // estaba pedido ahí y ese modal también se usa para EDITAR consultas
+    // viejas, donde exigir una fórmula nueva no tiene sentido.
+    function intentarFinalizarConsulta() {
+      const data = patientData[selectedPetKey];
+      if (data && !(data.formulas || []).length) {
+        pendingFormulaAction = { type: 'finalizar', petKey: selectedPetKey };
+        openFormulaModal('create', selectedPetKey);
+        showToast('Esta consulta no tiene fórmula médica — regístrala o finaliza sin ella');
+        return;
+      }
+      guardarConsulta('tablero-soap-', 'tablero-soap-exam-body');
+    }
+
+    // Salida del gate de arriba: cierra el modal de fórmula sin crear
+    // ninguna y finaliza la consulta igual.
+    function finalizarConsultaSinFormula() {
+      const ctx = pendingFormulaAction;
+      closeFormulaModal(); // limpia pendingFormulaAction
+      if (ctx && ctx.type === 'finalizar') guardarConsulta('tablero-soap-', 'tablero-soap-exam-body');
+    }
+
     async function guardarConsulta(idPrefix, examBodyId) {
       idPrefix = idPrefix || 'soap-';
       examBodyId = examBodyId || 'soap-exam-body';
@@ -13411,6 +13445,14 @@
         saveBtn.textContent = 'Guardar fórmula médica';
       }
 
+      // La salida "Finalizar consulta sin fórmula" solo existe cuando este
+      // modal se abrió como gate de Finalizar consulta (ver
+      // intentarFinalizarConsulta), no en el alta normal de una fórmula.
+      const sinFormulaBtn = document.getElementById('formula-finalizar-sin-btn');
+      if (sinFormulaBtn) {
+        sinFormulaBtn.style.display = (pendingFormulaAction && pendingFormulaAction.type === 'finalizar') ? '' : 'none';
+      }
+
       document.getElementById('formula-modal').classList.add('show');
       lucide.createIcons();
     }
@@ -13518,8 +13560,11 @@
 
         // Encadena el flujo que abrió este modal (ver pendingFormulaAction).
         // Solo al CREAR: editar una fórmula existente no continúa nada.
-        if (!isEdit && accionPendiente && accionPendiente.type === 'enviar') {
-          abrirEnvioFormulaModal(petKey, record);
+        if (!isEdit && accionPendiente) {
+          if (accionPendiente.type === 'enviar') abrirEnvioFormulaModal(petKey, record);
+          // El gate de Finalizar consulta: la fórmula ya quedó registrada,
+          // ahora se cierra la consulta sin pedir un segundo clic.
+          else if (accionPendiente.type === 'finalizar') await guardarConsulta('tablero-soap-', 'tablero-soap-exam-body');
         }
       } catch (err) {
         console.error('[IRIS] Error guardando la fórmula médica en Supabase:', err);
@@ -26709,6 +26754,11 @@
       </div>
 
       <div class="soap-modal-footer">
+        <!-- Solo visible cuando este modal se abrió por el gate de
+             "Finalizar consulta" del Tablero (ver openFormulaModal) — en el
+             alta normal de una fórmula no tiene sentido y sería un atajo
+             para saltársela. -->
+        <button class="btn-outline" id="formula-finalizar-sin-btn" style="display:none;margin-right:auto;" onclick="finalizarConsultaSinFormula()">Finalizar consulta sin fórmula</button>
         <button class="btn-secondary" onclick="closeFormulaModal()">Cancelar</button>
         <button class="btn-primary" id="formula-save-btn" onclick="guardarFormula()">Guardar fórmula médica</button>
       </div>
