@@ -1657,6 +1657,23 @@
       color: var(--text-1);
     }
 
+    /* Botón "nombre de la mascota" — abre "Editar mascota" (ver
+       .pet-temperamento-btn, mismo criterio de pencil que aparece al hover). */
+    .pet-name-title-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      padding: 1px 2px;
+      transition: var(--transition);
+    }
+    .pet-name-title-btn i { color: var(--text-2); opacity: 0; transition: var(--transition); }
+    .pet-name-title-btn:hover i,
+    .pet-name-title-btn:focus-visible i { opacity: 1; }
+    .pet-name-title-btn:hover .pet-name-title { color: var(--clinic-accent); }
+    .pet-name-title-btn:focus-visible { outline: 2px solid var(--clinic-accent); outline-offset: 2px; }
+
     .pet-chip-tag {
       font-family: monospace;
       font-size: 11px;
@@ -5207,7 +5224,15 @@
                   </div>
                   <div class="pet-identity">
                     <div class="pet-name-row">
-                      <span class="pet-name-title" id="pet-profile-name">Luna</span>
+                      <!-- "Editar mascota" ya no es un botón aparte: se abre
+                           haciendo click en el nombre (mismo criterio de
+                           affordance que el chip de temperamento). -->
+                      <span class="pet-name-title-btn" role="button" tabindex="0" title="Editar mascota"
+                            onclick="openEditMascotaModal(selectedPetKey)"
+                            onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditMascotaModal(selectedPetKey);}">
+                        <span class="pet-name-title" id="pet-profile-name">Luna</span>
+                        <i data-lucide="pencil" style="width:13px;height:13px;"></i>
+                      </span>
                       <span class="pet-chip-tag" id="pet-profile-chip">900123456789</span>
                     </div>
                     <div class="pet-meta-row">
@@ -5278,20 +5303,29 @@
               <!-- Acciones del paciente: van DEBAJO de peso/datos generales
                    (antes vivían en la columna derecha de .pet-header-top-row,
                    junto al widget "Viendo como"). No colapsan al hacer
-                   scroll — ver .pet-header-collapsed. -->
+                   scroll — ver .pet-header-collapsed. "Volver a buscar" se
+                   quitó (clickear el tab "Consultorio" del navbar ya
+                   deselecciona la mascota y vuelve al buscador, ver el
+                   listener de "NAVEGACIÓN NIVEL 1"); "Editar mascota" se
+                   movió al click sobre el nombre (arriba); "Solicitar a otra
+                   clínica" se movió a Admin > Tutores (chip por mascota).
+                   "Nueva Consulta" se rediseñó como un menú "+ Nuevo" con
+                   los tipos de registro más comunes de un paciente. -->
               <div class="pet-header-right pet-header-actions-row">
-                <button class="btn-outline back-btn" onclick="deselectPet()">
-                  <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver a buscar
-                </button>
-                <button class="btn-outline" onclick="openEditMascotaModal(selectedPetKey)">
-                  <i data-lucide="pencil" style="width: 14px; height: 14px;"></i> Editar mascota
-                </button>
-                <button class="btn-outline" onclick="abrirRedSolicitudModal(selectedPetKey)" title="Solicitar información clínica de este paciente a otro establecimiento de la red IRIS">
-                  <i data-lucide="network" style="width: 14px; height: 14px;"></i> Solicitar a otra clínica
-                </button>
-                <button class="btn-primary" id="btn-nueva-consulta" onclick="abrirTableroTrabajo()">
-                  <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Consulta
-                </button>
+                <div class="registrar-nuevo-wrap">
+                  <button class="btn-primary" id="btn-nueva-consulta" onclick="event.stopPropagation(); togglePetHeaderNuevoMenu()">
+                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nuevo <i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>
+                  </button>
+                  <div class="registrar-nuevo-menu" id="pet-header-nuevo-menu" style="right:0;left:auto;">
+                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); abrirTableroTrabajo();"><i data-lucide="stethoscope"></i> Consulta</div>
+                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openVacunacionModal('create', selectedPetKey);"><i data-lucide="syringe"></i> Vacunación</div>
+                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openDesparasitacionModal('create', selectedPetKey);"><i data-lucide="shield-check"></i> Desparasitación</div>
+                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openExamenModal('laboratorio', 'create', selectedPetKey);"><i data-lucide="test-tube-2"></i> Examen de laboratorio</div>
+                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openExamenModal('imagen', 'create', selectedPetKey);"><i data-lucide="image"></i> Imagen diagnóstica</div>
+                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openDocumentoModal('create', selectedPetKey);"><i data-lucide="folder-open"></i> Documento</div>
+                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openRemisionModal('create', selectedPetKey);"><i data-lucide="external-link"></i> Remisión</div>
+                  </div>
+                </div>
               </div>
 
               <!-- Misma banda "Contexto histórico" del Tablero de trabajo
@@ -8980,6 +9014,16 @@
             document.querySelector('.consultorio-wrapper').style.display = '';
             kardexContext = null;
           }
+          // El Tablero de trabajo es la otra pantalla completa que oculta
+          // el wrapper (mismo patrón que el Kardex) y también hay que
+          // cerrarla acá: si se quedaba abierta, deselectPet() destapaba
+          // el buscador por debajo y su "Volver" terminaba mostrando
+          // buscador y ficha a la vez (ver restaurarVistaPacienteConsultorio).
+          if (document.getElementById('tablero-view').classList.contains('active')) {
+            document.getElementById('tablero-view').classList.remove('active');
+            document.querySelector('.consultorio-wrapper').style.display = '';
+            tableroActiveModulo = null;
+          }
           deselectPet();
         }
       });
@@ -9176,6 +9220,28 @@
       closeOwnerPopoverPin();
       document.getElementById('consultorio-patient-view').classList.remove('active');
       document.getElementById('consultorio-search-view').style.display = 'flex';
+    }
+
+    // Vuelve a la ficha del paciente al salir de una pantalla completa
+    // (Tablero de trabajo / Kardex). OJO — no basta con re-activar
+    // #consultorio-patient-view: hay que volver a ocultar el buscador.
+    // Las dos son vistas hermanas dentro del mismo .consultorio-wrapper
+    // (flex), así que si el buscador quedó en display:flex ambas se
+    // reparten el ancho y la pantalla se ve partida en dos (buscador a la
+    // izquierda, sidebar + ficha a la derecha). Eso pasaba porque el click
+    // en el tab Consultorio del navbar llama a deselectPet() -> el
+    // buscador vuelve a display:flex mientras la pantalla completa sigue
+    // encima con el wrapper en display:none, y el "Volver" de esa pantalla
+    // destapaba las dos juntas. Si además ya no hay mascota seleccionada,
+    // lo correcto es aterrizar en el buscador y no en una ficha vacía.
+    function restaurarVistaPacienteConsultorio() {
+      document.querySelector('.consultorio-wrapper').style.display = '';
+      if (!selectedPetKey || !patientData[selectedPetKey]) {
+        deselectPet();
+        return;
+      }
+      document.getElementById('consultorio-search-view').style.display = 'none';
+      document.getElementById('consultorio-patient-view').classList.add('active');
     }
 
     // ── SELECTOR DE INDICATIVO TELEFÓNICO POR PAÍS (reutilizable) ──
@@ -12382,8 +12448,7 @@
 
     function cerrarTableroAConsultorio() {
       document.getElementById('tablero-view').classList.remove('active');
-      document.querySelector('.consultorio-wrapper').style.display = '';
-      document.getElementById('consultorio-patient-view').classList.add('active');
+      restaurarVistaPacienteConsultorio();
       // Si se finalizó una consulta acá dentro, "Motivo última consulta"
       // de la banda del Consultorio quedó viejo — se repinta al volver.
       const contextoEl = document.getElementById('pet-header-contexto');
@@ -18184,8 +18249,7 @@
 
     function cerrarKardexAConsultorio() {
       document.getElementById('kardex-view').classList.remove('active');
-      document.querySelector('.consultorio-wrapper').style.display = '';
-      document.getElementById('consultorio-patient-view').classList.add('active');
+      restaurarVistaPacienteConsultorio();
       desuscribirKardexRealtime();
       kardexContext = null;
     }
@@ -18641,6 +18705,15 @@
 
     function closeAllRegistrarNuevoMenus() {
       document.querySelectorAll('.registrar-nuevo-menu.show').forEach(m => m.classList.remove('show'));
+    }
+
+    // Menú "+ Nuevo" de la cabecera del paciente (Consultorio) — reemplaza al
+    // botón "Nueva Consulta"; mismo patrón que toggleRegistrarNuevoMenu.
+    function togglePetHeaderNuevoMenu() {
+      const menu = document.getElementById('pet-header-nuevo-menu');
+      const wasOpen = menu.classList.contains('show');
+      closeAllRegistrarNuevoMenus();
+      if (!wasOpen) menu.classList.add('show');
     }
 
     function toggleKardexNuevoDiaMenu() {
@@ -21169,9 +21242,12 @@
       tbody.innerHTML = pageRows.length ? pageRows.map(p => {
         const mascotas = getMascotasDePropietario(p.id);
         // Cada mascota: el chip navega a su historia (comportamiento previo)
-        // y el botón de al lado dispara el envío de fórmula sin salir de acá.
+        // y los botones de al lado disparan el envío de fórmula / la
+        // solicitud de información a otra clínica (antes "Solicitar a otra
+        // clínica" vivía como botón en la cabecera del paciente) sin salir
+        // de acá.
         const chips = mascotas.length
-          ? mascotas.map(([petKey, d]) => `<span class="pet-chip-group"><span class="pet-chip-badge ${d.avatarClass}" style="cursor:pointer;" onclick="document.querySelector('.nav-tabs-bar .tab-btn[data-tab=\\'consultorio\\']').click(); selectPet('${petKey}');"><i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:12px;height:12px;"></i> ${d.name}</span><button class="pet-chip-action" title="Enviar fórmula a ${d.name}" onclick="event.stopPropagation(); iniciarEnvioFormula('${petKey}')"><i data-lucide="send" style="width:12px;height:12px;"></i></button></span>`).join(' ')
+          ? mascotas.map(([petKey, d]) => `<span class="pet-chip-group"><span class="pet-chip-badge ${d.avatarClass}" style="cursor:pointer;" onclick="document.querySelector('.nav-tabs-bar .tab-btn[data-tab=\\'consultorio\\']').click(); selectPet('${petKey}');"><i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:12px;height:12px;"></i> ${d.name}</span><button class="pet-chip-action" title="Enviar fórmula a ${d.name}" onclick="event.stopPropagation(); iniciarEnvioFormula('${petKey}')"><i data-lucide="send" style="width:12px;height:12px;"></i></button><button class="pet-chip-action" title="Solicitar información clínica de ${d.name} a otra clínica" onclick="event.stopPropagation(); abrirRedSolicitudModal('${petKey}')"><i data-lucide="network" style="width:12px;height:12px;"></i></button></span>`).join(' ')
           : '<span class="gestion-detail">Sin mascotas registradas</span>';
         const gestion = getUltimaGestionPropietario(p.nombre);
         return `
