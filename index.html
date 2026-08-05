@@ -11390,7 +11390,18 @@
       const color = document.getElementById('mascota-color').value.trim();
       const genero = document.getElementById('mascota-genero').value;
       const pesoNum = parseFloat(document.getElementById('mascota-peso').value);
-      const weight = !isNaN(pesoNum) ? `${pesoNum} kg` : data.weight;
+      // El peso de este formulario NO es solo el texto de la ficha: alimenta el
+      // MISMO histórico (data.pesoHistorico) que dibuja la gráfica y que llena
+      // "Actualizar peso". Antes solo escribía data.weight y la gráfica quedaba
+      // desincronizada (mostraba el último punto registrado, no el peso de la
+      // ficha).
+      const pesoValido = !isNaN(pesoNum) && pesoNum > 0;
+      const pesoHistorico = pesoValido
+        ? aplicarPesoAlHistorico(data.pesoHistorico, pesoNum)
+        : (Array.isArray(data.pesoHistorico) ? data.pesoHistorico : []);
+      // Mismo criterio que guardarPesoActualizado(): el registro más reciente
+      // por fecha manda sobre el peso "actual" mostrado en la ficha.
+      const weight = pesoValido ? `${pesoHistorico[pesoHistorico.length - 1].peso} kg` : data.weight;
       const talla = document.getElementById('mascota-talla').value;
       const estadoReproductivo = document.getElementById('mascota-estado-reproductivo').value;
       const fechaNacimiento = calcularFechaNacimientoDesdeEdadInputs('mascota');
@@ -11410,6 +11421,7 @@
         const { error } = await window.supabase.from('mascotas').update({
           nombre: name, especie: species || null, raza: breed || null, color: color || null, genero: genero || null,
           peso: weight || null, talla: talla || null, estado_reproductivo: estadoReproductivo || null,
+          ...(pesoValido ? { peso_historico: pesoHistorico } : {}),
           fecha_nacimiento: fechaNacimiento || null, chip: chip || null, alimentacion: alimentacion || null,
           frecuencia_bano: frecuenciaBano || null, temperamento: temperamento || null,
           antecedentes: antecedentes || null, alergias: alergias || null,
@@ -11427,6 +11439,7 @@
 
       data.name = name; data.species = species; data.breed = breed; data.color = color; data.genero = genero;
       data.weight = weight; data.talla = talla; data.estadoReproductivo = estadoReproductivo;
+      if (pesoValido) data.pesoHistorico = pesoHistorico;
       data.fechaNacimiento = fechaNacimiento; data.chip = chip; data.alimentacion = alimentacion; data.frecuenciaBano = frecuenciaBano;
       data.temperamento = temperamento; data.antecedentes = antecedentes; data.alergias = alergias;
       data.animalServicio = animalServicio; data.fallecido = fallecido;
@@ -11440,14 +11453,46 @@
         document.getElementById('pet-profile-weight').textContent = data.weight;
         document.getElementById('pet-profile-chip').textContent = data.chip;
         mountPetGeneralCard('pet-header', petKey);
-        if (kardexContext && kardexContext.petKey === petKey) mountKardexHeader(petKey);
       }
+      // Fuera del bloque anterior: el Kardex puede estar abierto sobre una
+      // mascota distinta de la seleccionada en el Consultorio y su header
+      // también repinta la gráfica de peso.
+      if (kardexContext && kardexContext.petKey === petKey) mountKardexHeader(petKey);
       if (propietarioPerfilId) renderPerfilMascotasTable(propietarioPerfilId);
       renderPropietariosTable();
       renderTutoresTable();
 
       closeEditMascotaModal();
       showToast('Mascota actualizada');
+    }
+
+    // Aplica al histórico de peso un valor digitado en "Editar mascota" usando
+    // la fecha de HOY. Tres reglas:
+    //  - si el peso es igual al último registro, NO agrega punto (editar el
+    //    nombre o el chip no puede ensuciar la gráfica con puntos repetidos);
+    //  - si ya hay un punto de hoy, lo CORRIGE en vez de duplicarlo (varias
+    //    ediciones el mismo día son una sola medición);
+    //  - reordena por fechaISO, porque renderWeightChartSVG asume orden
+    //    cronológico ascendente (mismo criterio que guardarPesoActualizado()).
+    function aplicarPesoAlHistorico(historicoPrevio, pesoNum) {
+      const ordenado = (Array.isArray(historicoPrevio) ? [...historicoPrevio] : [])
+        .sort((a, b) => String(a.fechaISO).localeCompare(String(b.fechaISO)));
+      if (isNaN(pesoNum) || pesoNum <= 0) return ordenado;
+
+      const ultimo = ordenado[ordenado.length - 1];
+      if (ultimo && parseFloat(ultimo.peso) === pesoNum) return ordenado;
+
+      const hoyISO = dashFechaISODia(new Date());
+      const [y, m, d] = hoyISO.split('-');
+      const hoyFmt = `${d}/${m}/${y}`;
+
+      const idxHoy = ordenado.findIndex(p => p.fechaISO === hoyISO);
+      if (idxHoy !== -1) {
+        ordenado[idxHoy] = { ...ordenado[idxHoy], fecha: hoyFmt, peso: pesoNum };
+        return ordenado;
+      }
+      return [...ordenado, { fechaISO: hoyISO, fecha: hoyFmt, peso: pesoNum }]
+        .sort((a, b) => String(a.fechaISO).localeCompare(String(b.fechaISO)));
     }
 
     // ── MODAL: ACTUALIZAR PESO — agrega un punto nuevo al histórico
