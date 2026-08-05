@@ -2410,6 +2410,38 @@
       background-color: var(--surface-container); color: var(--text-2); border-color: var(--border);
     }
 
+    /* Termómetro del preview de #temperamento-modal (ver
+       temperamentoTermometroHtml()) — mismos 4 tonos que el chip de arriba,
+       reusando --success/--warning/--danger, sin color nuevo. El tubo se
+       llena desde abajo (33/66/100%) según el nivel de cuidado; en neutro
+       queda vacío y gris. */
+    .temperamento-term-wrap { display: flex; align-items: flex-end; gap: 16px; padding: 10px 2px 2px; }
+    .temperamento-term { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+    .temperamento-term-tube {
+      width: 14px; height: 96px; border-radius: 7px 7px 0 0;
+      background-color: var(--surface-container); border: 1px solid var(--border); border-bottom: none;
+      display: flex; align-items: flex-end; overflow: hidden;
+    }
+    .temperamento-term-fill { width: 100%; border-radius: 7px 7px 0 0; transition: height 0.2s ease, background-color 0.2s ease; }
+    .temperamento-term-fill.calmo { background-color: var(--success); }
+    .temperamento-term-fill.precaucion { background-color: var(--warning); }
+    .temperamento-term-fill.riesgo { background-color: var(--danger); }
+    .temperamento-term-fill.neutro { background-color: transparent; }
+    .temperamento-term-bulb {
+      width: 24px; height: 24px; border-radius: 50%; margin-top: -1px;
+      background-color: var(--surface-container); border: 1px solid var(--border); transition: var(--transition);
+    }
+    .temperamento-term-bulb.calmo { background-color: var(--success); border-color: var(--success); }
+    .temperamento-term-bulb.precaucion { background-color: var(--warning); border-color: var(--warning); }
+    .temperamento-term-bulb.riesgo { background-color: var(--danger); border-color: var(--danger); }
+    .temperamento-term-scale { display: flex; flex-direction: column; justify-content: space-between; height: 96px; padding: 1px 0; }
+    .temperamento-term-tick { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--text-2); opacity: 0.5; }
+    .temperamento-term-tick.active { opacity: 1; color: var(--text-1); }
+    .temperamento-term-tick-dot { width: 7px; height: 7px; border-radius: 50%; background-color: var(--border); flex-shrink: 0; }
+    .temperamento-term-tick.riesgo .temperamento-term-tick-dot { background-color: var(--danger); }
+    .temperamento-term-tick.precaucion .temperamento-term-tick-dot { background-color: var(--warning); }
+    .temperamento-term-tick.calmo .temperamento-term-tick-dot { background-color: var(--success); }
+
     /* Chips de alerta — solo se pintan cuando hay algo real que mostrar
        (fallecido, problemas activos, vencimientos ya pasados). Ver
        tableroAlertChipsHtml(): nada de alertas inventadas. */
@@ -11279,7 +11311,8 @@
     function actualizarPreviewTemperamento() {
       const previewEl = document.getElementById('temperamento-preview');
       if (!previewEl) return;
-      previewEl.innerHTML = temperamentoChipHtml(document.getElementById('temperamento-texto').value);
+      const texto = document.getElementById('temperamento-texto').value;
+      previewEl.innerHTML = temperamentoChipHtml(texto) + temperamentoTermometroHtml(texto);
       lucide.createIcons();
     }
 
@@ -12147,9 +12180,9 @@
     // Si no coincide ninguna palabra, el tono es 'neutro' — nunca se asume
     // que un temperamento desconocido es manejable.
     const TEMPERAMENTO_TONOS = [
-      { tono: 'riesgo', icono: 'alert-octagon', palabras: ['agresi', 'muerde', 'mordedor', 'ataca', 'peligros', 'bozal', 'hostil', 'reactiv'] },
-      { tono: 'precaucion', icono: 'alert-triangle', palabras: ['nervios', 'ansios', 'miedos', 'temeros', 'asustadiz', 'inquiet', 'estres', 'desconfia', 'arisc', 'timid', 'huidiz', 'territorial', 'dominante', 'defensiv'] },
-      { tono: 'calmo', icono: 'smile', palabras: ['docil', 'tranquil', 'calm', 'manso', 'sociable', 'amigable', 'carinos', 'jugueton', 'colaborador', 'noble', 'sumis'] }
+      { tono: 'riesgo', icono: 'alert-octagon', palabras: ['agresi', 'muerde', 'mordedor', 'ataca', 'peligros', 'bozal', 'hostil', 'reactiv', 'violent', 'grunon'] },
+      { tono: 'precaucion', icono: 'alert-triangle', palabras: ['nervios', 'ansios', 'miedos', 'temero', 'asustadi', 'inquiet', 'estres', 'desconfia', 'arisc', 'timid', 'huidiz', 'territorial', 'dominante', 'defensiv', 'intoleran', 'dificil', 'terribl', 'caotic', 'hiperactiv', 'dispers', 'brios', 'temperamental', 'groser', 'impredecib'] },
+      { tono: 'calmo', icono: 'smile', palabras: ['docil', 'tranquil', 'calm', 'manso', 'sociable', 'amigable', 'carinos', 'jugueton', 'colaborador', 'noble', 'sumis', 'amable', 'pacific', 'obedien', 'afectuos'] }
     ];
 
     function temperamentoTono(texto) {
@@ -12173,6 +12206,36 @@
         <span class="tablero-temperamento-chip ${clase}" title="${title.replace(/"/g, '&quot;')}">
           <i data-lucide="${icono}" style="width:13px;height:13px;"></i> ${etiqueta}
         </span>`;
+    }
+
+    // Termómetro del semáforo de temperamento — usado SOLO en el preview del
+    // modal #temperamento-modal (el chip compacto sigue siendo la única
+    // representación en hero/cabecera, donde no hay espacio para esto). Es
+    // la misma clasificación de temperamentoTono(), pintada como una escala
+    // de 3 niveles para que quien escribe el texto libre vea de una el
+    // "nivel de cuidado" que le va a quedar, no solo el color final.
+    function temperamentoTermometroHtml(texto) {
+      const def = temperamentoTono(texto);
+      const tono = def ? def.tono : 'neutro';
+      const pct = { riesgo: 100, precaucion: 66, calmo: 33, neutro: 0 }[tono];
+      const tick = (cls, label) => `
+        <div class="temperamento-term-tick ${cls}${tono === cls ? ' active' : ''}">
+          <span class="temperamento-term-tick-dot"></span> ${label}
+        </div>`;
+      return `
+        <div class="temperamento-term-wrap">
+          <div class="temperamento-term">
+            <div class="temperamento-term-tube">
+              <div class="temperamento-term-fill ${tono}" style="height:${pct}%"></div>
+            </div>
+            <div class="temperamento-term-bulb ${tono}"></div>
+          </div>
+          <div class="temperamento-term-scale">
+            ${tick('riesgo', 'Riesgo')}
+            ${tick('precaucion', 'Precaución')}
+            ${tick('calmo', 'Calmo')}
+          </div>
+        </div>`;
     }
 
     // Chips de alerta del hero — SOLO datos reales del paciente (nada de
