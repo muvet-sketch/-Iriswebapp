@@ -715,6 +715,71 @@ create policy "documentos_delete_member"
   on public.documentos for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── documentos: proceso de firma ────────────────────────────
+-- firma_nombre/_fecha/_hora ya existían arriba (sin nadie que las
+-- escribiera: el estado 'firmado' era inalcanzable desde la app).
+-- Estas dos completan el registro de la firma real:
+--   firma_documento -> cédula/NIT de quien firma (opcional).
+--   firma_imagen    -> el trazo tal cual lo dibujó el tutor en el pad
+--                      del modal, como PNG en data URL.
+-- La imagen va en la fila y NO en Storage a propósito: son unos pocos
+-- KB (el canvas se recorta al trazo antes de exportarlo) y así la firma
+-- se pinta en el modal "Ver", en el PDF de "Imprimir" y en el PDF que
+-- se sube al bucket sin depender de una URL firmada que expira ni de
+-- que html2canvas logre traer una imagen de otro origen.
+alter table public.documentos add column if not exists firma_documento text;
+alter table public.documentos add column if not exists firma_imagen text;
+
+-- ── TABLA: documento_plantillas (formatos propios de la clínica) ──
+-- El link "+ Crear nuevo formato" del modal de documento era un
+-- placeholder que solo mostraba un toast; los 3 formatos de fábrica
+-- seguían viviendo hardcodeados en index.html
+-- (PLANTILLAS_DOCUMENTOS_BASE) y no había forma de agregar uno propio.
+-- Acá viven los que crea cada clínica. Los de fábrica NO se copian a
+-- esta tabla: existen en toda clínica y la UI concatena las dos listas
+-- (getPlantillasDocumentos()), igual que VACUNAS_CATALOGO_BASE +
+-- catalogos_custom.
+--
+-- Borrar un formato no toca los documentos ya creados con él: cada
+-- documento guarda su propio `contenido_html` y el nombre del formato
+-- como texto plano en `tipo` (no hay FK a propósito).
+create table if not exists public.documento_plantillas (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  nombre             text not null,
+  contenido_html     text,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  unique (establecimiento_id, nombre)
+);
+
+create index if not exists documento_plantillas_establecimiento_id_idx
+  on public.documento_plantillas (establecimiento_id);
+
+alter table public.documento_plantillas enable row level security;
+
+drop policy if exists "documento_plantillas_select_member" on public.documento_plantillas;
+create policy "documento_plantillas_select_member"
+  on public.documento_plantillas for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "documento_plantillas_insert_member" on public.documento_plantillas;
+create policy "documento_plantillas_insert_member"
+  on public.documento_plantillas for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "documento_plantillas_update_member" on public.documento_plantillas;
+create policy "documento_plantillas_update_member"
+  on public.documento_plantillas for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "documento_plantillas_delete_member" on public.documento_plantillas;
+create policy "documento_plantillas_delete_member"
+  on public.documento_plantillas for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── STORAGE: bucket `fotos-mascotas` ────────────────────────
 -- Público (a diferencia de `pdfs`) — una foto de mascota no es un
 -- documento de identidad, y así los <img src> del front no

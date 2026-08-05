@@ -155,7 +155,28 @@ cierra el script") en vez del literal `</script>`.
   una tarjeta de foto aparte y el avatar de la cabecera solo mostraba
   la inicial del nombre. "Editar mascota" vive ahora en
   `.pet-header-right` junto a "Volver a buscar"/"Nueva Consulta" (antes
-  estaba debajo de la foto). `petDataTableHTML(data)` YA NO repite
+  estaba debajo de la foto). Ese bloque de botones ya NO está en la
+  columna derecha de `.pet-header-top-row` (ahí quedó solo el widget
+  "Viendo como"): es una fila propia, `.pet-header-actions-row`, DEBAJO
+  de peso/datos generales y encima de la banda de contexto, para que el
+  histórico de peso suba junto a la identidad. Orden de la tarjeta:
+  identidad → peso/datos generales → acciones → contexto. Al hacer
+  scroll siguen colapsando solo `.pet-header-bottom-row` y
+  `.pet-header-context-row`; identidad y acciones quedan fijas.
+  **Trampa ya sufrida en ese colapso (`setupPatientPaneHeaderCollapse`):**
+  colapsar el header AGRANDA el alto visible de `.patient-pane-body`, así
+  que el navegador recorta `scrollTop` al nuevo máximo. Con el umbral único
+  original (`scrollTop > 12`) y un módulo de pocas filas, ese recorte dejaba
+  el scroll por debajo del umbral → se expandía → volvía a haber scroll →
+  se colapsaba: la pantalla "se subía sola" y los últimos registros eran
+  imposibles de ver. Ahora hay dos guardas y las dos hacen falta:
+  histéresis con dos umbrales (32 para colapsar, 10 para expandir — mismo
+  criterio que `onTableroScroll()`) y, sobre todo, **no colapsar si tras
+  colapsar no queda scroll de sobra** (se mide el alto que liberan las dos
+  filas y se exige que el contenido lo exceda por un margen). Si agregás
+  otra fila colapsable al header, sumala a esa medición o la guarda queda
+  corta.
+  `petDataTableHTML(data)` YA NO repite
   Especie/Raza/Peso/Edad/Código-Chip (esos siguen en la fila de
   identidad, `#pet-profile-species/-breed/-weight/-age/-chip`) — solo
   trae Color/Género/Talla/Estado reproductivo/Animal de servicio/
@@ -168,7 +189,14 @@ cierra el script") en vez del literal `</script>`.
     no un template que la función inyecte). El Kardex de
     Hospitalizaciones tiene su propio header independiente
     (`mountKardexHeader`) que replica la misma lógica de foto —
-    no reutiliza esta función ni esta tarjeta.
+    no reutiliza esta función ni esta tarjeta. También rellena
+    `${containerId}-contexto` si ese id existe: es la banda oscura
+    "Contexto histórico" del Tablero, reusada tal cual como tercera fila
+    de `.pet-header-card` (`#pet-header-contexto` dentro de
+    `.pet-header-context-row`, que colapsa con el mismo
+    `.pet-header-collapsed` que `.pet-header-bottom-row`). El HTML sale
+    de `contextoHistoricoHTML(petKey)` — ver patrón del Tablero abajo;
+    no dupliques el markup en las dos pantallas.
   - `renderWeightChartSVG(containerId, pesoHistorico)` es la pieza
     atómica reutilizable por separado (usada también en el header del
     Kardex de Hospitalizaciones) — línea de tiempo simple con tooltip
@@ -288,36 +316,129 @@ cierra el script") en vez del literal `</script>`.
   oscura reusa `--sidebar-bg`/`--sidebar-active`. Si se retoma ese mockup
   para otra pantalla, mismo criterio: tomar la ESTRUCTURA, no sus colores
   ni su CSS.
-  - Estructura: barra de acciones **sticky** (`.tablero-header`, con
-    Volver/rol simulado/Imprimir/Compartir/Finalizar — reemplaza al FAB
-    del mockup, no lo dupliques) → hero de vidrio del paciente
-    (`.tablero-hero`, `mountTableroHeader()`) → **strip horizontal** de
-    módulos (`.tablero-modstrip`/`.tablero-modchip`, antes era la columna
-    `.tablero-nav-col`) → grid de 2 columnas: riel SOIP
-    (`.tablero-soip-rail` + una `.tablero-step`/`.tablero-card` por letra)
-    y panel lateral (Navegación rápida + Lista de problemas).
-  - La tarjeta oscura "Contexto histórico" (`.tablero-context-card`) vive
-    DENTRO del hero, en la columna del medio entre `.tablero-hero-id` y
-    `.tablero-hero-owner` (variante compacta `.tablero-hero-context`) —
-    antes era la primera tarjeta del panel lateral. Sigue siendo la misma
-    tarjeta y el mismo `renderTableroContexto()`, que la busca por id.
+  - Estructura: **bloque fijo** `.tablero-sticky-stack` (barra de acciones
+    `.tablero-header` con Volver/rol simulado/Finalizar — reemplaza al FAB
+    del mockup, no lo dupliques → hero de vidrio del paciente
+    `.tablero-hero`, `mountTableroHeader()` → **strip horizontal** de
+    módulos `.tablero-modstrip`/`.tablero-modchip`, antes era la columna
+    `.tablero-nav-col`) → `.tablero-body`, que es lo único que scrollea:
+    grid de 2 columnas con el riel SOIP (`.tablero-soip-rail` + una
+    `.tablero-step`/`.tablero-card` por letra) y el panel lateral
+    (Navegación rápida + Lista de problemas). Los tres bloques de arriba
+    van DENTRO del sticky a propósito (el strip vivía en `.tablero-body` y
+    se perdía al bajar); si se agrega algo más ahí, tiene que traer su
+    propio padding horizontal de 24px, que `.tablero-body` ya no le da.
+  - **El hero es un `grid` con `grid-template-areas`, no flex** — y esa es
+    la pieza que sostiene todo lo demás. Sus 5 bloques son hijos DIRECTOS
+    (`.tablero-hero-photo`/`-id`/`.tablero-context-card`/`-weight`/`-owner`,
+    sin wrapper intermedio: un wrapper solo se podría colocar como un bloque)
+    y el orden del DOM es el del modo COMPACTO (foto → identidad → contexto →
+    peso → responsable); el modo expandido lo reacomodan las áreas. Así la
+    banda de contexto se mueve entre dos posiciones muy distintas cambiando
+    únicamente `grid-template-areas`, sin tocar el DOM:
+    - Expandido: `"foto id peso owner" / "ctx ctx ctx ctx"` — el contexto es
+      una segunda fila de ancho completo y el histórico de peso ocupa el
+      hueco entre los datos de la mascota y el responsable.
+    - Compacto: `"foto id ctx owner"` — el gráfico de peso se va
+      (`display:none`, ver abajo) y el contexto le toma ese hueco.
+    - El bloque de peso (`.tablero-hero-weight`, área `peso`) solo pinta
+      `renderWeightChartSVG('tablero-hero-weight-chart', data.pesoHistorico)`
+      desde `mountTableroHeader()` — la misma pieza atómica de la ficha de
+      Historia y del header del Kardex, con el alto del trazado achicado a
+      62px por CSS (los 96px de la ficha estirarían la barra fija). En
+      `.condensed` tiene que ser `display:none` y no `visibility`/`opacity`:
+      un item de grid cuya área no existe en el template condensado se
+      auto-colocaría en una fila implícita y rompería la barra de una línea.
+  - **Modo compacto al hacer scroll** (`onTableroScroll()` sobre
+    `#tablero-view`, que es el scroller): pone `.condensed` en
+    `.tablero-sticky-stack` y el hero se REORGANIZA en una sola línea —
+    foto de 64→40px, `.tablero-hero-id` de columna a fila, la banda de
+    contexto al hueco del medio (ver arriba) con cada dato en una línea
+    `ETIQUETA valor`, y se ocultan solo microchip/"Consulta en curso"/
+    rótulo del bloque de contexto/label y teléfono del responsable. **Nada
+    de esto se oculta por completo a pedido del cliente** — la versión
+    anterior escondía la banda entera y dejaba ese espacio vacío. Todo el
+    reacomodo es CSS; el JS solo prende la clase. Dos umbrales distintos a
+    propósito (32px para condensar, 10px para expandir): con uno solo, el
+    cambio de alto del hero mueve el scroll lo justo para volver a
+    cruzarlo y la barra parpadea. El botón "Ficha completa"
+    (`.tablero-hero-toggle`, `toggleTableroHeroExpandido()`) fuerza el hero
+    entero sin subir el scroll (`.forzar-expandido`, de ahí el
+    `:not(.forzar-expandido)` en todas las reglas de `.condensed`), y
+    `resetTableroSticky()` limpia ambas clases al abrir el Tablero —
+    después de `.active`, porque con la vista en `display:none` fijar
+    `scrollTop` no tiene efecto.
+  - La banda oscura "Contexto histórico" (`.tablero-context-card`) es de
+    ancho completo con los datos en columnas (`.tablero-context-facts` es
+    un grid `auto-fit`) y el rótulo del bloque a la izquierda. Antes era la
+    columna del medio de un hero de 3 columnas, con los datos apilados: eso
+    le fijaba al hero un alto de ~230px que las otras dos columnas no
+    llenaban, y se veía como espacio en blanco. Cada valor va en UNA sola
+    línea con elipsis (un antecedente largo no puede estirar el alto de las
+    otras columnas) y el texto completo queda en el `title=`. Sigue siendo
+    el mismo `renderTableroContexto()`, que la busca por id — la clase
+    `.tablero-hero-context` quedó solo como enganche del `grid-area`.
+    El markup en sí vive en `contextoHistoricoHTML(petKey)` porque la
+    misma banda se pinta también en la cabecera del paciente del
+    Consultorio (ver `mountPetGeneralCard` más arriba): son el mismo dato
+    de referencia y no pueden divergir entre las dos pantallas.
+    `cerrarTableroAConsultorio()` la repinta al volver, porque finalizar
+    una consulta cambia el "Motivo última consulta".
   - Los chips de alerta del hero (`tableroAlertChipsHtml()`) salen SOLO de
     datos reales del paciente (fallecido, problemas activos, vencimientos
     de `EVENTOS_SEGUIMIENTO`) — el mockup muestra alertas de alergia/dieta
     inventadas, no las reintroduzcas como texto fijo ahí.
-  - La tarjeta "Contexto histórico" (`renderTableroContexto()`) muestra 4
+  - La banda "Contexto histórico" (`renderTableroContexto()`) muestra 3
     datos de referencia rápida para llenar el Subjetivo sin ir a
-    buscarlos a otro lado: Temperamento/Antecedentes/Alergias (campos de
-    la ficha de la mascota — `data.temperamento`/`.antecedentes`/
-    `.alergias`, editables desde "Editar mascota"/"Registrar mascota",
-    columnas homónimas en `mascotas`, ver patrón de campos de mascota
-    mock más arriba) y Motivo de la última consulta (`data.consultas[0]`,
-    ya viene ordenado más-reciente-primero por el `unshift` de
-    `guardarConsulta()` — no es un dato nuevo). Antes mostraba
-    consultas registradas/último peso/próximos vencimientos; ese
-    contenido se quitó de acá a pedido del cliente (el peso ya vive en la
-    fila de identidad del hero y los vencimientos vencidos ya salen como
-    chip de alerta) — no lo reintroduzcas sin que se pida.
+    buscarlos a otro lado: Antecedentes/Alergias (campos de la ficha de la
+    mascota — `data.antecedentes`/`.alergias`, editables desde "Editar
+    mascota"/"Registrar mascota", columnas homónimas en `mascotas`, ver
+    patrón de campos de mascota mock más arriba) y Motivo de la última
+    consulta (`data.consultas[0]`, ya viene ordenado
+    más-reciente-primero por el `unshift` de `guardarConsulta()` — no es un
+    dato nuevo). Antes mostraba consultas registradas/último peso/próximos
+    vencimientos; ese contenido se quitó de acá a pedido del cliente (el
+    peso ya vive en la fila de identidad del hero y los vencimientos
+    vencidos ya salen como chip de alerta) — no lo reintroduzcas sin que
+    se pida.
+  - **Temperamento NO vive en esa banda**: es un chip de color en la fila
+    de meta del hero, al lado del sexo (`temperamentoChipHtml()`), porque
+    es el dato que condiciona cómo se manipula al paciente y hay que verlo
+    antes de tocarlo. No lo reintroduzcas en el contexto — quedaría
+    duplicado. El color es un semáforo de manejo de 4 tonos
+    (`calmo`/`precaucion`/`riesgo`/`neutro`, sobre `--success`/`--warning`/
+    `--danger`, sin color nuevo) que sale de `temperamentoTono()`: como
+    `mascotas.temperamento` es texto libre a propósito (sin catálogo, ver
+    patrón de campos de mascota mock), la clasificación es por palabras
+    clave sobre el texto normalizado y **gana el tono más grave que
+    aparezca** — "dócil pero muerde si le tocan las patas" tiene que salir
+    rojo, no verde. Sin coincidencias el tono es `neutro`: nunca se asume
+    que un temperamento desconocido es manejable. Si hace falta afinarlo,
+    agregá palabras a `TEMPERAMENTO_TONOS` (ordenado de más grave a menos
+    grave, el primero que coincide manda), no cambies el campo a select.
+    El MISMO chip se pinta también en la fila de meta de la cabecera del
+    paciente del Consultorio, al lado del propietario
+    (`#pet-header-temperamento`, lo rellena `mountPetGeneralCard()` con el
+    mismo criterio opcional que la banda de contexto: solo si el contenedor
+    declara el id, por eso el Kardex no se ve afectado). Ahí es clickeable
+    (`.pet-temperamento-btn` → `openTemperamentoModal()`) y abre un modal
+    propio (`#temperamento-modal`, `guardarTemperamento()`) que escribe
+    `mascotas.temperamento` de forma BLOQUEANTE antes de tocar
+    `patientData[petKey].temperamento`, igual que "Actualizar peso" — es un
+    atajo para registrarlo/actualizarlo sin abrir "Editar mascota", que
+    sigue teniendo el mismo campo. Guardar con el campo vacío lo BORRA (el
+    chip vuelve a "sin registrar"). El modal muestra el chip en vivo como
+    preview, pero sigue siendo un textarea de texto libre — no lo conviertas
+    en un select de las palabras de `TEMPERAMENTO_TONOS`.
+  - La tarjeta "Responsable" (`mountTableroOwnerCard()`) lista además las
+    mascotas a cargo de ese tutor como chips, con la del paciente actual
+    marcada (`.tablero-owner-pet-chip.current`). Salen de
+    `getMascotasDePropietario(p.id)` (FK real) y solo caen a comparar
+    `d.owner` por nombre cuando la mascota semilla no tiene
+    `propietarioId` — mismo respaldo que `getPropietarioDeMascota()`. Los
+    chips NO son navegables a propósito: cambiar de paciente a mitad de una
+    consulta abierta perdería el SOIP en curso. Se ocultan en `.condensed`,
+    igual que el teléfono y el rótulo.
   - Microchip ya NO se repite en "Navegación rápida": vive en el hero.
     Mismo criterio que la fusión de `.pet-header-card` — antes de agregar
     un dato al panel lateral, verificar que no esté ya arriba.
@@ -381,7 +502,8 @@ Mensajes al propietario
 Consultas, Fórmulas médicas, Órdenes (con catálogo mock dinámico) +
 Resultados (sub-tabla vinculada a Órdenes de Imagen diagnóstica/
 Prueba-Examen, ver patrón "resultado vinculado a orden" arriba),
-Documentos (plantillas + firma simulada), Admin — Usuarios (Vista A,
+Documentos (formatos propios de la clínica + firma en pantalla, ver el
+patrón del módulo más abajo), Admin — Usuarios (Vista A,
 crear/editar/desactivar) y Privilegios (Vista B, matriz de referencia
 de solo lectura); tab de nivel 1 visible solo para Administrador.
 Ficha general del paciente (Historia) con el componente reutilizable
@@ -709,6 +831,66 @@ completaron (`construirMensajeDesdeFila()`/
 patrón que el resto). Sin patrón de edición (un mensaje enviado no se
 edita) — por eso no hay `updated_at` ni política de update en esa
 tabla, a diferencia de vacunaciones/desparasitaciones.
+
+**Documentos — formatos propios de la clínica y proceso de firma.**
+La tabla `documentos` ya persistía, pero el módulo tenía tres huecos que
+lo dejaban a medio funcionar; los tres ya están cerrados y conviene no
+reabrirlos:
+
+- **Formatos (plantillas).** Los 3 de fábrica siguen en
+  `PLANTILLAS_DOCUMENTOS_BASE` (constante de la app, existen en TODA
+  clínica); los que crea cada clínica viven en la tabla
+  `documento_plantillas` y se cargan a `plantillasDocumentosCustom` en
+  `cargarDatosClinicaDesdeSupabase()`. La lista que consume la UI es
+  SIEMPRE `getPlantillasDocumentos()` (concatena las dos), mismo criterio
+  que `VACUNAS_CATALOGO_BASE` + `catalogos_custom`. El link
+  "+ Crear nuevo formato" ya no es un toast: abre
+  `#formato-documento-modal` (superpuesto al modal de documento con
+  `z-index:320`, mismo patrón que la calculadora de dosis sobre el modal
+  de fórmula) precargado con lo que el usuario ya escribió en el
+  documento — el caso normal es "redacté esto y lo quiero reutilizar".
+  Ese modal también edita y borra los formatos propios; los de fábrica se
+  listan como referencia y NO se editan. **Ojo con
+  `resetMockDataForClinic()`:** antes vaciaba `PLANTILLAS_DOCUMENTOS`, lo
+  que dejaba a cualquier clínica que no fuera la demo sin una sola
+  plantilla — ya no toca nada de esto, y no hay que volver a agregarlo.
+  Borrar un formato no afecta a los documentos ya creados con él (cada
+  documento guarda su propio `contenido_html` y el nombre del formato como
+  texto en `tipo`; no hay FK a propósito).
+- **Firma.** El estado `firmado` existía en el schema pero era
+  inalcanzable: nada lo escribía. Ahora el tutor firma en pantalla sobre
+  un `<canvas>` (`#firma-documento-modal`, pointer events, sirve con mouse
+  o dedo) y `confirmarFirmaDocumento()` escribe estado + `firma_nombre`/
+  `firma_documento`/`firma_fecha`/`firma_hora`/`firma_imagen`. "Enviar
+  para firmar" (estado `pendiente`) es un paso distinto y OPCIONAL — se
+  puede firmar directo desde un borrador.
+  - `firma_imagen` guarda el trazo como **PNG en data URL dentro de la
+    fila**, no en Storage. Es deliberado: `firmaCanvasDataUrl()` recorta
+    el canvas al rectángulo dibujado antes de exportarlo (unos pocos KB) y
+    tenerlo embebido es lo que permite pintar la firma en el modal "Ver",
+    en el PDF de "Imprimir" y en el PDF que se sube al bucket `pdfs` sin
+    URLs firmadas que expiran ni problemas de CORS con html2canvas. No lo
+    muevas a Storage "por consistencia" con los adjuntos: esos son
+    archivos que sube el usuario, esto es un trazo generado en la app.
+  - **Un documento firmado no se edita.** `rowActionEditar` lo bloquea,
+    `renderDocumentosTable()` ni siquiera pinta "Editar" en su menú y
+    `guardarDocumento()` tiene un guard extra por si se llega por otra
+    vía — si el contenido pudiera cambiar después, la firma respaldaría un
+    texto que el tutor nunca vio. La salida es "Anular firma"
+    (`anularFirmaDocumento()`), que devuelve el documento a borrador y
+    borra el rastro de la firma; ahí vuelve a ser editable.
+  - Firmar/anular no crea entradas nuevas en el timeline: ACTUALIZA el
+    `summary` de la entrada que ya existe (buscada por `dbId`), igual que
+    hace la edición del documento. Mismo criterio de "no duplicar eventos
+    de historia" de Vacunaciones/Desparasitaciones.
+  - Firmar y anular son acciones de gestión: solo aparecen si
+    `getRowActionsForRole()` incluye `editar`. Las `extraActions` de
+    `renderRowActionsMenu()` NO se filtran por rol solas — si agregas una
+    acción extra que modifica datos, gátéala igual.
+- **Eliminar.** Antes solo hacía `splice()` en memoria, así que el
+  documento reaparecía al recargar. `eliminarDocumentoReal()` borra la
+  fila, el PDF del bucket y la entrada de timeline, mismo patrón que
+  `eliminarMensajeReal()` y compañía.
 
 **RED IRIS — identidad de tutores/mascotas compartida entre
 establecimientos.** Son DOS mecanismos separados, con niveles de

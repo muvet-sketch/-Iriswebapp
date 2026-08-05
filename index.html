@@ -761,6 +761,36 @@
       border: 1px solid rgba(22, 163, 74, 0.25); border-radius: 8px; padding: 10px 12px;
       font-size: 12.5px; color: var(--success); font-weight: 600; margin-top: 12px;
     }
+    .doc-signed-img {
+      display: block; max-width: 240px; max-height: 90px; object-fit: contain;
+      margin-top: 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+
+    /* Formatos de documento (plantillas guardadas por la clínica) */
+    .doc-formato-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+    .doc-formato-item {
+      display: flex; align-items: center; gap: 10px; border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px 12px; font-size: 12.5px; background-color: var(--surface);
+    }
+    .doc-formato-item-name { flex: 1; font-weight: 600; color: var(--text-1); }
+    .doc-formato-item-tag {
+      font-size: 10.5px; font-weight: 600; color: var(--text-2); background-color: rgba(100, 116, 139, 0.12);
+      border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+    }
+    .doc-formato-empty { font-size: 12px; color: var(--text-2); padding: 10px 2px; }
+
+    /* Pad de firma (proceso de firma de un documento) */
+    .firma-pad-wrap { position: relative; }
+    .firma-pad {
+      width: 100%; height: 180px; border: 1px dashed var(--border); border-radius: 8px;
+      background-color: #FAFBFD; touch-action: none; cursor: crosshair; display: block;
+    }
+    .firma-pad.firmada { border-style: solid; border-color: var(--clinic-accent); background-color: var(--surface); }
+    .firma-pad-hint {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      gap: 8px; font-size: 12.5px; color: var(--text-2); pointer-events: none;
+    }
+    .firma-pad.firmada + .firma-pad-hint { display: none; }
 
     /* MÓDULO: ADMIN — Usuarios y Privilegios */
     .admin-pane { padding: 24px 28px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; width: 100%; }
@@ -1569,11 +1599,29 @@
     .pet-header-bottom-row .pet-weight-chart-col { flex: 1; }
     .pet-header-bottom-row .pet-data-table-col { flex: 1.4; }
 
+    /* Banda "Contexto histórico" del Consultorio — misma tarjeta oscura
+       que el hero del Tablero de trabajo (.tablero-context-card, ver
+       contextoHistoricoHTML()); acá solo se le da la fila contenedora y
+       el mismo colapso al hacer scroll que .pet-header-bottom-row. */
+    .pet-header-context-row {
+      margin-top: 14px;
+      max-height: 200px;
+      opacity: 1;
+      overflow: hidden;
+      transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.25s ease;
+    }
+    .pet-header-card.pet-header-collapsed .pet-header-context-row {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+    }
+
     /* Al hacer scroll dentro de .patient-pane-body se le da prioridad al
        panel del módulo seleccionado colapsando esta franja (peso + datos
-       generales) — ver setupPatientPaneHeaderCollapse(). Solo colapsa la
-       fila inferior; identidad/acciones (.pet-header-top-row) permanece
-       fija para no perder contexto del paciente ni las acciones rápidas. */
+       generales) — ver setupPatientPaneHeaderCollapse(). Solo colapsa esta
+       fila y la de contexto; la identidad (.pet-header-top-row) y la fila de
+       acciones (.pet-header-actions-row) permanecen fijas para no perder
+       contexto del paciente ni las acciones rápidas. */
     .pet-header-card.pet-header-collapsed .pet-header-bottom-row {
       max-height: 0;
       opacity: 0;
@@ -1641,6 +1689,28 @@
       background-color: var(--border);
     }
 
+    /* Temperamento clickeable en la fila de meta: el chip en sí es el mismo
+       .tablero-temperamento-chip del hero del Tablero (no se duplica su
+       estilo); acá solo se le agrega el envoltorio que lo vuelve un botón
+       (lápiz + cursor) para registrarlo/actualizarlo sin pasar por
+       "Editar mascota". */
+    .pet-temperamento-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      border-radius: var(--radius-full);
+      padding: 1px 2px;
+      transition: var(--transition);
+      max-width: 260px;
+    }
+    .pet-temperamento-btn > span { min-width: 0; }
+    .pet-temperamento-btn i { color: var(--text-2); flex-shrink: 0; opacity: 0; transition: var(--transition); }
+    .pet-temperamento-btn:hover i,
+    .pet-temperamento-btn:focus-visible i { opacity: 1; }
+    .pet-temperamento-btn:hover .tablero-temperamento-chip { filter: brightness(0.96); }
+    .pet-temperamento-btn:focus-visible { outline: 2px solid var(--clinic-accent); outline-offset: 2px; }
+
     /* Popover de datos del propietario (hover = vista rápida, click = fija
        con botones de copiar) — disparado desde #pet-profile-owner. */
     .owner-popover-wrap { position: relative; }
@@ -1673,6 +1743,25 @@
       display: flex;
       align-items: center;
       gap: 12px;
+    }
+
+    /* Fila propia de acciones (Volver a buscar / Editar mascota / Solicitar a
+       otra clínica / Nueva Consulta), debajo de peso+datos generales y encima
+       de la banda de contexto. No colapsa al hacer scroll: las acciones
+       rápidas tienen que seguir a la vista (mismo criterio que la fila de
+       identidad). */
+    .pet-header-actions-row {
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    /* Colapsada la franja de peso/datos, la fila de acciones queda pegada a
+       la identidad y su separador propio ya sobra. */
+    .pet-header-card.pet-header-collapsed .pet-header-actions-row {
+      margin-top: 12px;
+      padding-top: 12px;
     }
 
     .btn-outline {
@@ -2212,6 +2301,13 @@
     .tablero-body > * { position: relative; }
 
     /* ── Hero del paciente (glass card) ───────────────────────────── */
+    /* Grid de áreas, no flex: es lo que deja mover la banda de contexto
+       entre dos posiciones muy distintas (fila propia de ancho completo /
+       hueco entre la identidad y el responsable) con solo cambiar
+       grid-template-areas en .condensed, sin tocar el DOM.
+       Antes era una fila de 3 columnas con el contexto en el medio, y sus
+       4 datos apilados le fijaban al hero un alto que las otras dos
+       columnas no llenaban — de ahí el espacio en blanco. */
     .tablero-hero {
       background-color: rgba(255, 255, 255, 0.76);
       backdrop-filter: blur(12px);
@@ -2219,11 +2315,26 @@
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       box-shadow: var(--shadow-md);
-      padding: 18px 20px;
-      display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+      padding: 14px 16px;
+      display: grid; align-items: center; gap: 12px 18px;
+      grid-template-columns: auto minmax(0, 1fr) auto auto;
+      grid-template-areas:
+        "foto  id   peso  owner"
+        "ctx   ctx  ctx   ctx";
     }
-    .tablero-hero-photo .pet-photo-circle { border-width: 3px; box-shadow: var(--shadow-md); }
-    .tablero-hero-id { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 8px; }
+    .tablero-hero-photo { grid-area: foto; }
+    .tablero-hero-id { grid-area: id; }
+    .tablero-hero-context { grid-area: ctx; }
+    .tablero-hero-weight { grid-area: peso; }
+    .tablero-hero-owner { grid-area: owner; }
+    /* El tamaño de la foto vive acá y no en un style="" del HTML porque el
+       modo compacto (.condensed) la encoge — un inline le ganaría. */
+    .tablero-hero-photo { width: 64px; height: 64px; transition: var(--transition); }
+    .tablero-hero-photo .pet-photo-circle {
+      width: 100%; height: 100%; font-size: 21px;
+      border-width: 3px; box-shadow: var(--shadow-md);
+    }
+    .tablero-hero-id { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
     .tablero-hero-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .tablero-hero-name { font-size: 22px; font-weight: 700; color: var(--text-1); line-height: 1.1; }
     .tablero-hero-code {
@@ -2251,6 +2362,37 @@
     .tablero-hero-meta-item i { color: var(--clinic-accent); }
     .tablero-hero-meta-item strong { color: var(--text-1); font-weight: 700; }
 
+    /* Temperamento: va en la fila de meta, al lado del sexo, porque es el
+       dato de contexto que condiciona CÓMO se manipula al paciente — hay
+       que verlo antes de tocarlo, no dentro de la banda de contexto.
+       El tono sale de temperamentoTono() (texto libre → categoría), y el
+       color es semáforo de manejo: verde = manejable, ámbar = manejar con
+       cuidado, rojo = riesgo de mordida/agresión, gris = sin registrar.
+       Los 4 tonos reusan --success/--warning/--danger, sin color nuevo. */
+    .tablero-temperamento-chip {
+      display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+      padding: 2px 9px; border-radius: var(--radius-full);
+      font-size: 11.5px; font-weight: 700; letter-spacing: 0.01em;
+      border: 1px solid transparent;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    /* El icono hereda el color del tono — sin esto gana la regla genérica
+       .tablero-hero-meta-item i (acento clínico) y el chip rojo/ámbar
+       saldría con el icono verde azulado. */
+    .tablero-temperamento-chip i { color: inherit !important; flex-shrink: 0; }
+    .tablero-temperamento-chip.calmo {
+      background-color: rgba(16, 185, 129, 0.12); color: #047857; border-color: rgba(16, 185, 129, 0.32);
+    }
+    .tablero-temperamento-chip.precaucion {
+      background-color: rgba(245, 158, 11, 0.16); color: #92400E; border-color: rgba(245, 158, 11, 0.36);
+    }
+    .tablero-temperamento-chip.riesgo {
+      background-color: var(--danger); color: #fff; border-color: var(--danger);
+    }
+    .tablero-temperamento-chip.neutro {
+      background-color: var(--surface-container); color: var(--text-2); border-color: var(--border);
+    }
+
     /* Chips de alerta — solo se pintan cuando hay algo real que mostrar
        (fallecido, problemas activos, vencimientos ya pasados). Ver
        tableroAlertChipsHtml(): nada de alertas inventadas. */
@@ -2264,29 +2406,66 @@
     .tablero-alert-chip.warning { background-color: rgba(245, 158, 11, 0.18); color: #92400E; border: 1px solid rgba(245, 158, 11, 0.35); }
     .tablero-alert-chip.info { background-color: rgba(var(--clinic-accent-rgb), 0.10); color: var(--clinic-accent); border: 1px solid rgba(var(--clinic-accent-rgb), 0.22); }
 
+    /* Responsable: caja de ancho fijo a la derecha (columna `auto` del
+       grid) — es un dato de contacto, no debe repartirse el ancho sobrante
+       con la identidad ni con la banda de contexto. */
     .tablero-hero-owner {
-      min-width: 210px;
+      width: 208px; align-self: center;
       background-color: rgba(255, 255, 255, 0.55);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 12px 14px;
+      padding: 10px 12px;
     }
     .tablero-hero-owner-label {
-      font-size: 10px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.1em; color: var(--text-2); margin-bottom: 3px;
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--text-2); margin-bottom: 2px;
     }
-    .tablero-hero-owner-name { font-size: 13.5px; font-weight: 700; color: var(--text-1); }
-    .tablero-hero-owner-phone { font-size: 12px; color: var(--text-2); margin-top: 2px; }
-    .tablero-hero-owner-actions { display: flex; gap: 6px; margin-top: 10px; }
-    .tablero-hero-owner-actions .btn-outline { padding: 6px 10px; font-size: 11.5px; flex: 1; justify-content: center; }
+    .tablero-hero-owner-name { font-size: 13px; font-weight: 700; color: var(--text-1); }
+    .tablero-hero-owner-phone { font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
+    .tablero-hero-owner-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .tablero-hero-owner-actions .btn-outline { padding: 5px 8px; font-size: 11px; flex: 1; justify-content: center; }
+    /* Mascotas del mismo responsable: solo referencia (¿cuántas y cuáles
+       tiene a cargo?), no navegación — cambiar de paciente a mitad de una
+       consulta abierta perdería el contexto del SOIP en curso. La del
+       paciente actual va marcada para ubicarse dentro de la lista. */
+    .tablero-hero-owner-pets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+    .tablero-owner-pet-chip {
+      display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+      padding: 2px 7px; border-radius: var(--radius-full);
+      background-color: var(--surface-container); border: 1px solid var(--border);
+      font-size: 10.5px; font-weight: 600; color: var(--text-2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tablero-owner-pet-chip i { flex-shrink: 0; }
+    .tablero-owner-pet-chip.current {
+      background-color: rgba(var(--clinic-accent-rgb), 0.12);
+      border-color: rgba(var(--clinic-accent-rgb), 0.32);
+      color: var(--clinic-accent);
+    }
+
+    /* Histórico de peso dentro del hero: ocupa el hueco que quedaba en
+       blanco entre los datos de la mascota y el responsable (columna
+       `auto` propia, ancho fijo — el gráfico es de referencia, no debe
+       comerse el ancho de la identidad). Reusa renderWeightChartSVG(),
+       solo achica el alto del trazado: el de la ficha de Historia (96px)
+       estiraría la barra fija del Tablero. */
+    .tablero-hero-weight { width: 232px; min-width: 0; }
+    .tablero-hero-weight-title {
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--text-2); margin-bottom: 4px;
+    }
+    .tablero-hero-weight .weight-chart-yaxis,
+    .tablero-hero-weight .weight-chart-plot { height: 62px; }
 
     /* ── Strip horizontal de módulos clínicos ─────────────────────── */
     /* Reemplaza a la vieja columna .tablero-nav-col: mismos 10 módulos de
        TABLERO_NAV_ORDEN, pero en una fila desplazable para devolverle
-       ancho al registro SOIP (ver renderTableroNavList()). */
+       ancho al registro SOIP (ver renderTableroNavList()). Vive dentro de
+       .tablero-sticky-stack (permanece fijo al hacer scroll), por eso trae
+       su propio padding horizontal de 24px — .tablero-body ya no se lo da. */
     .tablero-modstrip {
       display: flex; gap: 8px; overflow-x: auto;
-      margin-top: 16px; padding: 2px 2px 8px;
+      padding: 2px 24px 14px;
       scrollbar-width: none; -ms-overflow-style: none;
     }
     .tablero-modstrip::-webkit-scrollbar { display: none; }
@@ -2308,6 +2487,85 @@
       font-size: 11px; font-weight: 700;
     }
     .tablero-modchip.active .tablero-modchip-count { background-color: rgba(255, 255, 255, 0.24); color: #fff; }
+
+    /* ── Modo compacto del bloque fijo (al hacer scroll) ───────────── */
+    /* La barra de acciones y el strip de módulos siguen fijos SIEMPRE (ese
+       era el requisito), pero el hero del paciente ocupa ~150px que, una
+       vez que se está escribiendo el SOIP, le comen la pantalla útil. Al
+       bajar, onTableroScroll() pone .condensed en .tablero-sticky-stack y
+       la ficha se REORGANIZA en una sola línea. Nada se pierde: el grid
+       pasa de 2 filas a 1 y la banda de contexto se muda al hueco que
+       quedaba entre los datos de la mascota y el responsable (columna
+       `1fr`) — antes se ocultaba y ese espacio quedaba en blanco.
+       Las transiciones van sobre padding/tamaño, no sobre height: el hero
+       es de alto variable (alertas, nombre largo) y animar height exigiría
+       medirlo en JS en cada repintado. */
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-wrap { padding: 8px 24px 10px; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero {
+      padding: 6px 12px; gap: 0 14px;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      grid-template-areas: "foto id ctx owner";
+    }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-photo { width: 40px; height: 40px; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-photo .pet-photo-circle {
+      font-size: 14px; border-width: 2px;
+    }
+    /* La identidad pasa de columna a fila: es lo que convierte el hero en
+       una barra de una sola línea. */
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-id {
+      flex-direction: row; align-items: center; gap: 14px; overflow: hidden;
+    }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-name { font-size: 16px; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-name-row { flex-wrap: nowrap; flex-shrink: 0; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-code,
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-live,
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-owner-label,
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-owner-pets,
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-owner-phone { display: none; }
+    /* El gráfico de peso se va del todo en la barra condensada: su hueco es
+       justo el que pasa a ocupar la banda de contexto. Tiene que ser
+       display:none y no visibility/opacity — un item de grid cuyo área
+       (`peso`) no existe en el template condensado se auto-colocaría en una
+       fila implícita y rompería la barra de una sola línea. */
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-weight { display: none; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-meta,
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-alerts {
+      flex-wrap: nowrap; overflow: hidden; min-width: 0;
+    }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-meta-item { white-space: nowrap; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-alert-chip { white-space: nowrap; }
+
+    /* Banda de contexto en el hueco del medio: pierde el rótulo del bloque
+       (no cabe y el prefijo de cada dato ya lo dice) y cada dato pasa a una
+       sola línea "ETIQUETA valor", en fila, para entrar en el alto de 40px
+       de la barra. Si el hueco se angosta, los datos se recortan con
+       elipsis en vez de estirar la barra a lo alto. */
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-context-card {
+      padding: 5px 12px; gap: 0; border-radius: var(--radius-full); min-width: 0;
+    }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-context-label { display: none; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-context-facts {
+      display: flex; gap: 14px;
+    }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-context-fact {
+      flex: 1 1 0; flex-direction: row; align-items: baseline; gap: 5px;
+    }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-context-fact-label { flex-shrink: 0; }
+    /* El responsable no se oculta: solo pierde la caja y se alinea en la
+       misma línea, para no perder los accesos a Perfil/Mensaje. */
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-owner {
+      width: auto; flex-shrink: 0; background: transparent; border: none;
+      padding: 0; display: flex; align-items: center; gap: 8px;
+    }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-owner-name { font-size: 12.5px; white-space: nowrap; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-hero-owner-actions { margin-top: 0; }
+    .tablero-sticky-stack.condensed:not(.forzar-expandido) .tablero-modstrip { padding: 0 24px 8px; }
+
+    .tablero-hero-wrap, .tablero-hero, .tablero-modstrip { transition: padding 0.18s ease; }
+    /* El botón para volver a la ficha completa solo tiene sentido con el
+       hero ya condensado — arriba del todo no hay nada que expandir. */
+    .tablero-hero-toggle { display: none; }
+    .tablero-sticky-stack.condensed .tablero-hero-toggle { display: inline-flex; }
 
     /* ── Grid principal (SOIP + panel lateral) ────────────────────── */
     .tablero-grid {
@@ -2508,59 +2766,61 @@
     .tablero-vital-tile.no-evaluado .tablero-vital-ne-msg { display: block; }
     .tablero-vital-tile.no-evaluado:focus-within { box-shadow: none; border-color: var(--border); background-color: transparent; }
 
-    /* ── Panel lateral ────────────────────────────────────────────── */
-    /* Tarjeta oscura "Contexto histórico" — reutiliza los tonos del
-       sidebar (--sidebar-bg/--sidebar-active), que ya son el borgoña
-       profundo del sistema; es el equivalente del bloque oscuro del
-       mockup sin introducir un color nuevo. Ver renderTableroContexto().
-       Vive DENTRO del hero del paciente (columna del medio, entre la
-       identidad y el responsable), no en el panel lateral — de ahí la
-       variante compacta .tablero-hero-context más abajo. */
+    /* ── Banda "Contexto histórico" (segunda fila del hero) ────────── */
+    /* Banda oscura de ancho completo al pie del hero del paciente — NO una
+       tarjeta en columna: los 4 datos (Temperamento/Antecedentes/Alergias/
+       Motivo última consulta) van uno al lado del otro, con el rótulo del
+       bloque a la izquierda. Apilados verticalmente ocupaban ~230px de alto
+       y obligaban al resto del hero a acompañarlos en blanco.
+       Los tonos siguen siendo los del sidebar (--sidebar-bg/--sidebar-active),
+       el borgoña que ya existe en el sistema — no se introduce color nuevo.
+       Ver contextoHistoricoHTML(), que no distingue variantes: la misma
+       tarjeta se reusa tal cual en la cabecera del paciente del Consultorio
+       (#pet-header-contexto, dentro de .pet-header-context-row). */
     .tablero-context-card {
-      background: linear-gradient(150deg, var(--sidebar-bg) 0%, var(--sidebar-active) 100%);
+      background: linear-gradient(120deg, var(--sidebar-bg) 0%, var(--sidebar-active) 100%);
       color: var(--sidebar-text);
-      border-radius: var(--radius-lg);
-      box-shadow: var(--shadow-lg);
-      padding: 18px 20px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      padding: 10px 14px;
       position: relative; overflow: hidden;
+      display: flex; align-items: center; gap: 16px;
     }
     .tablero-context-card::after {
-      content: ''; position: absolute; right: -48px; bottom: -48px;
+      content: ''; position: absolute; right: -60px; top: -60px;
       width: 150px; height: 150px; border-radius: 50%;
-      background-color: rgba(255, 255, 255, 0.06);
+      background-color: rgba(255, 255, 255, 0.05);
     }
     .tablero-context-card > * { position: relative; }
+    /* Rótulo del bloque: columna angosta a la izquierda (parte en dos
+       líneas), no un título encima — así la banda no crece a lo alto. */
     .tablero-context-label {
-      font-size: 10px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.12em; opacity: 0.55;
-    }
-    .tablero-context-facts {
-      display: flex; flex-direction: column; gap: 9px;
-      margin-top: 12px;
-    }
-    .tablero-context-fact { display: flex; flex-direction: column; gap: 1px; }
-    .tablero-context-fact-label {
+      flex: 0 0 76px;
       font-size: 9.5px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.08em; opacity: 0.55;
+      letter-spacing: 0.1em; opacity: 0.5; line-height: 1.3;
     }
+    /* auto-fit: en pantallas anchas los 4 datos entran en una fila; al
+       angostarse bajan a 2+2 sin que haya que tocar nada. */
+    .tablero-context-facts {
+      flex: 1; min-width: 0;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 6px 20px;
+    }
+    .tablero-context-fact { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .tablero-context-fact-label {
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; opacity: 0.5;
+    }
+    /* Una sola línea con elipsis: en la banda horizontal un valor largo
+       (antecedentes) no puede empujar el alto de las otras 3 columnas.
+       El texto completo queda en el title=, ver renderTableroContexto(). */
     .tablero-context-fact-value {
-      font-size: 12.5px; line-height: 1.35;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      font-size: 12px; line-height: 1.3;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-
-    /* Variante compacta de la tarjeta anterior cuando va dentro del hero
-       del paciente: ocupa el hueco entre .tablero-hero-id y
-       .tablero-hero-owner, así que no puede crecer libre como cuando
-       estaba en el panel lateral. Solo cambia el tamaño — colores y
-       contenido son los mismos (renderTableroContexto() no distingue). */
-    .tablero-hero-context {
-      flex: 0 1 320px; min-width: 250px; align-self: stretch;
-      padding: 14px 16px;
-    }
-    .tablero-hero-context::after { right: -56px; bottom: -56px; width: 130px; height: 130px; }
-    .tablero-hero-context .tablero-context-label { font-size: 9.5px; }
-    .tablero-hero-context .tablero-context-facts { margin-top: 9px; gap: 7px; }
-    .tablero-hero-context .tablero-context-fact-value { font-size: 12px; }
+    /* .tablero-hero-context (en el mismo div del HTML) ya no aporta estilo:
+       quedó solo como enganche para ocultar la banda en el modo compacto.
+       No la borres del HTML sin quitar también esa regla. */
 
     .tablero-breed-insight {
       margin-top: 12px;
@@ -2615,6 +2875,22 @@
       .tablero-body { padding: 16px 14px 40px; }
       .tablero-header { padding: 12px 14px; }
       .tablero-hero-wrap { padding: 12px 14px; }
+      /* Foto + identidad en una fila, y responsable/contexto apilados
+         debajo: con 3 columnas no queda ancho útil para ninguna. */
+      .tablero-hero {
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas:
+          "foto  id"
+          "peso  peso"
+          "owner owner"
+          "ctx   ctx";
+      }
+      .tablero-hero-weight { width: 100%; }
+      /* La banda de contexto pasa a rótulo arriba + datos debajo: con
+         76px de rótulo fijo, en móvil no queda ancho para los valores. */
+      .tablero-context-card { flex-direction: column; align-items: stretch; gap: 8px; }
+      .tablero-context-label { flex: none; }
+      .tablero-hero-owner { width: 100%; }
       .tablero-soip-rail { padding-left: 0; }
       .tablero-soip-rail::before { display: none; }
       .tablero-step-badge { position: static; margin-bottom: 8px; }
@@ -4951,6 +5227,19 @@
                         </button>
                         <div class="owner-popover" id="pet-owner-popover"></div>
                       </div>
+                      <div class="pet-meta-bullet"></div>
+                      <!-- Temperamento: mismo chip semáforo del hero del
+                           Tablero (temperamentoChipHtml), acá al lado del
+                           propietario y clickeable para registrarlo/
+                           actualizarlo sin abrir "Editar mascota". -->
+                      <div class="pet-meta-item">
+                        <span class="pet-temperamento-btn" role="button" tabindex="0"
+                              onclick="openTemperamentoModal(selectedPetKey)"
+                              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openTemperamentoModal(selectedPetKey);}">
+                          <span id="pet-header-temperamento"></span>
+                          <i data-lucide="pencil" style="width:11px;height:11px;"></i>
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -4968,20 +5257,6 @@
                     </div>
                     <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
                   </div>
-                  <div class="pet-header-right">
-                    <button class="btn-outline back-btn" onclick="deselectPet()">
-                      <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver a buscar
-                    </button>
-                    <button class="btn-outline" onclick="openEditMascotaModal(selectedPetKey)">
-                      <i data-lucide="pencil" style="width: 14px; height: 14px;"></i> Editar mascota
-                    </button>
-                    <button class="btn-outline" onclick="abrirRedSolicitudModal(selectedPetKey)" title="Solicitar información clínica de este paciente a otro establecimiento de la red IRIS">
-                      <i data-lucide="network" style="width: 14px; height: 14px;"></i> Solicitar a otra clínica
-                    </button>
-                    <button class="btn-primary" id="btn-nueva-consulta" onclick="abrirTableroTrabajo()">
-                      <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Consulta
-                    </button>
-                  </div>
                 </div>
               </div>
 
@@ -4998,6 +5273,33 @@
                 <div class="pet-data-table-col">
                   <div class="pet-data-table" id="pet-header-table"></div>
                 </div>
+              </div>
+
+              <!-- Acciones del paciente: van DEBAJO de peso/datos generales
+                   (antes vivían en la columna derecha de .pet-header-top-row,
+                   junto al widget "Viendo como"). No colapsan al hacer
+                   scroll — ver .pet-header-collapsed. -->
+              <div class="pet-header-right pet-header-actions-row">
+                <button class="btn-outline back-btn" onclick="deselectPet()">
+                  <i data-lucide="arrow-left" style="width: 14px; height: 14px;"></i> Volver a buscar
+                </button>
+                <button class="btn-outline" onclick="openEditMascotaModal(selectedPetKey)">
+                  <i data-lucide="pencil" style="width: 14px; height: 14px;"></i> Editar mascota
+                </button>
+                <button class="btn-outline" onclick="abrirRedSolicitudModal(selectedPetKey)" title="Solicitar información clínica de este paciente a otro establecimiento de la red IRIS">
+                  <i data-lucide="network" style="width: 14px; height: 14px;"></i> Solicitar a otra clínica
+                </button>
+                <button class="btn-primary" id="btn-nueva-consulta" onclick="abrirTableroTrabajo()">
+                  <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nueva Consulta
+                </button>
+              </div>
+
+              <!-- Misma banda "Contexto histórico" del Tablero de trabajo
+                   (Antecedentes/Alergias/Motivo última consulta) — el id
+                   sigue el patrón `${containerId}-contexto` que rellena
+                   mountPetGeneralCard(). -->
+              <div class="pet-header-context-row">
+                <div class="tablero-context-card" id="pet-header-contexto"></div>
               </div>
             </div>
 
@@ -5615,7 +5917,7 @@
            consulta — mismo patrón que Kardex: oculta .consultorio-wrapper,
            ver abrirTableroTrabajo()/cerrarTableroAConsultorio()). Reemplaza
            al viejo pane embebido #subtab-tablero. -->
-      <div class="tablero-view" id="tablero-view">
+      <div class="tablero-view" id="tablero-view" onscroll="onTableroScroll(this)">
         <!-- Bloque fijo (sticky) = barra de acciones + hero del paciente.
              El sticky vive en el WRAPPER, no en .tablero-header: así la
              identidad del paciente (foto/nombre/alertas/responsable) sigue
@@ -5648,6 +5950,13 @@
               </div>
             </div>
             <div class="tablero-header-actions">
+              <!-- Escapa del modo compacto sin tener que subir el scroll:
+                   con el hero condensado, Contexto histórico y Responsable
+                   quedan ocultos y a veces hacen falta a media consulta
+                   (ver toggleTableroHeroExpandido()). -->
+              <button class="btn-outline tablero-hero-toggle" id="tablero-hero-toggle" onclick="toggleTableroHeroExpandido()" title="Mostrar/ocultar la ficha completa del paciente">
+                <i data-lucide="chevrons-up-down" style="width:14px;height:14px;"></i> <span id="tablero-hero-toggle-label">Ficha completa</span>
+              </button>
               <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="intentarFinalizarConsulta()">
                 <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
               </button>
@@ -5657,9 +5966,19 @@
           <!-- Hero del paciente (identidad + alertas + responsable) —
                ver mountTableroHeader() -->
           <div class="tablero-hero-wrap">
+            <!-- Los 5 bloques son hijos DIRECTOS del hero y se colocan por
+                 grid-template-areas, no por orden en el DOM: expandido el
+                 contexto es una banda de ancho completo bajo la identidad, y
+                 condensado (scroll) se mete en el hueco entre los datos de la
+                 mascota y el responsable. El orden del DOM es el del modo
+                 condensado (foto → identidad → contexto → responsable); el
+                 expandido lo reacomodan las áreas. Por eso no hay wrapper
+                 intermedio: uno solo se podría colocar como un bloque. -->
             <div class="tablero-hero">
-              <div class="pet-photo-circle-wrap tablero-hero-photo" style="width:76px;height:76px;">
-                <div class="pet-photo-circle" id="tablero-pet-photo" style="width:76px;height:76px;font-size:24px;">?</div>
+              <!-- Sin tamaño inline a propósito: el modo compacto (scroll)
+                   encoge la foto por CSS y un style="" acá le ganaría. -->
+              <div class="pet-photo-circle-wrap tablero-hero-photo">
+                <div class="pet-photo-circle" id="tablero-pet-photo">?</div>
               </div>
               <div class="tablero-hero-id">
                 <div class="tablero-hero-name-row">
@@ -5671,19 +5990,30 @@
                 <div class="tablero-hero-alerts" id="tablero-pet-alerts"></div>
               </div>
               <div class="tablero-context-card tablero-hero-context" id="tablero-contexto-card"></div>
+              <!-- Histórico de peso: llena el hueco que quedaba en blanco
+                   entre los datos de la mascota y el responsable. Lo pinta
+                   renderWeightChartSVG() desde mountTableroHeader(), la misma
+                   pieza que usan la ficha de Historia y el header del Kardex. -->
+              <div class="tablero-hero-weight">
+                <div class="tablero-hero-weight-title">Histórico de peso</div>
+                <div id="tablero-hero-weight-chart"></div>
+              </div>
               <div class="tablero-hero-owner" id="tablero-pet-owner"></div>
             </div>
+          </div>
+
+          <!-- Strip horizontal de módulos clínicos (acota los 18 del
+               sidebar normal a los 10 relevantes durante una consulta
+               activa — ver TABLERO_QUICKNAV_MODULOS/renderTableroNavList).
+               Vive dentro de .tablero-sticky-stack (no de .tablero-body)
+               para que quede fijo junto con la barra de acciones y el hero
+               mientras se hace scroll por el SOIP. -->
+          <div class="tablero-modstrip" id="tablero-nav-list">
+            <!-- Dinámico por JS -->
           </div>
         </div>
 
         <div class="tablero-body">
-
-          <!-- Strip horizontal de módulos clínicos (acota los 18 del
-               sidebar normal a los 10 relevantes durante una consulta
-               activa — ver TABLERO_QUICKNAV_MODULOS/renderTableroNavList) -->
-          <div class="tablero-modstrip" id="tablero-nav-list">
-            <!-- Dinámico por JS -->
-          </div>
 
           <div class="tablero-grid">
 
@@ -8737,17 +9067,73 @@
       switchSubTab('historia');
     }
 
-    // Colapsa la franja de peso/datos generales del header (.pet-header-bottom-row)
-    // al hacer scroll dentro del panel de módulo, para priorizar la
-    // visualización del módulo seleccionado. Se re-expande al volver arriba.
+    // Colapsa la franja de peso/datos generales del header
+    // (.pet-header-bottom-row + .pet-header-context-row) al hacer scroll
+    // dentro del panel de módulo, para priorizar la visualización del módulo
+    // seleccionado. Se re-expande al volver arriba.
+    //
+    // OJO — dos guardas contra el mismo bucle de realimentación, ya sufrido:
+    // colapsar el header AGRANDA el alto visible del panel, así que el
+    // navegador recorta scrollTop al nuevo máximo. Con un solo umbral (era
+    // `scrollTop > 12`) y poco contenido, ese recorte dejaba el scroll por
+    // debajo del umbral -> se expandía -> volvía a haber scroll -> se
+    // colapsaba... la pantalla "se subía sola" y los últimos registros de un
+    // módulo con pocas filas eran imposibles de ver.
+    //   1. Histéresis: se colapsa pasando COLAPSAR_DESDE pero solo se
+    //      re-expande por debajo de EXPANDIR_HASTA (mismo criterio que
+    //      onTableroScroll()); con un único umbral el recorte cae siempre del
+    //      lado contrario y parpadea.
+    //   2. Solo se colapsa si DESPUÉS de colapsar todavía queda scroll de
+    //      sobra (el contenido excede lo que libera el header + MARGEN). Si
+    //      el módulo casi cabe entero, colapsar no aporta nada y es
+    //      justamente el caso que disparaba el bucle: no se colapsa y el
+    //      usuario recorre esas pocas filas con normalidad.
     (function setupPatientPaneHeaderCollapse() {
       const paneBody = document.querySelector('.patient-pane-body');
       const headerCard = document.querySelector('.pet-header-card');
       if (!paneBody || !headerCard) return;
+
+      const COLAPSAR_DESDE = 32;
+      const EXPANDIR_HASTA = 10;
+      const MARGEN = 48;
+
+      // Alto que libera el colapso. Solo es medible con el header expandido
+      // (colapsado las dos filas miden 0) y puede quedar corto si se mide a
+      // mitad de la transición CSS, por eso se conserva el máximo visto:
+      // sobreestimar solo hace la guarda más conservadora (no colapsar), que
+      // es el lado seguro para el bug de arriba.
+      let colapsableMax = 0;
+
+      function medirColapsable() {
+        let total = 0;
+        ['.pet-header-bottom-row', '.pet-header-context-row'].forEach(sel => {
+          const el = headerCard.querySelector(sel);
+          if (!el) return;
+          total += el.offsetHeight + (parseFloat(getComputedStyle(el).marginTop) || 0);
+        });
+        return total;
+      }
+
       paneBody.addEventListener('scroll', () => {
-        headerCard.classList.toggle('pet-header-collapsed', paneBody.scrollTop > 12);
+        const colapsado = headerCard.classList.contains('pet-header-collapsed');
+        if (colapsado) {
+          if (paneBody.scrollTop < EXPANDIR_HASTA) headerCard.classList.remove('pet-header-collapsed');
+          return;
+        }
+        colapsableMax = Math.max(colapsableMax, medirColapsable());
+        const scrollDisponible = paneBody.scrollHeight - paneBody.clientHeight;
+        if (scrollDisponible <= colapsableMax + MARGEN) return; // el módulo casi cabe entero
+        if (paneBody.scrollTop > COLAPSAR_DESDE) headerCard.classList.add('pet-header-collapsed');
       });
     })();
+
+    // Al cambiar de módulo/paciente el header vuelve expandido: si el módulo
+    // nuevo no desborda, no habría ningún evento de scroll que lo re-expanda
+    // y se quedaría colapsado sin motivo.
+    function expandirPetHeader() {
+      const headerCard = document.querySelector('.pet-header-card');
+      if (headerCard) headerCard.classList.remove('pet-header-collapsed');
+    }
 
     // Pinta una lista de eventos de timeline (misma factoría de nodos usada
     // por Historia y por el timeline mini del Tablero de trabajo)
@@ -10369,6 +10755,19 @@
 
       const tableEl = document.getElementById(`${containerId}-table`);
       if (tableEl) tableEl.innerHTML = petDataTableHTML(data);
+
+      // Banda "Contexto histórico" (misma del hero del Tablero). Opcional:
+      // solo se pinta si el contenedor la declara, así el resto de los
+      // montajes de este componente no cambia.
+      const contextoEl = document.getElementById(`${containerId}-contexto`);
+      if (contextoEl) contextoEl.innerHTML = contextoHistoricoHTML(petKey);
+
+      // Chip de temperamento en la fila de meta (al lado del propietario).
+      // Mismo criterio opcional que la banda de contexto: solo se pinta si
+      // el contenedor declara el id, así el Kardex no se ve afectado.
+      const temperamentoEl = document.getElementById(`${containerId}-temperamento`);
+      if (temperamentoEl) temperamentoEl.innerHTML = temperamentoChipHtml(data.temperamento);
+
       renderWeightChartSVG(`${containerId}-weight-chart`, data.pesoHistorico || []);
 
       lucide.createIcons();
@@ -10779,6 +11178,84 @@
       showToast('Peso actualizado');
     }
 
+    // ── MODAL: TEMPERAMENTO — registra/actualiza `data.temperamento`
+    // (columna `mascotas.temperamento`) desde el chip de la fila de meta,
+    // sin abrir "Editar mascota". Sigue siendo TEXTO LIBRE a propósito (ver
+    // patrón de campos de mascota mock): el modal no impone catálogo, solo
+    // muestra en vivo el tono que le asignará temperamentoTono() para que
+    // quien escribe vea el semáforo que va a quedar. Vaciar el campo y
+    // guardar borra el temperamento (vuelve a "sin registrar").
+    let editandoTemperamentoPetKey = null;
+
+    function openTemperamentoModal(petKey) {
+      const key = petKey || selectedPetKey;
+      const data = patientData[key];
+      if (!data) return;
+      editandoTemperamentoPetKey = key;
+      document.getElementById('temperamento-modal-pet').textContent = data.name;
+      const input = document.getElementById('temperamento-texto');
+      input.value = data.temperamento || '';
+      actualizarPreviewTemperamento();
+      document.getElementById('temperamento-modal').classList.add('show');
+      lucide.createIcons();
+      setTimeout(() => input.focus(), 50);
+    }
+
+    function closeTemperamentoModal() {
+      document.getElementById('temperamento-modal').classList.remove('show');
+      editandoTemperamentoPetKey = null;
+    }
+
+    function handleTemperamentoOverlayClick(e) {
+      if (e.target === document.getElementById('temperamento-modal')) closeTemperamentoModal();
+    }
+
+    function actualizarPreviewTemperamento() {
+      const previewEl = document.getElementById('temperamento-preview');
+      if (!previewEl) return;
+      previewEl.innerHTML = temperamentoChipHtml(document.getElementById('temperamento-texto').value);
+      lucide.createIcons();
+    }
+
+    async function guardarTemperamento() {
+      const petKey = editandoTemperamentoPetKey;
+      const data = patientData[petKey];
+      if (!data) return;
+
+      const texto = document.getElementById('temperamento-texto').value.trim();
+      const btn = document.getElementById('temperamento-guardar-btn');
+      if (btn) btn.disabled = true;
+
+      // Escritura remota BLOQUEANTE antes de tocar el modelo en memoria —
+      // mismo criterio que guardarPesoActualizado()/guardarMascotaEdit().
+      if (window.supabase && data.mascotaId) {
+        const { error } = await window.supabase.from('mascotas').update({
+          temperamento: texto || null, updated_at: new Date().toISOString()
+        }).eq('id', data.mascotaId);
+        if (error) {
+          console.error('[IRIS] Error actualizando el temperamento en Supabase:', error);
+          showToast('No se pudo guardar el temperamento — intenta de nuevo');
+          if (btn) btn.disabled = false;
+          return;
+        }
+      }
+      if (btn) btn.disabled = false;
+
+      data.temperamento = texto;
+
+      // El chip vive en tres pantallas posibles: cabecera del Consultorio,
+      // hero del Tablero de trabajo y modal "Editar mascota" (este último se
+      // rellena al abrirse, no hace falta tocarlo).
+      if (selectedPetKey === petKey) mountPetGeneralCard('pet-header', petKey);
+      const tableroView = document.getElementById('tablero-view');
+      if (tableroView && tableroView.classList.contains('active') && selectedPetKey === petKey) {
+        mountTableroHeader(petKey);
+      }
+
+      closeTemperamentoModal();
+      showToast(texto ? 'Temperamento actualizado' : 'Temperamento borrado');
+    }
+
     // ── MODAL: REGISTRAR MASCOTA (Parte B.4) — reutiliza el mismo set de
     // campos de #editar-mascota-modal (incluyendo "Nombre"), vinculada
     // a un propietario ya definido por contexto (no editable en este modal).
@@ -11102,6 +11579,7 @@
       // del módulo anterior.
       const paneBody = document.querySelector('.patient-pane-body');
       if (paneBody) paneBody.scrollTop = 0;
+      expandirPetHeader();
     }
 
     // ── MODAL: NUEVA CONSULTA (SOIP) ────────────────────────────
@@ -11525,11 +12003,110 @@
         metaItem(data.avatarClass === 'cat' ? 'cat' : 'dog', `${data.species} — ${data.breed}`),
         metaItem('calendar', edadTextoParaMostrar(data) || '—'),
         metaItem('scale', `<strong>${data.weight || '—'}</strong>`),
-        data.genero ? metaItem('user', data.genero) : ''
+        data.genero ? metaItem('user', data.genero) : '',
+        temperamentoChipHtml(data.temperamento)
       ].filter(Boolean).join('');
 
       document.getElementById('tablero-pet-alerts').innerHTML = tableroAlertChipsHtml(data, petKey);
+      // Misma pieza atómica que la ficha de Historia y el header del Kardex
+      // — acá solo cambia el alto del trazado, por CSS (.tablero-hero-weight).
+      renderWeightChartSVG('tablero-hero-weight-chart', data.pesoHistorico);
       mountTableroOwnerCard(petKey);
+    }
+
+    // ── Hero compacto al hacer scroll ─────────────────────────────────
+    // La barra de acciones y el strip de módulos quedan fijos siempre (viven
+    // en .tablero-sticky-stack); lo que cambia es la ficha del paciente, que
+    // al bajar se reorganiza en una sola línea para devolverle alto al SOIP.
+    // Todo el reacomodo es CSS (.tablero-sticky-stack.condensed) — acá solo
+    // se prende/apaga la clase.
+    // Los dos umbrales son a propósito distintos (histéresis): con un solo
+    // valor, el cambio de alto del hero mueve el scroll lo suficiente como
+    // para volver a cruzar el umbral y la barra parpadea entre los dos
+    // estados. El scroller es #tablero-view, que es quien tiene overflow-y.
+    const TABLERO_SCROLL_CONDENSAR = 32;
+    const TABLERO_SCROLL_EXPANDIR = 10;
+
+    function onTableroScroll(scroller) {
+      const stack = document.querySelector('#tablero-view .tablero-sticky-stack');
+      if (!stack) return;
+      const y = scroller.scrollTop;
+      if (!stack.classList.contains('condensed') && y > TABLERO_SCROLL_CONDENSAR) {
+        stack.classList.add('condensed');
+      } else if (stack.classList.contains('condensed') && y < TABLERO_SCROLL_EXPANDIR) {
+        stack.classList.remove('condensed');
+        // Volver arriba cancela el "forzado": el hero ya está completo por
+        // scroll, dejar el flag activo haría que el botón no reaccionara al
+        // siguiente scroll hacia abajo.
+        setTableroHeroForzado(false);
+      }
+    }
+
+    // Botón "Ficha completa" — trae de vuelta el hero entero (Contexto
+    // histórico incluido) sin tener que subir el scroll hasta arriba.
+    function toggleTableroHeroExpandido() {
+      const stack = document.querySelector('#tablero-view .tablero-sticky-stack');
+      if (!stack) return;
+      setTableroHeroForzado(!stack.classList.contains('forzar-expandido'));
+    }
+
+    function setTableroHeroForzado(forzado) {
+      const stack = document.querySelector('#tablero-view .tablero-sticky-stack');
+      if (!stack) return;
+      stack.classList.toggle('forzar-expandido', forzado);
+      const label = document.getElementById('tablero-hero-toggle-label');
+      if (label) label.textContent = forzado ? 'Compactar ficha' : 'Ficha completa';
+    }
+
+    // Estado inicial del bloque fijo al abrir el Tablero — sin esto, un
+    // Tablero abierto después de otro arrancaría con el hero condensado
+    // (la clase sobrevive a cerrarTableroAConsultorio) y con el scroll
+    // donde lo dejó la consulta anterior.
+    function resetTableroSticky() {
+      const view = document.getElementById('tablero-view');
+      const stack = view.querySelector('.tablero-sticky-stack');
+      view.scrollTop = 0;
+      if (stack) stack.classList.remove('condensed');
+      setTableroHeroForzado(false);
+    }
+
+    // ── TEMPERAMENTO: TEXTO LIBRE → SEMÁFORO DE MANEJO ────────────────
+    // El campo `temperamento` de la mascota es texto libre a propósito (ver
+    // patrón de campos de mascota mock: sin catálogo ni estructura), así que
+    // el color NO puede salir de un valor enumerado. Se clasifica por
+    // palabras clave sobre el texto normalizado (minúsculas y sin tildes) y
+    // se GANA EL TONO MÁS GRAVE que aparezca: "dócil pero muerde si le tocan
+    // las patas" tiene que salir rojo, no verde, porque el chip existe para
+    // avisar antes de manipular al paciente.
+    // Si no coincide ninguna palabra, el tono es 'neutro' — nunca se asume
+    // que un temperamento desconocido es manejable.
+    const TEMPERAMENTO_TONOS = [
+      { tono: 'riesgo', icono: 'alert-octagon', palabras: ['agresi', 'muerde', 'mordedor', 'ataca', 'peligros', 'bozal', 'hostil', 'reactiv'] },
+      { tono: 'precaucion', icono: 'alert-triangle', palabras: ['nervios', 'ansios', 'miedos', 'temeros', 'asustadiz', 'inquiet', 'estres', 'desconfia', 'arisc', 'timid', 'huidiz', 'territorial', 'dominante', 'defensiv'] },
+      { tono: 'calmo', icono: 'smile', palabras: ['docil', 'tranquil', 'calm', 'manso', 'sociable', 'amigable', 'carinos', 'jugueton', 'colaborador', 'noble', 'sumis'] }
+    ];
+
+    function temperamentoTono(texto) {
+      if (!texto || !String(texto).trim()) return null;
+      const t = String(texto).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); // sin tildes
+      // Recorrido de más grave a menos grave: el primero que coincide manda.
+      const match = TEMPERAMENTO_TONOS.find(def => def.palabras.some(p => t.includes(p)));
+      return match || { tono: 'neutro', icono: 'help-circle' };
+    }
+
+    function temperamentoChipHtml(texto) {
+      const def = temperamentoTono(texto);
+      const etiqueta = def ? String(texto).trim() : 'Temperamento sin registrar';
+      const clase = def ? def.tono : 'neutro';
+      const icono = def ? def.icono : 'help-circle';
+      // El chip se recorta con elipsis si el temperamento es largo (la fila
+      // de meta es de una línea en modo compacto), así que el texto entero
+      // va también en el title=. Comillas escapadas: es texto libre.
+      const title = def ? `Temperamento: ${etiqueta}` : 'Este paciente no tiene temperamento registrado';
+      return `
+        <span class="tablero-temperamento-chip ${clase}" title="${title.replace(/"/g, '&quot;')}">
+          <i data-lucide="${icono}" style="width:13px;height:13px;"></i> ${etiqueta}
+        </span>`;
     }
 
     // Chips de alerta del hero — SOLO datos reales del paciente (nada de
@@ -11571,10 +12148,29 @@
       const p = getPropietarioDeMascota(petKey);
       const nombre = (p && p.nombre) || data.owner || '—';
       const tel = (p && p.movil) || data.ownerPhone || '';
+
+      // Mascotas a cargo del mismo responsable. Por FK real cuando el
+      // propietario está resuelto (getMascotasDePropietario, la fuente de
+      // verdad del vínculo); si la mascota es semilla y no tiene
+      // propietarioId, se cae al nombre de display para no dejar el bloque
+      // vacío — mismo criterio de respaldo que getPropietarioDeMascota().
+      const mascotas = p
+        ? getMascotasDePropietario(p.id)
+        : Object.entries(patientData).filter(([, d]) => d.owner && d.owner === data.owner);
+      const petsHTML = mascotas.length ? `
+        <div class="tablero-hero-owner-pets">
+          ${mascotas.map(([key, d]) => `
+            <span class="tablero-owner-pet-chip ${key === petKey ? 'current' : ''}"
+                  title="${`${d.name} — ${d.species || ''}${d.breed ? ' / ' + d.breed : ''}`.replace(/"/g, '&quot;')}">
+              <i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:11px;height:11px;"></i> ${d.name}
+            </span>`).join('')}
+        </div>` : '';
+
       document.getElementById('tablero-pet-owner').innerHTML = `
         <div class="tablero-hero-owner-label">Responsable</div>
         <div class="tablero-hero-owner-name">${nombre}</div>
         ${tel ? `<div class="tablero-hero-owner-phone"><i data-lucide="phone" style="width:11px;height:11px;vertical-align:-1px;"></i> ${tel}</div>` : ''}
+        ${petsHTML}
         <div class="tablero-hero-owner-actions">
           ${p ? `<button class="btn-outline" onclick="abrirPerfilPropietario('${p.id}')"><i data-lucide="user" style="width:12px;height:12px;"></i> Perfil</button>` : ''}
           <button class="btn-outline" onclick="openMensajeModal('${petKey}')"><i data-lucide="message-square" style="width:12px;height:12px;"></i> Mensaje</button>
@@ -11589,25 +12185,42 @@
     // mascota mock más arriba) y el motivo de la última consulta sale
     // directo de data.consultas[0] (unshift-ordenado, el más reciente
     // primero — ver guardarConsulta()), sin dato nuevo que mantener.
-    function renderTableroContexto(petKey) {
+    // El HTML de la banda vive acá aparte porque la misma tarjeta se pinta
+    // en DOS lugares: el hero del Tablero (#tablero-contexto-card) y la
+    // cabecera del paciente en el Consultorio (#pet-header-contexto, ver
+    // mountPetGeneralCard) — es el mismo dato de referencia y no debe
+    // divergir entre las dos pantallas.
+    function contextoHistoricoHTML(petKey) {
       const data = patientData[petKey];
+      if (!data) return '';
       const ultimaConsulta = (data.consultas || [])[0];
 
+      // La banda es de una sola línea por dato (ver .tablero-context-fact-value:
+      // un antecedente largo no puede estirar el alto de las otras 3 columnas),
+      // así que el texto completo va en el title= para poder leerlo al pasar
+      // el mouse. Las comillas se escapan porque estos campos son texto libre
+      // de la ficha de la mascota y una comilla partiría el atributo.
       const fact = (label, valor) => `
         <div class="tablero-context-fact">
           <span class="tablero-context-fact-label">${label}</span>
-          <span class="tablero-context-fact-value">${valor}</span>
+          <span class="tablero-context-fact-value" title="${String(valor).replace(/"/g, '&quot;')}">${valor}</span>
         </div>`;
 
-      document.getElementById('tablero-contexto-card').innerHTML = `
+      // Temperamento ya NO está acá: se muestra como chip de color en la
+      // fila de meta del hero, al lado del sexo (ver temperamentoChipHtml()).
+      // No lo reintroduzcas en esta banda — quedaría duplicado.
+      return `
         <div class="tablero-context-label">Contexto histórico</div>
         <div class="tablero-context-facts">
-          ${fact('Temperamento', data.temperamento || 'Sin registrar')}
           ${fact('Antecedentes', data.antecedentes || 'Sin registrar')}
           ${fact('Alergias', data.alergias || 'Ninguna registrada')}
           ${fact('Motivo última consulta', ultimaConsulta ? ultimaConsulta.motivo : 'Sin consultas registradas')}
         </div>
       `;
+    }
+
+    function renderTableroContexto(petKey) {
+      document.getElementById('tablero-contexto-card').innerHTML = contextoHistoricoHTML(petKey);
     }
 
     // ── SIGNOS VITALES: SLIDER ⇄ NÚMERO (bloque Objetivo del Tablero) ──
@@ -11761,6 +12374,9 @@
       document.getElementById('consultorio-patient-view').classList.remove('active');
       document.querySelector('.consultorio-wrapper').style.display = 'none';
       document.getElementById('tablero-view').classList.add('active');
+      // Después de .active: con la vista todavía en display:none, fijar
+      // scrollTop no tiene efecto (el elemento no tiene caja que scrollear).
+      resetTableroSticky();
       lucide.createIcons();
     }
 
@@ -11768,6 +12384,10 @@
       document.getElementById('tablero-view').classList.remove('active');
       document.querySelector('.consultorio-wrapper').style.display = '';
       document.getElementById('consultorio-patient-view').classList.add('active');
+      // Si se finalizó una consulta acá dentro, "Motivo última consulta"
+      // de la banda del Consultorio quedó viejo — se repinta al volver.
+      const contextoEl = document.getElementById('pet-header-contexto');
+      if (contextoEl && selectedPetKey) contextoEl.innerHTML = contextoHistoricoHTML(selectedPetKey);
       tableroActiveModulo = null;
     }
 
@@ -12366,6 +12986,14 @@
         openTareaPendienteModal('edit', petKey, Number(idx));
       } else if (moduleKey === 'documento') {
         const [petKey, idx] = recordId.split(':');
+        // Un documento firmado no se edita: el contenido es exactamente lo
+        // que el tutor aceptó al firmar. Para corregirlo hay que anular la
+        // firma primero (acción "Anular firma" del mismo menú).
+        const record = patientData[petKey] && patientData[petKey].documentos[Number(idx)];
+        if (record && record.estado === 'firmado') {
+          showToast('Este documento ya está firmado — anula la firma para poder editarlo');
+          return;
+        }
         openDocumentoModal('edit', petKey, Number(idx));
       } else if (moduleKey === 'usuario') {
         openUsuarioDetalleModal(recordId);
@@ -12785,13 +13413,7 @@
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-documento-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].documentos.splice(idx, 1);
-            renderDocumentosTable(petKey);
-          }, 250);
-        }
+        eliminarDocumentoReal(petKey, idx, row);
       } else if (moduleKey === 'usuario') {
         // Los usuarios nunca se eliminan de verdad — "Eliminar" desde el
         // menú "..." desactiva el acceso. Reutiliza toggleUsuarioEstado()
@@ -13123,10 +13745,16 @@
 
     function documentoViewContentHTML(record) {
       const estadoDef = ESTADOS_DOCUMENTO[record.estado];
-      const firmaHTML = (record.estado === 'firmado' && record.firmaInfo) ? `
+      const f = record.firmaInfo;
+      // La firma se pinta acá tal cual el tutor la trazó (data URL guardada
+      // en la fila, ver el módulo de firma). Este mismo HTML es el que
+      // rasteriza rowActionImprimir para el PDF, así que la imagen tiene
+      // que ir embebida y no como URL remota.
+      const firmaHTML = (record.estado === 'firmado' && f) ? `
+        ${f.imagen ? `<img src="${f.imagen}" alt="Firma del responsable" class="doc-signed-img">` : ''}
         <div class="doc-signed-block">
           <i data-lucide="check-circle" style="width:16px;height:16px;"></i>
-          Firmado digitalmente por ${record.firmaInfo.nombre} · ${record.firmaInfo.fecha} · ${record.firmaInfo.hora}
+          Firmado por ${f.nombre}${f.documento ? ` · ${f.documento}` : ''} · ${f.fecha} · ${f.hora}
         </div>
       ` : '';
       return `
@@ -18623,11 +19251,15 @@
       firmado: { label: 'Firmado' }
     };
 
-    // TODO: INTEGRACIÓN FUTURA — módulo de plantillas de documentos.
-    // El link "+ Crear nuevo formato" es solo un placeholder visual;
-    // cuando exista el editor real de plantillas, esta lista pasará a
-    // consultarse desde ahí en vez de estar mockeada aquí.
-    const PLANTILLAS_DOCUMENTOS = [
+    // Formatos (plantillas) de documento. Los 3 de abajo vienen de fábrica
+    // con la app y existen en toda clínica; los que la clínica crea desde
+    // "+ Crear nuevo formato" viven en la tabla `documento_plantillas`
+    // (por establecimiento) y se cargan a plantillasDocumentosCustom en
+    // cargarDatosClinicaDesdeSupabase(). Mismo criterio que
+    // VACUNAS_CATALOGO_BASE + vacunasCatalogoCustom: la lista que consume
+    // la UI es SIEMPRE getPlantillasDocumentos(), nunca uno de los dos
+    // arrays sueltos.
+    const PLANTILLAS_DOCUMENTOS_BASE = [
       {
         label: 'Consentimiento de esterilización',
         contenido: '<p>Yo, en calidad de propietario y/o responsable legal de la mascota, autorizo de manera libre e informada al equipo veterinario de la clínica a realizar el procedimiento quirúrgico de esterilización (ovariohisterectomía/orquiectomía), habiendo sido informado sobre el objetivo del procedimiento, los riesgos anestésico-quirúrgicos inherentes y los cuidados postoperatorios requeridos.</p><p>Declaro haber resuelto mis dudas con el médico tratante y entiendo que, como en todo procedimiento médico, existen riesgos que no dependen exclusivamente de la pericia del equipo tratante.</p><p>Autorizo así mismo el uso de medios anestésicos y analgésicos que el equipo médico considere pertinentes durante y después del procedimiento.</p>'
@@ -18642,15 +19274,174 @@
       }
     ];
 
-    function handlePlantillaSelected(label) {
-      const plantilla = PLANTILLAS_DOCUMENTOS.find(p => p.label === label);
-      if (!plantilla) return;
-      document.getElementById('documento-nombre').value = plantilla.label;
-      document.getElementById('documento-editor').innerHTML = plantilla.contenido;
+    // Formatos propios de la clínica (tabla `documento_plantillas`).
+    // { dbId, label, contenido } — mismo shape que los de fábrica más el id.
+    let plantillasDocumentosCustom = [];
+
+    function getPlantillasDocumentos() {
+      return [...PLANTILLAS_DOCUMENTOS_BASE, ...plantillasDocumentosCustom];
     }
 
+    function handlePlantillaSelected(label) {
+      const plantilla = getPlantillasDocumentos().find(p => p.label === label);
+      if (!plantilla) return;
+      const editor = document.getElementById('documento-editor');
+      const nombreInput = document.getElementById('documento-nombre');
+      // Aplicar un formato pisa el contenido del editor — si el usuario ya
+      // había escrito algo, se pregunta antes en vez de borrárselo.
+      if (editor.textContent.trim() && !confirm('Aplicar este formato reemplazará el contenido que ya escribiste. ¿Continuar?')) {
+        return;
+      }
+      if (!nombreInput.value.trim()) nombreInput.value = plantilla.label;
+      editor.innerHTML = plantilla.contenido;
+    }
+
+    // Repinta el dropdown de plantillas del modal de documento con la
+    // lista actual, conservando la selección — se llama después de crear,
+    // editar o eliminar un formato para no tener que cerrar el modal.
+    function refrescarPlantillaSelectDocumento(seleccion) {
+      const wrap = document.getElementById('documento-plantilla-wrap');
+      if (!wrap) return;
+      const actual = seleccion !== undefined
+        ? seleccion
+        : (wrap.querySelector('[data-ss-field="plantilla"]') || {}).value || '';
+      const opciones = getPlantillasDocumentos().map(p => p.label);
+      wrap.innerHTML = searchableSelectHTML(
+        'plantilla', opciones, opciones.includes(actual) ? actual : '',
+        'Buscar plantilla...', 'handlePlantillaSelected'
+      );
+      lucide.createIcons();
+    }
+
+    // ── Formatos de documento (editor de plantillas) ─────────────
+    // Se abre superpuesto al modal de documento (z-index mayor, mismo
+    // patrón que la calculadora de dosis sobre el modal de fórmula).
+    let editingFormatoId = null;
+
+    function renderFormatosDocumentoList() {
+      const cont = document.getElementById('formato-lista');
+      if (!cont) return;
+      const base = PLANTILLAS_DOCUMENTOS_BASE.map(p => `
+        <div class="doc-formato-item">
+          <span class="doc-formato-item-name">${p.label}</span>
+          <span class="doc-formato-item-tag">Predeterminado</span>
+        </div>
+      `).join('');
+      const propios = plantillasDocumentosCustom.map(p => `
+        <div class="doc-formato-item">
+          <span class="doc-formato-item-name">${p.label}</span>
+          <button type="button" class="row-actions-btn" title="Editar formato" onclick="editarFormatoDocumento('${p.dbId}')">
+            <i data-lucide="pencil" style="width:15px;height:15px;"></i>
+          </button>
+          <button type="button" class="row-actions-btn" title="Eliminar formato" style="color:var(--danger);" onclick="eliminarFormatoDocumento('${p.dbId}')">
+            <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+          </button>
+        </div>
+      `).join('');
+      cont.innerHTML = base + propios;
+      lucide.createIcons();
+    }
+
+    // Punto de entrada desde el link "+ Crear nuevo formato" del modal de
+    // documento: precarga nombre y contenido con lo que haya escrito ahí,
+    // que es el caso normal (redactó el documento y quiere reutilizarlo).
     function crearNuevoFormato() {
-      showToast('Próximamente: editor de plantillas de documentos');
+      const nombre = (document.getElementById('documento-nombre') || {}).value || '';
+      const contenido = (document.getElementById('documento-editor') || {}).innerHTML || '';
+      openFormatoDocumentoModal(null, nombre, contenido);
+    }
+
+    function openFormatoDocumentoModal(dbId, nombrePrecarga, contenidoPrecarga) {
+      editingFormatoId = dbId || null;
+      const existente = dbId ? plantillasDocumentosCustom.find(p => p.dbId === dbId) : null;
+      document.getElementById('formato-titulo').textContent = existente ? 'Editar formato' : 'Nuevo formato de documento';
+      document.getElementById('formato-nombre').value = existente ? existente.label : (nombrePrecarga || '');
+      document.getElementById('formato-editor').innerHTML = existente ? existente.contenido : (contenidoPrecarga || '');
+      document.getElementById('formato-guardar-btn').textContent = existente ? 'Guardar cambios' : 'Guardar formato';
+      renderFormatosDocumentoList();
+      document.getElementById('formato-documento-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeFormatoDocumentoModal() {
+      document.getElementById('formato-documento-modal').classList.remove('show');
+      editingFormatoId = null;
+    }
+
+    function handleFormatoModalOverlayClick(e) {
+      if (e.target === document.getElementById('formato-documento-modal')) closeFormatoDocumentoModal();
+    }
+
+    function editarFormatoDocumento(dbId) {
+      openFormatoDocumentoModal(dbId);
+    }
+
+    async function guardarFormatoDocumento() {
+      const nombre = document.getElementById('formato-nombre').value.trim();
+      const contenido = document.getElementById('formato-editor').innerHTML;
+      if (!nombre) { showToast('Ponle un nombre al formato'); return; }
+      if (!document.getElementById('formato-editor').textContent.trim()) {
+        showToast('El formato no puede quedar vacío');
+        return;
+      }
+      const chocaConOtro = getPlantillasDocumentos()
+        .some(p => p.label.toLowerCase() === nombre.toLowerCase() && p.dbId !== editingFormatoId);
+      if (chocaConOtro) { showToast('Ya existe un formato con ese nombre'); return; }
+
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+
+      const esEdicion = !!editingFormatoId;
+      try {
+        if (editingFormatoId) {
+          const { error } = await window.supabase.from('documento_plantillas')
+            .update({ nombre, contenido_html: contenido, updated_at: new Date().toISOString() })
+            .eq('id', editingFormatoId);
+          if (error) throw error;
+          const plantilla = plantillasDocumentosCustom.find(p => p.dbId === editingFormatoId);
+          if (plantilla) { plantilla.label = nombre; plantilla.contenido = contenido; }
+        } else {
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+          const { data: inserted, error } = await window.supabase.from('documento_plantillas')
+            .insert({ establecimiento_id: establecimientoId, nombre, contenido_html: contenido, created_by: userId })
+            .select().single();
+          if (error) throw error;
+          plantillasDocumentosCustom.push({ dbId: inserted.id, label: nombre, contenido });
+        }
+        refrescarPlantillaSelectDocumento(nombre);
+        closeFormatoDocumentoModal();   // ojo: limpia editingFormatoId
+        showToast(esEdicion ? 'Formato actualizado' : 'Formato guardado — ya está disponible en la lista de plantillas');
+      } catch (err) {
+        console.error('[IRIS] Error guardando el formato de documento en Supabase:', err);
+        showToast('No se pudo guardar el formato — intenta de nuevo');
+      }
+    }
+
+    // Elimina el formato del catálogo de la clínica. Los documentos ya
+    // creados a partir de él NO se tocan: guardan su propio `contenido`
+    // y el nombre del formato como texto plano en `plantilla`.
+    async function eliminarFormatoDocumento(dbId) {
+      const plantilla = plantillasDocumentosCustom.find(p => p.dbId === dbId);
+      if (!plantilla) return;
+      if (!confirm(`¿Eliminar el formato "${plantilla.label}"? Los documentos ya creados con él no se modifican.`)) return;
+      if (!window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('documento_plantillas').delete().eq('id', dbId);
+        if (error) throw error;
+        const idx = plantillasDocumentosCustom.findIndex(p => p.dbId === dbId);
+        if (idx !== -1) plantillasDocumentosCustom.splice(idx, 1);
+        if (editingFormatoId === dbId) openFormatoDocumentoModal(null);
+        renderFormatosDocumentoList();
+        refrescarPlantillaSelectDocumento();
+        showToast('Formato eliminado');
+      } catch (err) {
+        console.error('[IRIS] Error eliminando el formato de documento en Supabase:', err);
+        showToast('No se pudo eliminar el formato — intenta de nuevo');
+      }
     }
 
     // Editor de texto enriquecido reutilizable (barra de herramientas +
@@ -18689,11 +19480,25 @@
         emptyState.style.display = 'flex';
       } else {
         emptyState.style.display = 'none';
+        const puedeGestionar = getRowActionsForRole().includes('editar');
         tbody.innerHTML = data.documentos.map((d, i) => {
           const estadoDef = ESTADOS_DOCUMENTO[d.estado];
           const extraActions = [];
+          // Firmar / Anular firma son acciones de gestión: se ocultan para
+          // los roles que solo pueden leer (mismo criterio que
+          // getRowActionsForRole() aplica a editar/eliminar).
+          if (puedeGestionar && d.requiereFirma && d.estado !== 'firmado') {
+            extraActions.push({ icon: 'pen-line', label: 'Firmar documento', onclick: `abrirFirmaDocumento('${petKey}:${i}')` });
+          }
+          if (puedeGestionar && d.estado === 'firmado') {
+            extraActions.push({ icon: 'rotate-ccw', label: 'Anular firma', onclick: `anularFirmaDocumento('${petKey}:${i}')` });
+          }
           if (d.estado === 'pendiente') extraActions.push({ icon: 'send', label: 'Reenviar link de firma', onclick: `reenviarLinkFirma('${petKey}:${i}')` });
           if (d.pdfPath) extraActions.push({ icon: 'file-down', label: 'Descargar PDF', onclick: `descargarPdfDocumento('${petKey}:${i}')` });
+          // Un documento firmado no se edita (ver rowActionEditar): la
+          // acción se quita del menú en vez de dejarla ahí para que solo
+          // conteste con un toast de error.
+          const acciones = getRowActionsForRole().filter(a => !(a === 'editar' && d.estado === 'firmado'));
           return `
             <tr data-documento-row="${i}">
               <td>${d.nombre}</td>
@@ -18701,7 +19506,7 @@
               <td><span class="doc-badge doc-badge-${d.estado}">${estadoDef.label}</span></td>
               <td><span class="doc-firma-icon ${d.requiereFirma ? 'si' : 'no'}"><i data-lucide="${d.requiereFirma ? 'check' : 'x'}" style="width:15px;height:15px;"></i></span></td>
               <td>${d.usuario}</td>
-              <td style="text-align: right;">${renderRowActionsMenu('documento', `${petKey}:${i}`, extraActions)}</td>
+              <td style="text-align: right;">${renderRowActionsMenu('documento', `${petKey}:${i}`, extraActions, acciones)}</td>
             </tr>
           `;
         }).join('');
@@ -18726,11 +19531,7 @@
 
       docAlignIndex = -1;
 
-      const plantillaWrap = document.getElementById('documento-plantilla-wrap');
-      plantillaWrap.innerHTML = searchableSelectHTML(
-        'plantilla', PLANTILLAS_DOCUMENTOS.map(p => p.label), record.plantilla || '',
-        'Buscar plantilla...', 'handlePlantillaSelected'
-      );
+      refrescarPlantillaSelectDocumento(record.plantilla || '');
 
       document.getElementById('documento-nombre').value = record.nombre || '';
       document.getElementById('documento-editor').innerHTML = record.contenido || '';
@@ -18772,6 +19573,16 @@
       }
       const establecimientoId = currentSession.activeMembership.establecimientoId;
 
+      const previo = isEdit ? data.documentos[editingDocumentoContext.index] : null;
+      // Cinturón de seguridad: el menú "..." ya no ofrece Editar sobre un
+      // documento firmado (ver rowActionEditar), pero si se llegara acá por
+      // otra vía, cambiarle el contenido dejaría una firma respaldando un
+      // texto que el tutor nunca vio.
+      if (previo && previo.estado === 'firmado') {
+        showToast('Este documento ya está firmado — anula la firma antes de editarlo');
+        return;
+      }
+
       const requiereFirma = document.getElementById('documento-requiere-firma').checked;
       const estado = (accion === 'firmar' && requiereFirma) ? 'pendiente' : 'borrador';
       const today = new Date().toISOString().slice(0, 10);
@@ -18781,25 +19592,21 @@
       const usuario = (currentSession.user && currentSession.user.nombre) || (currentSession.user && currentSession.user.email) || 'Usuario';
 
       const record = {
-        nombre,
-        fechaISO: isEdit ? data.documentos[editingDocumentoContext.index].fechaISO : today,
-        fecha: isEdit ? data.documentos[editingDocumentoContext.index].fecha : formatFechaCorta(today),
+        nombre, mascotaId: data.mascotaId,
+        fechaISO: previo ? previo.fechaISO : today,
+        fecha: previo ? previo.fecha : formatFechaCorta(today),
         estado, requiereFirma, notificarPropietario, plantilla, contenido, usuario
       };
-      if (isEdit && data.documentos[editingDocumentoContext.index].firmaInfo) {
-        record.firmaInfo = data.documentos[editingDocumentoContext.index].firmaInfo;
-      }
 
       const filaForm = {
         tipo: plantilla || null, titulo: nombre, contenido_html: contenido, estado,
         requiere_firma: requiereFirma, notificar_propietario: notificarPropietario, usuario,
-        firma_nombre: record.firmaInfo ? record.firmaInfo.nombre : null,
-        firma_fecha: record.firmaInfo ? record.firmaInfo.fecha : null,
-        firma_hora: record.firmaInfo ? record.firmaInfo.hora : null
+        firma_nombre: null, firma_fecha: null, firma_hora: null,
+        firma_documento: null, firma_imagen: null
       };
 
       try {
-        let dbId = isEdit ? data.documentos[editingDocumentoContext.index].dbId : null;
+        let dbId = previo ? previo.dbId : null;
         if (dbId) {
           const { error } = await window.supabase.from('documentos')
             .update({ ...filaForm, updated_at: new Date().toISOString() })
@@ -18815,10 +19622,19 @@
           dbId = inserted.id;
         }
         record.dbId = dbId;
-        record.pdfPath = isEdit ? data.documentos[editingDocumentoContext.index].pdfPath : null;
+        record.pdfPath = previo ? previo.pdfPath : null;
 
         if (isEdit) {
           data.documentos[editingDocumentoContext.index] = record;
+          // El evento de Historia se creó al guardar por primera vez: se
+          // actualiza en sitio (por dbId) en vez de agregar uno nuevo, para
+          // no duplicar la misma entrada en cada edición.
+          const tIdx = data.timeline.findIndex(t => t.dbId === record.dbId && t.type === 'Documento');
+          if (tIdx !== -1) {
+            data.timeline[tIdx].title = `Documento — ${record.nombre}`;
+            data.timeline[tIdx].summary = record.estado === 'pendiente' ? 'Enviado para firma' : 'Guardado como borrador';
+            if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+          }
         } else {
           data.documentos.unshift(record);
           data.timeline.unshift({
@@ -18866,7 +19682,7 @@
 
       const container = document.createElement('div');
       container.style.cssText = 'position:fixed;left:-9999px;top:0;width:480px;font-family:helvetica,arial,sans-serif;font-size:12px;color:#1e1e1e;';
-      container.innerHTML = `<h2 style="margin:0 0 12px;">${record.nombre.replace(/</g, '&lt;')}</h2>${record.contenido}`;
+      container.innerHTML = `<h2 style="margin:0 0 12px;">${record.nombre.replace(/</g, '&lt;')}</h2>${record.contenido}${firmaBloqueHTML(record)}`;
       document.body.appendChild(container);
 
       try {
@@ -18893,6 +19709,324 @@
       record.pdfPath = pdfPath;
       const data = patientData[petKey];
       if (data && document.getElementById('documentos-table-body') && selectedPetKey === petKey) renderDocumentosTable(petKey);
+    }
+
+    // ── DOCUMENTOS: proceso de firma ─────────────────────────────
+    // El tutor firma en pantalla (mouse o dedo) sobre el pad del modal.
+    // El trazo se guarda como PNG en data URL dentro de la propia fila
+    // (`documentos.firma_imagen`), NO en Storage: es una imagen de pocos
+    // KB, y tenerla en la fila evita depender de URLs firmadas que expiran
+    // — la firma tiene que poder pintarse en el modal "Ver", en el PDF de
+    // "Imprimir" y en el PDF que se sube al bucket, sin ninguna descarga
+    // extra ni problema de CORS con html2canvas.
+    //
+    // El estado del documento pasa a 'firmado' SOLO por acá; "Enviar para
+    // firmar" lo deja en 'pendiente' (a la espera del tutor), que es un
+    // paso distinto y opcional.
+    let firmaDocumentoContext = null;   // { petKey, index }
+    let firmaCanvasCtx = null;
+    let firmaTrazoIniciado = false;
+
+    function firmaBloqueHTML(record) {
+      if (record.estado !== 'firmado' || !record.firmaInfo) return '';
+      const f = record.firmaInfo;
+      const imagen = f.imagen
+        ? `<img src="${f.imagen}" alt="Firma del responsable" class="doc-signed-img">`
+        : '';
+      const documento = f.documento ? ` · ${f.documento}` : '';
+      return `
+        <div style="margin-top:18px;">
+          ${imagen}
+          <div style="font-size:11.5px;color:#475569;line-height:1.5;">
+            Firmado por ${f.nombre}${documento}<br>${f.fecha} · ${f.hora}
+          </div>
+        </div>
+      `;
+    }
+
+    function abrirFirmaDocumento(recordId) {
+      closeAllRowMenus();
+      const [petKey, idxStr] = recordId.split(':');
+      const idx = Number(idxStr);
+      const data = patientData[petKey];
+      const record = data && data.documentos[idx];
+      if (!record) return;
+      if (record.estado === 'firmado') { showToast('Este documento ya está firmado'); return; }
+
+      firmaDocumentoContext = { petKey, index: idx };
+      document.getElementById('firma-doc-nombre').textContent = record.nombre;
+      document.getElementById('firma-doc-mascota').textContent = `${data.name} · ${data.owner || 'Sin responsable registrado'}`;
+      document.getElementById('firma-doc-firmante').value = data.owner || '';
+      document.getElementById('firma-doc-identificacion').value = '';
+      document.getElementById('firma-documento-modal').classList.add('show');
+      // El canvas se dimensiona con el modal ya visible: mientras el
+      // overlay está en display:none, clientWidth es 0 y el trazo saldría
+      // deformado (o directamente no se vería).
+      prepararFirmaCanvas();
+      lucide.createIcons();
+    }
+
+    function closeFirmaDocumentoModal() {
+      document.getElementById('firma-documento-modal').classList.remove('show');
+      firmaDocumentoContext = null;
+      firmaCanvasCtx = null;
+      firmaTrazoIniciado = false;
+    }
+
+    function handleFirmaModalOverlayClick(e) {
+      if (e.target === document.getElementById('firma-documento-modal')) closeFirmaDocumentoModal();
+    }
+
+    function prepararFirmaCanvas() {
+      const canvas = document.getElementById('firma-doc-canvas');
+      // Buffer al doble de la resolución CSS para que el trazo no se vea
+      // pixelado ni en pantalla ni al llevarlo al PDF.
+      const escala = 2;
+      const ancho = canvas.clientWidth || 480;
+      const alto = canvas.clientHeight || 180;
+      canvas.width = ancho * escala;
+      canvas.height = alto * escala;
+      firmaCanvasCtx = canvas.getContext('2d');
+      firmaCanvasCtx.scale(escala, escala);
+      firmaCanvasCtx.lineWidth = 2;
+      firmaCanvasCtx.lineCap = 'round';
+      firmaCanvasCtx.lineJoin = 'round';
+      firmaCanvasCtx.strokeStyle = '#0F172A';
+      firmaTrazoIniciado = false;
+      canvas.classList.remove('firmada');
+    }
+
+    function firmaPuntoDesdeEvento(canvas, e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    function firmaPointerDown(e) {
+      const canvas = e.currentTarget;
+      if (!firmaCanvasCtx) return;
+      canvas.setPointerCapture(e.pointerId);
+      const p = firmaPuntoDesdeEvento(canvas, e);
+      firmaCanvasCtx.beginPath();
+      firmaCanvasCtx.moveTo(p.x, p.y);
+      // Un toque suelto (punto sobre la "i", tilde) también es trazo.
+      firmaCanvasCtx.lineTo(p.x + 0.1, p.y);
+      firmaCanvasCtx.stroke();
+      firmaTrazoIniciado = true;
+      canvas.classList.add('firmada');
+      canvas.dataset.dibujando = '1';
+    }
+
+    function firmaPointerMove(e) {
+      const canvas = e.currentTarget;
+      if (!firmaCanvasCtx || canvas.dataset.dibujando !== '1') return;
+      const p = firmaPuntoDesdeEvento(canvas, e);
+      firmaCanvasCtx.lineTo(p.x, p.y);
+      firmaCanvasCtx.stroke();
+    }
+
+    function firmaPointerUp(e) {
+      e.currentTarget.dataset.dibujando = '0';
+    }
+
+    function limpiarFirmaCanvas() {
+      const canvas = document.getElementById('firma-doc-canvas');
+      if (!firmaCanvasCtx) return;
+      firmaCanvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+      firmaTrazoIniciado = false;
+      canvas.classList.remove('firmada');
+    }
+
+    // Recorta el canvas al rectángulo realmente dibujado (con un margen) y
+    // devuelve el PNG en data URL. Sin este recorte la firma viajaría con
+    // todo el pad en blanco alrededor y se vería diminuta en el PDF.
+    function firmaCanvasDataUrl() {
+      const canvas = document.getElementById('firma-doc-canvas');
+      const ctx = canvas.getContext('2d');
+      const { width, height } = canvas;
+      const pixeles = ctx.getImageData(0, 0, width, height).data;
+      let minX = width, minY = height, maxX = -1, maxY = -1;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (pixeles[(y * width + x) * 4 + 3] > 0) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX < 0) return null;
+
+      const margen = 8;
+      minX = Math.max(0, minX - margen); minY = Math.max(0, minY - margen);
+      maxX = Math.min(width - 1, maxX + margen); maxY = Math.min(height - 1, maxY + margen);
+
+      const recorte = document.createElement('canvas');
+      recorte.width = maxX - minX + 1;
+      recorte.height = maxY - minY + 1;
+      const rctx = recorte.getContext('2d');
+      // Fondo blanco: el PNG transparente se ve bien en el modal pero se
+      // rasteriza en negro sobre negro en algunos visores de PDF.
+      rctx.fillStyle = '#FFFFFF';
+      rctx.fillRect(0, 0, recorte.width, recorte.height);
+      rctx.drawImage(canvas, minX, minY, recorte.width, recorte.height, 0, 0, recorte.width, recorte.height);
+      return recorte.toDataURL('image/png');
+    }
+
+    async function confirmarFirmaDocumento() {
+      if (!firmaDocumentoContext) return;
+      const { petKey, index } = firmaDocumentoContext;
+      const data = patientData[petKey];
+      const record = data && data.documentos[index];
+      if (!record) { closeFirmaDocumentoModal(); return; }
+
+      const nombreFirmante = document.getElementById('firma-doc-firmante').value.trim();
+      const identificacion = document.getElementById('firma-doc-identificacion').value.trim();
+      if (!nombreFirmante) { showToast('Escribe el nombre de quien firma'); return; }
+      if (!firmaTrazoIniciado) { showToast('Falta la firma — dibújala en el recuadro'); return; }
+      const imagen = firmaCanvasDataUrl();
+      if (!imagen) { showToast('Falta la firma — dibújala en el recuadro'); return; }
+
+      if (!window.supabase || !record.dbId || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede firmar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+
+      const ahora = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const firmaInfo = {
+        nombre: nombreFirmante,
+        documento: identificacion,
+        fecha: `${pad(ahora.getDate())}/${pad(ahora.getMonth() + 1)}/${ahora.getFullYear()}`,
+        hora: `${pad(ahora.getHours())}:${pad(ahora.getMinutes())}`,
+        imagen
+      };
+
+      const btn = document.getElementById('firma-doc-confirmar-btn');
+      btn.disabled = true;
+      const textoOriginal = btn.textContent;
+      btn.textContent = 'Firmando...';
+
+      try {
+        const { error } = await window.supabase.from('documentos').update({
+          estado: 'firmado',
+          firma_nombre: firmaInfo.nombre,
+          firma_documento: firmaInfo.documento || null,
+          firma_fecha: firmaInfo.fecha,
+          firma_hora: firmaInfo.hora,
+          firma_imagen: firmaInfo.imagen,
+          updated_at: new Date().toISOString()
+        }).eq('id', record.dbId);
+        if (error) throw error;
+
+        record.estado = 'firmado';
+        record.firmaInfo = firmaInfo;
+
+        const tIdx = data.timeline.findIndex(t => t.dbId === record.dbId && t.type === 'Documento');
+        if (tIdx !== -1) {
+          data.timeline[tIdx].summary = `Firmado por ${firmaInfo.nombre}`;
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderDocumentosTable(petKey);
+        refrescarTableroQuicknavSi('documentos', petKey);
+        closeFirmaDocumentoModal();
+        showToast('Documento firmado');
+
+        // El PDF almacenado tiene que quedar con la firma dentro — se
+        // regenera con el mismo contenido más el bloque de firma.
+        generarYSubirPdfDocumento(record, petKey, establecimientoId).catch(err => {
+          console.error('[IRIS] Error regenerando el PDF firmado:', err);
+        });
+      } catch (err) {
+        console.error('[IRIS] Error firmando el documento en Supabase:', err);
+        showToast('No se pudo registrar la firma — intenta de nuevo');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+      }
+    }
+
+    // Salida de emergencia de un documento firmado por error: lo devuelve a
+    // borrador y borra el rastro de la firma (nombre/fecha/imagen), que es
+    // justo lo que lo vuelve editable otra vez.
+    async function anularFirmaDocumento(recordId) {
+      closeAllRowMenus();
+      const [petKey, idxStr] = recordId.split(':');
+      const idx = Number(idxStr);
+      const data = patientData[petKey];
+      const record = data && data.documentos[idx];
+      if (!record || record.estado !== 'firmado') return;
+      if (!confirm('¿Anular la firma de este documento? Volverá a quedar como borrador y se borrará la firma registrada.')) return;
+      if (!window.supabase || !record.dbId) return;
+
+      try {
+        const { error } = await window.supabase.from('documentos').update({
+          estado: 'borrador',
+          firma_nombre: null, firma_documento: null, firma_fecha: null,
+          firma_hora: null, firma_imagen: null,
+          updated_at: new Date().toISOString()
+        }).eq('id', record.dbId);
+        if (error) throw error;
+
+        record.estado = 'borrador';
+        delete record.firmaInfo;
+
+        const tIdx = data.timeline.findIndex(t => t.dbId === record.dbId && t.type === 'Documento');
+        if (tIdx !== -1) {
+          data.timeline[tIdx].summary = 'Guardado como borrador';
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+
+        renderDocumentosTable(petKey);
+        refrescarTableroQuicknavSi('documentos', petKey);
+        showToast('Firma anulada — el documento volvió a borrador');
+
+        const establecimientoId = currentSession && currentSession.activeMembership
+          ? currentSession.activeMembership.establecimientoId : null;
+        if (establecimientoId) {
+          generarYSubirPdfDocumento(record, petKey, establecimientoId).catch(err => {
+            console.error('[IRIS] Error regenerando el PDF sin firma:', err);
+          });
+        }
+      } catch (err) {
+        console.error('[IRIS] Error anulando la firma del documento:', err);
+        showToast('No se pudo anular la firma — intenta de nuevo');
+      }
+    }
+
+    // Borrado real (Supabase + Storage + evento de Historia). Antes solo se
+    // hacía splice() sobre el array en memoria, así que el documento
+    // reaparecía al recargar la página.
+    async function eliminarDocumentoReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.documentos[idx];
+      const quitarLocal = () => {
+        data.documentos.splice(idx, 1);
+        if (record && record.dbId) {
+          const tIdx = data.timeline.findIndex(t => t.dbId === record.dbId && t.type === 'Documento');
+          if (tIdx !== -1) data.timeline.splice(tIdx, 1);
+          if (selectedPetKey === petKey) renderHistoriaTimeline(data);
+        }
+        renderDocumentosTable(petKey);
+        refrescarTableroQuicknavSi('documentos', petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.dbId) return;
+      try {
+        if (record.pdfPath) await window.supabase.storage.from('pdfs').remove([record.pdfPath]);
+        const { error } = await window.supabase.from('documentos').delete().eq('id', record.dbId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando documento en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
     }
 
     // ── MÓDULO: RED IRIS — identidad compartida entre establecimientos ──
@@ -19693,7 +20827,8 @@
       'vacunaciones', 'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
       'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes', 'mensajes',
       'agenda_eventos', 'productos', 'movimientos', 'arqueos', 'ventas_facturas',
-      'ventas_cotizaciones', 'catalogos_custom', 'memberships', 'invites', 'link_requests'
+      'ventas_cotizaciones', 'catalogos_custom', 'documento_plantillas',
+      'memberships', 'invites', 'link_requests'
     ];
 
     function respaldoUltimoKey(establecimientoId) {
@@ -25188,7 +26323,7 @@
       INVENTARIO_SALIDAS, inventarioSalidaIdCounter,
       INVENTARIO_ORDENES_COMPRA, INVENTARIO_COMPRAS,
       hospitalizacionSeq,
-      PLANTILLAS_DOCUMENTOS, CLINIC_INFO, VARIABLES_CATALOGOS,
+      CLINIC_INFO, VARIABLES_CATALOGOS,
       VENTAS_CLIENTES, VENTAS_FACTURAS, VENTAS_COTIZACIONES,
       VENTAS_NOTAS_CREDITO, VENTAS_DOC_SOPORTE, VENTAS_MOVIMIENTOS, VENTAS_ARQUEOS,
       VENTAS_CATALOGO, VENTAS_CATEGORIAS, VENTAS_PROVEEDORES
@@ -25255,8 +26390,12 @@
       // esa función.
       hospitalizacionSeq = seed ? seed.hospitalizacionSeq : 1;
 
-      PLANTILLAS_DOCUMENTOS.length = 0;
-      if (seed) PLANTILLAS_DOCUMENTOS.push(...seed.PLANTILLAS_DOCUMENTOS);
+      // Los formatos de documento ya NO se resetean acá. Los 3 de fábrica
+      // (PLANTILLAS_DOCUMENTOS_BASE) son constantes de la app y existen en
+      // toda clínica — vaciarlos dejaba a cualquier clínica nueva sin una
+      // sola plantilla; los propios de la clínica se cargan desde la tabla
+      // `documento_plantillas` en cargarDatosClinicaDesdeSupabase(), mismo
+      // criterio que catalogos_custom.
 
       Object.keys(CLINIC_INFO).forEach(k => delete CLINIC_INFO[k]);
       if (seed) Object.assign(CLINIC_INFO, seed.CLINIC_INFO);
@@ -25309,7 +26448,7 @@
     // bootstrapSession() cargue lo que corresponda desde Supabase.
     // resetMockDataForClinic(false) ya vacía USUARIOS_SISTEMA/
     // USUARIO_PRIVILEGIOS/EVENTOS_SEGUIMIENTO/DISPONIBILIDAD_MEDICOS/
-    // SIIGO_*/INVENTARIO_*/PLANTILLAS_DOCUMENTOS/CLINIC_INFO/
+    // SIIGO_*/INVENTARIO_*/CLINIC_INFO/
     // VARIABLES_CATALOGOS/VENTAS_CLIENTES/VENTAS_NOTAS_CREDITO/
     // VENTAS_DOC_SOPORTE/VENTAS_CATEGORIAS/VENTAS_PROVEEDORES — lo único que
     // faltaba (los bindings que esa función deliberadamente NO toca porque
@@ -25384,8 +26523,17 @@
         contenido: r.contenido_html || '',
         usuario: r.usuario || '',
         pdfPath: r.pdf_path || null,
-        ...(r.firma_nombre ? { firmaInfo: { nombre: r.firma_nombre, fecha: r.firma_fecha, hora: r.firma_hora } } : {})
+        ...(r.firma_nombre ? {
+          firmaInfo: {
+            nombre: r.firma_nombre, documento: r.firma_documento || '',
+            fecha: r.firma_fecha, hora: r.firma_hora, imagen: r.firma_imagen || ''
+          }
+        } : {})
       };
+    }
+
+    function construirPlantillaDocumentoDesdeFila(r) {
+      return { dbId: r.id, label: r.nombre || '', contenido: r.contenido_html || '' };
     }
 
     // A diferencia de formatFechaConsulta() (que hardcodea el texto "Justo
@@ -25738,7 +26886,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes, plantillaRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -25761,7 +26909,8 @@
           window.supabase.from('peluquerias').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('guarderias').select('*').eq('establecimiento_id', establecimientoId).order('fecha_ingreso', { ascending: false }),
           window.supabase.from('mensajes').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
-          window.supabase.from('catalogos_custom').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true })
+          window.supabase.from('catalogos_custom').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true }),
+          window.supabase.from('documento_plantillas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -25786,6 +26935,7 @@
         if (guarderiaRes.error) throw guarderiaRes.error;
         if (mensajeRes.error) throw mensajeRes.error;
         if (catalogoRes.error) throw catalogoRes.error;
+        if (plantillaRes.error) throw plantillaRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
@@ -25797,16 +26947,21 @@
           cirugiaRows: cirugiaRes.data || [], tareaPendienteRows: tareaPendienteRes.data || [],
           seguimientoRows: seguimientoRes.data || [], remisionRows: remisionRes.data || [],
           peluqueriaRows: peluqueriaRes.data || [], guarderiaRows: guarderiaRes.data || [],
-          mensajeRows: mensajeRes.data || [], catalogoRows: catalogoRes.data || []
+          mensajeRows: mensajeRes.data || [], catalogoRows: catalogoRes.data || [],
+          plantillaRows: plantillaRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows } = await leerTodo());
       }
+
+      // Formatos propios de esta clínica (los de fábrica viven en
+      // PLANTILLAS_DOCUMENTOS_BASE y no se cargan de la base).
+      plantillasDocumentosCustom = plantillaRows.map(construirPlantillaDocumentoDesdeFila);
 
       propietarios.length = 0;
       propRows.forEach(r => propietarios.push(construirPropietarioDesdeFila(r)));
@@ -26431,7 +27586,11 @@
     // datos que valga la pena recuperar.
     const FORM_DRAFT_EXCLUDE = new Set([
       'record-view-modal', 'delete-confirm-modal', 'link-modal',
-      'agenda-notif-modal', 'siigo-sync-modal'
+      'agenda-notif-modal', 'siigo-sync-modal',
+      // Firma: el trazo vive en un <canvas> (que este mecanismo no
+      // serializa) y arrastrar el nombre del firmante de un documento al
+      // siguiente sería peor que empezar en blanco.
+      'firma-documento-modal'
     ]);
 
     const MODAL_DRAFT_CONTEXT = {
@@ -26439,6 +27598,7 @@
       'registrar-mascota-modal': () => registrandoMascotaPropietarioId != null ? `owner:${registrandoMascotaPropietarioId}` : 'new',
       'trasladar-mascota-modal': () => trasladandoPetKey,
       'actualizar-peso-modal': () => actualizandoPesoPetKey,
+      'temperamento-modal': () => editandoTemperamentoPetKey,
       'registrar-propietario-modal': () => editingPropietarioId != null ? `edit:${editingPropietarioId}` : 'new',
       'nueva-consulta-modal': () => editingConsultaContext ? `${editingConsultaContext.petKey}:${editingConsultaContext.dbId}` : `${selectedPetKey}:new`,
       'formula-modal': () => editingFormulaContext ? `${editingFormulaContext.petKey}:${editingFormulaContext.index}` : `${selectedPetKey}:new`,
@@ -26454,6 +27614,7 @@
       'resultado-modal': () => editingResultadoContext ? `${editingResultadoContext.petKey}:${editingResultadoContext.index}` : `${selectedPetKey}:new`,
       'examen-modal': () => editingExamenContext ? `${editingExamenContext.petKey}:${editingExamenContext.index}` : `${selectedPetKey}:new`,
       'documento-modal': () => editingDocumentoContext ? `${editingDocumentoContext.petKey}:${editingDocumentoContext.index}` : `${selectedPetKey}:new`,
+      'formato-documento-modal': () => editingFormatoId != null ? `edit:${editingFormatoId}` : 'new',
       'hospitalizacion-modal': () => editingHospitalizacionContext ? `${editingHospitalizacionContext.petKey}:${editingHospitalizacionContext.index}` : `${selectedPetKey}:new`,
       'tratamiento-modal': () => {
         const base = kardexContext ? `${kardexContext.petKey}:${kardexContext.hospIndex}:${activeTratamientoDiaIndex}` : 'sin-kardex';
@@ -27576,6 +28737,97 @@
     </div>
   </div>
 
+  <!-- Modal: Formato de documento (plantillas propias de la clínica) —
+       se abre superpuesto al modal de documento, mismo patrón de z-index
+       más alto que la calculadora de dosis sobre el modal de fórmula.
+       Los 3 formatos de fábrica se listan como referencia pero no se
+       editan ni se borran: existen en toda clínica. -->
+  <div class="modal-overlay" id="formato-documento-modal" style="z-index:320;" onclick="handleFormatoModalOverlayClick(event)">
+    <div class="soap-modal-card" style="width:680px;" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <span class="soap-modal-pet-name" id="formato-titulo">Nuevo formato de documento</span>
+        <button class="soap-modal-close" onclick="closeFormatoDocumentoModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <div class="soap-modal-body">
+        <div class="input-group">
+          <label class="input-label">Formatos guardados</label>
+          <div class="doc-formato-list" id="formato-lista"></div>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label" for="formato-nombre">Nombre del formato</label>
+          <input type="text" id="formato-nombre" class="input-control" style="padding-left:12px;" placeholder="Ej: Consentimiento de anestesia">
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">Contenido del formato</label>
+          <div class="doc-toolbar">
+            <button type="button" class="doc-toolbar-btn" onclick="docExec('formato-editor','bold')" title="Negrita"><i data-lucide="bold" style="width:14px;height:14px;"></i></button>
+            <button type="button" class="doc-toolbar-btn" onclick="docExec('formato-editor','italic')" title="Cursiva"><i data-lucide="italic" style="width:14px;height:14px;"></i></button>
+            <button type="button" class="doc-toolbar-btn" onclick="docExec('formato-editor','underline')" title="Subrayado"><i data-lucide="underline" style="width:14px;height:14px;"></i></button>
+            <div class="doc-toolbar-sep"></div>
+            <button type="button" class="doc-toolbar-btn" onclick="docExec('formato-editor','insertUnorderedList')" title="Lista"><i data-lucide="list" style="width:14px;height:14px;"></i></button>
+            <div class="doc-toolbar-sep"></div>
+            <button type="button" class="doc-toolbar-btn" onclick="docExecAlign('formato-editor')" title="Alinear"><i data-lucide="align-left" style="width:14px;height:14px;"></i></button>
+          </div>
+          <div class="doc-editor" id="formato-editor" contenteditable="true"></div>
+        </div>
+      </div>
+
+      <div class="soap-modal-footer">
+        <button class="btn-secondary" onclick="closeFormatoDocumentoModal()">Cancelar</button>
+        <button class="btn-primary" id="formato-guardar-btn" onclick="guardarFormatoDocumento()">Guardar formato</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Firmar documento — el tutor firma en pantalla (mouse o dedo)
+       y el trazo queda embebido en la fila del documento y en su PDF.
+       Ver el bloque "DOCUMENTOS: proceso de firma" del script. -->
+  <div class="modal-overlay" id="firma-documento-modal" style="z-index:320;" onclick="handleFirmaModalOverlayClick(event)">
+    <div class="modal-card" style="width:560px;" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <span class="modal-title" id="firma-doc-nombre">Documento</span>
+          <div style="font-size:12px;color:var(--text-2);margin-top:3px;" id="firma-doc-mascota"></div>
+        </div>
+        <button class="modal-close" onclick="closeFirmaDocumentoModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <div class="input-group" style="margin-bottom:14px;">
+        <label class="input-label" for="firma-doc-firmante">Nombre de quien firma</label>
+        <input type="text" id="firma-doc-firmante" class="input-control" style="padding-left:12px;" placeholder="Nombre completo del responsable">
+      </div>
+
+      <div class="input-group" style="margin-bottom:14px;">
+        <label class="input-label" for="firma-doc-identificacion">Documento de identidad (opcional)</label>
+        <input type="text" id="firma-doc-identificacion" class="input-control" style="padding-left:12px;" placeholder="Ej: C.C. 1020304050">
+      </div>
+
+      <div class="input-group" style="margin-bottom:16px;">
+        <label class="input-label">Firma</label>
+        <div class="firma-pad-wrap">
+          <canvas id="firma-doc-canvas" class="firma-pad"
+                  onpointerdown="firmaPointerDown(event)"
+                  onpointermove="firmaPointerMove(event)"
+                  onpointerup="firmaPointerUp(event)"
+                  onpointerleave="firmaPointerUp(event)"
+                  onpointercancel="firmaPointerUp(event)"></canvas>
+          <div class="firma-pad-hint">
+            <i data-lucide="pen-line" style="width:15px;height:15px;"></i> Firma acá con el mouse o el dedo
+          </div>
+        </div>
+        <button type="button" class="doc-template-link" onclick="limpiarFirmaCanvas()">Limpiar firma</button>
+      </div>
+
+      <div class="soap-modal-footer" style="padding:0;border:none;">
+        <button class="btn-secondary" onclick="closeFirmaDocumentoModal()">Cancelar</button>
+        <button class="btn-primary" id="firma-doc-confirmar-btn" onclick="confirmarFirmaDocumento()">Registrar firma</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Editar mascota (componente reutilizable Parte 1) -->
   <div class="modal-overlay" id="editar-mascota-modal" onclick="handleEditMascotaOverlayClick(event)">
     <div class="soap-modal-card" style="width:640px;" onclick="event.stopPropagation()">
@@ -27732,6 +28984,38 @@
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeActualizarPesoModal()">Cancelar</button>
         <button class="btn-primary" id="peso-nuevo-guardar-btn" onclick="guardarPesoActualizado()">Guardar peso</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Temperamento (se abre desde el chip de la cabecera del
+       paciente). Texto libre a propósito — el preview muestra el tono que
+       le asignará temperamentoTono() sin convertirlo en un select. -->
+  <div class="modal-overlay" id="temperamento-modal" onclick="handleTemperamentoOverlayClick(event)">
+    <div class="soap-modal-card" style="width:420px;" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <span class="soap-modal-pet-name">Temperamento</span>
+          <span class="soap-modal-pet-meta" id="temperamento-modal-pet"></span>
+        </div>
+        <button class="soap-modal-close" onclick="closeTemperamentoModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div class="soap-modal-body">
+        <div class="input-group">
+          <label class="input-label">¿Cómo se comporta al manipularlo?</label>
+          <textarea class="input-control" id="temperamento-texto" rows="3" style="padding-left:12px;resize:vertical;"
+                    placeholder="Ej: Dócil, se deja manipular / Nervioso con ruidos / Muerde al tocarle las patas — usar bozal"
+                    oninput="actualizarPreviewTemperamento()"></textarea>
+          <div style="margin-top:6px;font-size:11.5px;color:var(--text-2);">Se muestra en la cabecera del paciente y en el Tablero de trabajo. Déjalo vacío para borrarlo.</div>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Así se verá</label>
+          <div id="temperamento-preview"></div>
+        </div>
+      </div>
+      <div class="soap-modal-footer">
+        <button class="btn-secondary" onclick="closeTemperamentoModal()">Cancelar</button>
+        <button class="btn-primary" id="temperamento-guardar-btn" onclick="guardarTemperamento()">Guardar temperamento</button>
       </div>
     </div>
   </div>
