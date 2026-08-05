@@ -559,6 +559,42 @@ calcula `recordatorio24hISO` (mock, Tarea 3) y abre `#agenda-notif-modal`
 listando destinatarios simulados (tutor/clínica/médico) — sin envío
 real.
 
+**Fila de Agenda > Eventos — tres atajos, ninguno con datos propios.**
+El registro solo guarda el NOMBRE del propietario (string) y el
+`petKey`; todo lo demás se resuelve al vuelo, no lo dupliques en
+`EVENTOS_SEGUIMIENTO`:
+- **Propietario** es el disparador de un popover de contacto
+  (`toggleEventoOwnerPopover()`, documento/móvil/teléfono alterno/
+  email/dirección con `copyIconHTML()` por dato + "Copiar todo" +
+  "Perfil"). Es el MISMO componente `.owner-popover` del header de
+  Historia, con una diferencia que importa: allá hay un único nodo fijo
+  (`#pet-owner-popover`, hay un paciente activo) y acá hay uno por fila,
+  así que el contenido se pinta al abrirlo y el estado abierto vive en
+  `eventoOwnerPopoverAbiertoId`. `renderEventosSeguimientoTable()` llama
+  a `closeEventoOwnerPopovers()` al empezar porque el repintado destruye
+  los nodos abiertos. La ficha del tutor sale de
+  `getPropietarioDeEventoSeguimiento()`: por la mascota (FK) y, si el
+  evento no tiene `petKey` resoluble, por nombre — mismo respaldo que
+  `getPropietarioDeMascota()`.
+- **Mascota** lleva al Consultorio (`abrirPacienteDesdeEventos()`). El
+  gate de rol es `rolPuedeVerTab('consultorio')`, extraído de
+  `applyTabRoleVisibility()` para no replicar la condición: **cualquier
+  atajo nuevo que salte de un tab a otro debe usarlo**, no leer
+  `TAB_ROLE_RESTRICTIONS` a mano. Hoy Consultorio no tiene entrada en
+  ese mapa (todos los roles entran), así que el helper es lo único que
+  hará falta tocar el día que la tenga. Se chequea además
+  `bloqueadoPorTutorSinVincular()` ANTES del salto de tab (`selectPet()`
+  lo vuelve a chequear después) para no dejar al usuario en el buscador
+  del Consultorio con el modal de vinculación encima.
+- **Enviar mensaje** reusa `openMensajeModal(petKey)` tal cual (ya
+  recibe `petKey` justamente para abrirse fuera del Consultorio) y
+  precarga un texto de recordatorio. Se pinta solo si el rol está en
+  `SUBTAB_ROLE_RESTRICTIONS.mensajes` y la mascota existe en
+  `patientData` — `openMensajeModal()` no tiene guard propio y revienta
+  con un `petKey` muerto. Si había un borrador sin guardar del modal, el
+  sistema de borradores lo restaura ENCIMA del texto sugerido y avisa;
+  es el comportamiento correcto, no un bug.
+
 **`AGENDA_EVENTOS` SÍ persiste en Supabase** (tabla `agenda_eventos`,
 ver `supabase/schema.sql`), igual que propietarios/mascotas/facturas/
 movimientos: `guardarEventoAgenda()` es `async` y hace insert/update

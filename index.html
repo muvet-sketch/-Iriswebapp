@@ -1756,6 +1756,30 @@
     .owner-popover-pet-name { font-size: 12.5px; font-weight: 500; color: var(--text-1); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .owner-popover-pet-current-tag { font-size: 10px; color: var(--clinic-accent); font-weight: 600; flex-shrink: 0; }
 
+    /* Mismo popover reusado en Agenda > Eventos. Diferencia con el de
+       Historia: allá hay UN solo nodo fijo (#pet-owner-popover) porque hay
+       un paciente activo; acá hay uno por fila de la tabla, así que el
+       contenido se pinta al abrirlo y el estado abierto vive en
+       eventoOwnerPopoverAbiertoId. */
+    .evento-owner-btn {
+      display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0;
+      font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text-1);
+      cursor: pointer; text-align: left; transition: var(--transition);
+    }
+    .evento-owner-btn:hover { color: var(--clinic-accent); }
+    .evento-owner-btn .evento-owner-name { text-decoration: underline; text-underline-offset: 2px; }
+    .evento-owner-popover { min-width: 265px; }
+    .evento-owner-popover .owner-popover-empty { font-size: 12px; color: var(--text-2); padding: 4px 0; }
+    .evento-owner-actions { display: flex; gap: 6px; margin-top: 10px; }
+    .evento-owner-actions .btn-outline { flex: 1; justify-content: center; padding: 6px 8px; font-size: 12px; }
+    .evento-pet-btn {
+      display: inline-flex; align-items: center; gap: 5px; background: none; border: none; padding: 0;
+      font-family: inherit; font-size: 13px; font-weight: 500; color: var(--clinic-accent);
+      cursor: pointer; text-decoration: underline; text-underline-offset: 2px; transition: var(--transition);
+    }
+    .evento-pet-btn:hover { filter: brightness(0.88); }
+    .eventos-row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+
     .pet-header-right {
       display: flex;
       align-items: center;
@@ -8742,6 +8766,18 @@
       inventario: ['admin', 'medico', 'ventas']
     };
 
+    // ¿El rol simulado actual puede entrar a este tab de nivel 1? Mismo
+    // criterio que applyTabRoleVisibility() (un tab sin entrada en el mapa
+    // es visible para todos), extraído para poder gatear también los
+    // ATAJOS que saltan de un tab a otro — ej. el nombre de la mascota en
+    // Agenda > Eventos, que lleva al Consultorio. Sin esto, cada atajo
+    // nuevo replicaría la condición y quedaría desalineado al cambiar el
+    // mapa.
+    function rolPuedeVerTab(tabKey) {
+      const allowedRoles = TAB_ROLE_RESTRICTIONS[tabKey];
+      return !allowedRoles || allowedRoles.includes(currentSimRole);
+    }
+
     // Especialidades disponibles para usuarios con rol Médico Veterinario
     const ESPECIALIDADES_MEDICAS = [
       'Medicina general', 'Medicina interna', 'Cirugía', 'Dermatología',
@@ -9077,8 +9113,7 @@
     function applyTabRoleVisibility() {
       tabs.forEach(tab => {
         const tabKey = tab.getAttribute('data-tab');
-        const allowedRoles = TAB_ROLE_RESTRICTIONS[tabKey];
-        const hidden = !!allowedRoles && !allowedRoles.includes(currentSimRole);
+        const hidden = !rolPuedeVerTab(tabKey);
         tab.classList.toggle('role-hidden', hidden);
         if (hidden && tab.classList.contains('active')) {
           // Si el tab restringido estaba activo, regresar a Consultorio
@@ -10610,17 +10645,26 @@
       return item.estado === 'pendiente' && item.fechaSugeridaISO < isoDateOnly(new Date());
     }
 
+    // Etiquetas de tipo de evento — a nivel de módulo (no local al render)
+    // porque el texto sugerido del mensaje al propietario también las usa
+    // (ver enviarMensajeDesdeEventos).
+    const EVENTOS_SEGUIMIENTO_TIPO_LABELS = {
+      vacunacion: 'Vacunación', desparasitacion: 'Desparasitación', control: 'Control',
+      imagenes_diagnosticas: 'Imágenes diagnósticas', examenes_laboratorio: 'Exámenes de laboratorio',
+      revision: 'Revisión', consulta_especializada: 'Consulta especializada', otro: 'Otro'
+    };
+
     function renderEventosSeguimientoTable() {
       const tipo = document.getElementById('eventos-filtro-tipo').value;
       const estado = document.getElementById('eventos-filtro-estado').value;
       const desde = document.getElementById('eventos-filtro-desde').value;
       const hasta = document.getElementById('eventos-filtro-hasta').value;
-      const tipoLabels = {
-        vacunacion: 'Vacunación', desparasitacion: 'Desparasitación', control: 'Control',
-        imagenes_diagnosticas: 'Imágenes diagnósticas', examenes_laboratorio: 'Exámenes de laboratorio',
-        revision: 'Revisión', consulta_especializada: 'Consulta especializada', otro: 'Otro'
-      };
-      const estadoLabels = { pendiente: 'Pendiente de agendar', agendado: 'Agendado' };
+      const tipoLabels = EVENTOS_SEGUIMIENTO_TIPO_LABELS;
+      // Al repintar se pierden los nodos de los popovers abiertos — hay que
+      // soltar la referencia o quedaría "abierto" un id que ya no existe.
+      closeEventoOwnerPopovers();
+      const puedeIrAlConsultorio = rolPuedeVerTab('consultorio');
+      const puedeEnviarMensaje = (SUBTAB_ROLE_RESTRICTIONS.mensajes || []).includes(currentSimRole);
 
       let items = EVENTOS_SEGUIMIENTO.filter(it => {
         if (tipo !== 'todos' && it.tipoEvento !== tipo) return false;
@@ -10638,21 +10682,171 @@
         const mascotaNombre = it.petKey && patientData[it.petKey] ? patientData[it.petKey].name : '—';
         const badgeClass = it.estado === 'agendado' ? 'status-badge-activo' : (vencido ? 'status-badge-vencido' : 'status-badge-pendiente');
         const badgeLabel = it.estado === 'agendado' ? 'Agendado' : (vencido ? 'Vencido' : 'Pendiente de agendar');
+        const tieneMascota = !!(it.petKey && patientData[it.petKey]);
+        // Nombre del propietario = disparador del popover de contacto
+        // (leer + copiar sin salir de la lista, ver toggleEventoOwnerPopover)
+        const propietarioCell = `
+          <div class="owner-popover-wrap">
+            <button type="button" class="evento-owner-btn" onclick="event.stopPropagation(); toggleEventoOwnerPopover('${it.id}')" title="Ver datos de contacto">
+              <span class="evento-owner-name">${it.propietario || 'Sin propietario'}</span>
+              <i data-lucide="chevron-down" style="width:12px;height:12px;"></i>
+            </button>
+            <div class="owner-popover evento-owner-popover" id="evento-owner-pop-${it.id}"></div>
+          </div>`;
+        // La mascota lleva al Consultorio solo si el rol puede entrar ahí
+        // (ver rolPuedeVerTab); si no, queda como texto plano.
+        const mascotaCell = (tieneMascota && puedeIrAlConsultorio)
+          ? `<button type="button" class="evento-pet-btn" onclick="abrirPacienteDesdeEventos('${it.petKey}')" title="Abrir en el Consultorio">
+               <i data-lucide="stethoscope" style="width:12px;height:12px;"></i>${mascotaNombre}
+             </button>`
+          : mascotaNombre;
+        const btnAgendar = it.estado === 'pendiente'
+          ? `<button type="button" class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="agendarEventoSeguimiento('${it.id}')">Agendar</button>`
+          : '';
+        const btnMensaje = (puedeEnviarMensaje && tieneMascota)
+          ? `<button type="button" class="btn-outline" style="padding:6px 12px;font-size:12px;" onclick="enviarMensajeDesdeEventos('${it.id}')"><i data-lucide="message-square" style="width:12px;height:12px;"></i> Enviar mensaje</button>`
+          : '';
         return `
           <tr>
             <td>${vencido ? '<i data-lucide="alert-circle" style="width:13px;height:13px;color:var(--danger);vertical-align:-2px;margin-right:4px;"></i>' : ''}${formatFechaCorta(it.fechaSugeridaISO)}</td>
-            <td>${it.propietario || '—'}</td>
-            <td>${mascotaNombre}</td>
+            <td>${propietarioCell}</td>
+            <td>${mascotaCell}</td>
             <td>${tipoLabels[it.tipoEvento] || it.tipoEvento}</td>
             <td>${it.origen}</td>
             <td><span class="status-badge ${badgeClass}">${badgeLabel}</span></td>
             <td style="text-align:right;">
-              ${it.estado === 'pendiente' ? `<button type="button" class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="agendarEventoSeguimiento('${it.id}')">Agendar</button>` : '—'}
+              <div class="eventos-row-actions">${btnAgendar}${btnMensaje}${(btnAgendar || btnMensaje) ? '' : '—'}</div>
             </td>
           </tr>
         `;
       }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-2);padding:20px 0;">No hay eventos de seguimiento con estos filtros.</td></tr>';
       lucide.createIcons();
+    }
+
+    // ── Datos de contacto del propietario en Agenda > Eventos ────────
+    // El evento solo guarda el NOMBRE del propietario (string) — la ficha
+    // real se resuelve por la mascota (FK) y, si el evento no tiene
+    // petKey resoluble, por nombre, mismo respaldo que
+    // getPropietarioDeMascota().
+    let eventoOwnerPopoverAbiertoId = null;
+
+    function getPropietarioDeEventoSeguimiento(item) {
+      if (item.petKey && patientData[item.petKey]) {
+        const p = getPropietarioDeMascota(item.petKey);
+        if (p) return p;
+      }
+      return propietarios.find(x => x.nombre === item.propietario) || null;
+    }
+
+    function datosPropietarioEvento(item) {
+      const p = getPropietarioDeEventoSeguimiento(item);
+      const data = item.petKey ? patientData[item.petKey] : null;
+      return {
+        propietario: p,
+        nombre: (p && p.nombre) || item.propietario || '—',
+        documento: p && p.docNumero ? `${p.docTipo || ''} ${p.docNumero}`.trim() : '',
+        movil: (p && p.movil) || (data && data.ownerPhone) || '',
+        telefonoAlterno: (p && (p.telefonoAlterno || p.telefonoOpcional)) || '',
+        email: (p && p.email) || '',
+        direccion: p ? [p.direccion, p.ciudad].filter(Boolean).join(', ') : '',
+        mascota: data ? data.name : ''
+      };
+    }
+
+    function closeEventoOwnerPopovers() {
+      document.querySelectorAll('.evento-owner-popover.show').forEach(el => el.classList.remove('show'));
+      eventoOwnerPopoverAbiertoId = null;
+    }
+
+    function toggleEventoOwnerPopover(id) {
+      const pop = document.getElementById(`evento-owner-pop-${id}`);
+      if (!pop) return;
+      const yaEstabaAbierto = eventoOwnerPopoverAbiertoId === id;
+      closeEventoOwnerPopovers();
+      if (yaEstabaAbierto) return;
+      const item = EVENTOS_SEGUIMIENTO.find(it => it.id === id);
+      if (!item) return;
+      const d = datosPropietarioEvento(item);
+      const row = (label, value) => value ? `
+        <div class="owner-popover-row">
+          <div class="owner-popover-row-text">
+            <span class="owner-popover-label">${label}</span>
+            <span class="owner-popover-value" title="${String(value).replace(/"/g, '&quot;')}">${value}</span>
+          </div>
+          ${copyIconHTML(value)}
+        </div>` : '';
+      const filas = [
+        row('Documento', d.documento),
+        row('Móvil', d.movil),
+        row('Teléfono alterno', d.telefonoAlterno),
+        row('Email', d.email),
+        row('Dirección', d.direccion)
+      ].join('');
+      pop.innerHTML = `
+        <div class="owner-popover-header">${d.nombre}</div>
+        ${filas || '<div class="owner-popover-empty">Este tutor no tiene datos de contacto registrados.</div>'}
+        <div class="evento-owner-actions">
+          <button type="button" class="btn-outline" onclick="event.stopPropagation(); copiarDatosPropietarioEvento('${id}')"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar todo</button>
+          ${d.propietario ? `<button type="button" class="btn-outline" onclick="event.stopPropagation(); closeEventoOwnerPopovers(); abrirPerfilPropietario('${d.propietario.id}')"><i data-lucide="user" style="width:12px;height:12px;"></i> Perfil</button>` : ''}
+        </div>
+      `;
+      pop.classList.add('show');
+      eventoOwnerPopoverAbiertoId = id;
+      lucide.createIcons();
+    }
+
+    function copiarDatosPropietarioEvento(id) {
+      const item = EVENTOS_SEGUIMIENTO.find(it => it.id === id);
+      if (!item) return;
+      const d = datosPropietarioEvento(item);
+      const lineas = [
+        d.nombre,
+        d.documento && `Documento: ${d.documento}`,
+        d.movil && `Móvil: ${d.movil}`,
+        d.telefonoAlterno && `Teléfono alterno: ${d.telefonoAlterno}`,
+        d.email && `Email: ${d.email}`,
+        d.direccion && `Dirección: ${d.direccion}`,
+        d.mascota && `Mascota: ${d.mascota}`
+      ].filter(Boolean);
+      copiarAlPortapapeles(lineas.join('\n'));
+    }
+
+    // Atajo al Consultorio desde la lista de eventos. El chequeo de rol se
+    // repite acá (además de decidir si la celda es clickeable) porque el
+    // rol simulado puede cambiar sin repintar esta tabla; selectPet() ya
+    // aporta la otra puerta, la del tutor sin vincular a la red.
+    function abrirPacienteDesdeEventos(petKey) {
+      closeEventoOwnerPopovers();
+      if (!patientData[petKey]) { showToast('Esta mascota ya no está disponible'); return; }
+      if (!rolPuedeVerTab('consultorio')) { showToast('Tu rol no tiene acceso al Consultorio'); return; }
+      // Se chequea ANTES de saltar de tab (selectPet lo vuelve a chequear):
+      // si el tutor no está vinculado, no tiene sentido dejar al usuario en
+      // el buscador del Consultorio con el modal de vinculación encima.
+      if (bloqueadoPorTutorSinVincular(petKey, 'Abrir la historia clínica')) return;
+      document.querySelector('.nav-tabs-bar .tab-btn[data-tab="consultorio"]').click();
+      selectPet(petKey);
+    }
+
+    // Reusa el mismo modal de "Mensajes al propietario" del Consultorio
+    // (openMensajeModal ya recibe petKey justamente para poder abrirse
+    // fuera de él). Solo precarga un texto sugerido con el recordatorio —
+    // si había un borrador sin guardar, el sistema de borradores lo
+    // restaura encima y avisa, que es el comportamiento correcto.
+    function enviarMensajeDesdeEventos(id) {
+      closeEventoOwnerPopovers();
+      const item = EVENTOS_SEGUIMIENTO.find(it => it.id === id);
+      if (!item) return;
+      if (!(SUBTAB_ROLE_RESTRICTIONS.mensajes || []).includes(currentSimRole)) {
+        showToast('Tu rol no puede enviar mensajes al propietario');
+        return;
+      }
+      const data = item.petKey ? patientData[item.petKey] : null;
+      if (!data) { showToast('Este evento no tiene una mascota registrada — no se puede enviar el mensaje'); return; }
+      openMensajeModal(item.petKey);
+      const tipoLabel = (EVENTOS_SEGUIMIENTO_TIPO_LABELS[item.tipoEvento] || item.tipoEvento || '').toLowerCase();
+      const nombreTutor = (item.propietario || '').split(' ')[0] || '';
+      document.getElementById('mensaje-texto').value =
+        `Hola${nombreTutor ? ' ' + nombreTutor : ''}, te recordamos que ${data.name} tiene ${tipoLabel} para el ${formatFechaCorta(item.fechaSugeridaISO)}. Comunícate con nosotros para agendar la cita.`;
     }
 
     function agendarEventoSeguimiento(id) {
@@ -25771,6 +25965,7 @@
       closeAllSearchableSelects();
       closeAllRegistrarNuevoMenus();
       closeOwnerPopoverPin();
+      closeEventoOwnerPopovers();
       document.getElementById('ventas-tab-wrap').classList.remove('show');
       document.getElementById('admin-tab-wrap').classList.remove('show');
     });
