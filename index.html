@@ -3055,6 +3055,29 @@
       line-height: 1.4;
     }
 
+    /* Variante del header global (única instancia del widget en el app
+       shell). El header mide 64px fijos, así que acá el widget es una sola
+       LÍNEA: chip + privilegios truncados a una línea (el texto completo
+       queda en el title=, lo pone applySimRole()). En pantallas angostas
+       los privilegios se ocultan y queda solo el chip. */
+    .role-sim-widget-header {
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .role-sim-widget-header .role-sim-privileges {
+      max-width: 260px;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @media (max-width: 1400px) {
+      .role-sim-widget-header .role-sim-privileges { display: none; }
+    }
+
     .header-actions-col {
       display: flex;
       flex-direction: column;
@@ -4571,6 +4594,27 @@
       </div>
     </div>
     <div class="header-right">
+      <!-- PROTOTIPO: simulador de rol. Vive acá, en el header global, para
+           estar disponible en TODAS las pantallas (antes había una copia
+           suelta por pantalla: Dashboard, buscador de Consultorio, cabecera
+           del paciente, Tablero y Kardex — todas eliminadas). applySimRole()
+           sigue sincronizando por clase (.role-sim-select /
+           [data-privileges-text]), así que si alguna pantalla vuelve a
+           necesitar su propia copia basta con repetir este markup. -->
+      <div class="role-sim-widget role-sim-widget-header">
+        <div class="role-sim-select-wrap">
+          <i data-lucide="eye" style="width:13px;height:13px;"></i>
+          <span>Viendo como:</span>
+          <select class="role-sim-select" onchange="setSimRole(this.value)">
+            <option value="admin">Administrador</option>
+            <option value="medico" selected>Médico Veterinario</option>
+            <option value="auxiliar">Auxiliar</option>
+            <option value="ventas">Ventas</option>
+          </select>
+        </div>
+        <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
+      </div>
+
       <!-- Campana de Notificaciones -->
       <button class="notif-btn" id="notif-btn" title="Notificaciones">
         <i data-lucide="bell" style="width: 20px; height: 20px;"></i>
@@ -5324,19 +5368,25 @@
                     </div>
                   </div>
                 </div>
+                <!-- Menú "+ Nuevo" (los tipos de registro más comunes de un
+                     paciente). Vive acá, en la fila de identidad, donde antes
+                     estaba el widget "Viendo como" (que se movió al header
+                     global). Antes tenía una fila propia debajo de peso/datos
+                     generales (.pet-header-actions-row, ya eliminada). -->
                 <div class="pet-header-right-col">
-                  <div class="role-sim-widget">
-                    <div class="role-sim-select-wrap">
-                      <i data-lucide="eye" style="width:13px;height:13px;"></i>
-                      <span>Viendo como:</span>
-                      <select class="role-sim-select" onchange="setSimRole(this.value)">
-                        <option value="admin">Administrador</option>
-                        <option value="medico" selected>Médico Veterinario</option>
-                        <option value="auxiliar">Auxiliar</option>
-                        <option value="ventas">Ventas</option>
-                      </select>
+                  <div class="registrar-nuevo-wrap">
+                    <button class="btn-primary" id="btn-nueva-consulta" onclick="event.stopPropagation(); togglePetHeaderNuevoMenu()">
+                      <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nuevo <i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>
+                    </button>
+                    <div class="registrar-nuevo-menu" id="pet-header-nuevo-menu" style="right:0;left:auto;">
+                      <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); abrirTableroTrabajo();"><i data-lucide="stethoscope"></i> Consulta</div>
+                      <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openVacunacionModal('create', selectedPetKey);"><i data-lucide="syringe"></i> Vacunación</div>
+                      <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openDesparasitacionModal('create', selectedPetKey);"><i data-lucide="shield-check"></i> Desparasitación</div>
+                      <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openExamenModal('laboratorio', 'create', selectedPetKey);"><i data-lucide="test-tube-2"></i> Examen de laboratorio</div>
+                      <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openExamenModal('imagen', 'create', selectedPetKey);"><i data-lucide="image"></i> Imagen diagnóstica</div>
+                      <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openDocumentoModal('create', selectedPetKey);"><i data-lucide="folder-open"></i> Documento</div>
+                      <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openRemisionModal('create', selectedPetKey);"><i data-lucide="external-link"></i> Remisión</div>
                     </div>
-                    <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
                   </div>
                 </div>
               </div>
@@ -5353,34 +5403,6 @@
                 </div>
                 <div class="pet-data-table-col">
                   <div class="pet-data-table" id="pet-header-table"></div>
-                </div>
-              </div>
-
-              <!-- Acciones del paciente: van DEBAJO de peso/datos generales
-                   (antes vivían en la columna derecha de .pet-header-top-row,
-                   junto al widget "Viendo como"). No colapsan al hacer
-                   scroll — ver .pet-header-collapsed. "Volver a buscar" se
-                   quitó (clickear el tab "Consultorio" del navbar ya
-                   deselecciona la mascota y vuelve al buscador, ver el
-                   listener de "NAVEGACIÓN NIVEL 1"); "Editar mascota" se
-                   movió al click sobre el nombre (arriba); "Solicitar a otra
-                   clínica" se movió a Admin > Tutores (chip por mascota).
-                   "Nueva Consulta" se rediseñó como un menú "+ Nuevo" con
-                   los tipos de registro más comunes de un paciente. -->
-              <div class="pet-header-right pet-header-actions-row">
-                <div class="registrar-nuevo-wrap">
-                  <button class="btn-primary" id="btn-nueva-consulta" onclick="event.stopPropagation(); togglePetHeaderNuevoMenu()">
-                    <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nuevo <i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>
-                  </button>
-                  <div class="registrar-nuevo-menu" id="pet-header-nuevo-menu" style="right:0;left:auto;">
-                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); abrirTableroTrabajo();"><i data-lucide="stethoscope"></i> Consulta</div>
-                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openVacunacionModal('create', selectedPetKey);"><i data-lucide="syringe"></i> Vacunación</div>
-                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openDesparasitacionModal('create', selectedPetKey);"><i data-lucide="shield-check"></i> Desparasitación</div>
-                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openExamenModal('laboratorio', 'create', selectedPetKey);"><i data-lucide="test-tube-2"></i> Examen de laboratorio</div>
-                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openExamenModal('imagen', 'create', selectedPetKey);"><i data-lucide="image"></i> Imagen diagnóstica</div>
-                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openDocumentoModal('create', selectedPetKey);"><i data-lucide="folder-open"></i> Documento</div>
-                    <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openRemisionModal('create', selectedPetKey);"><i data-lucide="external-link"></i> Remisión</div>
-                  </div>
                 </div>
               </div>
 
@@ -8688,9 +8710,14 @@
     const DISPONIBILIDAD_COLORS = { disponible: '#16A34A', no_disponible: '#F59E0B', bloqueado: '#DC2626' };
     // Eventos de seguimiento (Agenda > Eventos) — generados automáticamente
     // desde campos "próximo control"/"próxima vacunación" ya existentes en
-    // Vacunaciones/Desparasitaciones/Seguimientos (ver crearEventoSeguimiento()).
-    // Mock: mezcla de tipos, con vencidos (fecha < 2026-07-08, hoy) para
-    // probar el badge rojo, y uno ya "agendado" para probar ese estado.
+    // Vacunaciones/Desparasitaciones/Peluquería/Seguimientos (ver
+    // crearEventoSeguimiento()).
+    // Esta lista es SOLO la semilla de la clínica demo (mezcla de tipos, con
+    // vencidos para probar el badge rojo y uno ya "agendado"): el array real
+    // se reconstruye desde la tabla `eventos_seguimiento` en
+    // cargarDatosClinicaDesdeSupabase(), y sembrarDemoEnSupabase() inserta
+    // estas filas una única vez. Los ids `evs-N` no sobreviven a ese insert
+    // — de ahí en adelante el id es el uuid de la fila.
     let EVENTOS_SEGUIMIENTO = [
       { id: 'evs-1', fechaSugeridaISO: '2026-06-20', propietario: 'Carlos Mendoza', petKey: 'luna', tipoEvento: 'vacunacion', origen: 'Vacunación — Luna — Próxima vacunación 20/06/2026', estado: 'pendiente', agendaEventoId: null },
       { id: 'evs-2', fechaSugeridaISO: '2026-06-25', propietario: 'Andrea Gómez', petKey: 'toby', tipoEvento: 'desparasitacion', origen: 'Desparasitación — Toby — Próximo control 25/06/2026', estado: 'pendiente', agendaEventoId: null },
@@ -8704,7 +8731,6 @@
       { id: 'evs-10', fechaSugeridaISO: '2026-08-01', propietario: 'Andrea Gómez', petKey: 'toby', tipoEvento: 'revision', origen: 'Seguimiento — Toby — Próxima revisión 01/08/2026', estado: 'pendiente', agendaEventoId: null },
       { id: 'evs-11', fechaSugeridaISO: '2026-08-10', propietario: 'Carlos Mendoza', petKey: 'luna', tipoEvento: 'consulta_especializada', origen: 'Seguimiento — Luna — Próxima consulta especializada 10/08/2026', estado: 'pendiente', agendaEventoId: null }
     ];
-    let eventosSeguimientoSeq = 12;
     let agendaModalOrigenEventoSeguimientoId = null;
 
     // ── PROTOTIPO: SIMULADOR DE VISTA POR PRIVILEGIOS ──────────
@@ -10332,7 +10358,24 @@
       // agendarEventoSeguimiento()).
       if (agendaModalOrigenEventoSeguimientoId) {
         const item = EVENTOS_SEGUIMIENTO.find(it => it.id === agendaModalOrigenEventoSeguimientoId);
-        if (item) { item.estado = 'agendado'; item.agendaEventoId = evento.id; }
+        if (item) {
+          // Mismo criterio que crearEventoSeguimiento(): la escritura remota
+          // va primero y, si falla, el ítem NO se marca como agendado — así
+          // no queda "Agendado" en pantalla y "pendiente" al recargar. El
+          // evento de calendario en sí ya se guardó arriba, por eso el error
+          // solo avisa y no aborta el resto de la función.
+          try {
+            const { error } = await window.supabase.from('eventos_seguimiento')
+              .update({ estado: 'agendado', agenda_evento_id: evento.id, updated_at: new Date().toISOString() })
+              .eq('id', item.id);
+            if (error) throw error;
+            item.estado = 'agendado';
+            item.agendaEventoId = evento.id;
+          } catch (err) {
+            console.error('[IRIS] Error marcando el evento de seguimiento como agendado:', err);
+            showToast('La cita se creó, pero el recordatorio siguió pendiente — vuelve a intentarlo');
+          }
+        }
         agendaModalOrigenEventoSeguimientoId = null;
         renderEventosSeguimientoTable();
       }
@@ -10623,13 +10666,25 @@
 
     // ── Eventos de seguimiento (Agenda > Eventos) ───────────────────────
     // Generados automáticamente desde Vacunaciones/Desparasitaciones/
-    // Seguimientos al guardar con fecha de "próximo control" diligenciada
-    // (ver guardarVacunacion/guardarDesparasitacion/guardarSeguimiento) —
-    // solo al CREAR, nunca al editar, mismo criterio que el timeline de
-    // Historia (ver CLAUDE.md).
-    function crearEventoSeguimiento({ fechaISO, propietario, petKey, tipoEvento, origen }) {
-      EVENTOS_SEGUIMIENTO.unshift({
-        id: `evs-${eventosSeguimientoSeq++}`,
+    // Peluquería/Seguimientos al guardar con fecha de "próximo control"
+    // diligenciada — solo al CREAR, nunca al editar, mismo criterio que el
+    // timeline de Historia (ver CLAUDE.md).
+    //
+    // Persiste en la tabla `eventos_seguimiento` con el mismo patrón que
+    // agenda_eventos: insert BLOQUEANTE antes de tocar el array, y el id
+    // del registro es el uuid que devuelve el insert (ya no hay
+    // `evs-N`/eventosSeguimientoSeq — esos ids solo sobreviven como
+    // semilla de la clínica demo).
+    //
+    // Ojo con el manejo de errores: las 4 funciones que la llaman ya
+    // guardaron su propio registro cuando llegan acá, así que esta NO
+    // relanza el error — si lo hiciera, el catch del caller diría "no se
+    // pudo guardar la vacunación" sobre una vacunación que sí se guardó.
+    // El recordatorio es un derivado: si falla, se avisa y el registro
+    // principal queda intacto.
+    async function crearEventoSeguimiento({ fechaISO, propietario, petKey, tipoEvento, origen }) {
+      const item = {
+        id: null,
         fechaSugeridaISO: fechaISO,
         propietario,
         petKey,
@@ -10637,8 +10692,58 @@
         origen,
         estado: 'pendiente',
         agendaEventoId: null
-      });
+      };
+
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se pudo crear el recordatorio en Agenda > Eventos');
+        return;
+      }
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const { data: inserted, error } = await window.supabase.from('eventos_seguimiento')
+          .insert({
+            ...filaSupabaseDesdeEventoSeguimiento(item),
+            establecimiento_id: currentSession.activeMembership.establecimientoId,
+            created_by: userId
+          })
+          .select().single();
+        if (error) throw error;
+        item.id = inserted.id;
+      } catch (err) {
+        console.error('[IRIS] Error creando el evento de seguimiento en Supabase:', err);
+        showToast('No se pudo crear el recordatorio en Agenda > Eventos');
+        return;
+      }
+
+      EVENTOS_SEGUIMIENTO.unshift(item);
+      if (document.getElementById('agenda-view-eventos').classList.contains('active')) renderEventosSeguimientoTable();
       showToast('Evento de seguimiento creado en Agenda > Eventos');
+    }
+
+    function construirEventoSeguimientoDesdeFila(r) {
+      return {
+        id: r.id,
+        fechaSugeridaISO: (r.fecha_sugerida || '').slice(0, 10),
+        propietario: r.propietario || '',
+        petKey: r.pet_key || null,
+        tipoEvento: r.tipo_evento,
+        origen: r.origen || '',
+        estado: r.estado || 'pendiente',
+        agendaEventoId: r.agenda_evento_id || null
+      };
+    }
+    function filaSupabaseDesdeEventoSeguimiento(item) {
+      return {
+        fecha_sugerida: item.fechaSugeridaISO,
+        propietario: item.propietario || null,
+        pet_key: item.petKey || null,
+        tipo_evento: item.tipoEvento,
+        origen: item.origen || null,
+        estado: item.estado || 'pendiente',
+        agenda_evento_id: item.agendaEventoId || null
+      };
     }
 
     function eventoSeguimientoEstaVencido(item) {
@@ -14900,7 +15005,7 @@
         closeVacunacionModal();
         showToast(isEdit ? 'Vacunación actualizada' : 'Vacunación registrada');
         if (!isEdit && record.proximaVacunacionISO) {
-          crearEventoSeguimiento({
+          await crearEventoSeguimiento({
             fechaISO: record.proximaVacunacionISO,
             propietario: data.owner,
             petKey,
@@ -15173,7 +15278,7 @@
         closeDesparasitacionModal();
         showToast(isEdit ? 'Desparasitación actualizada' : 'Desparasitación registrada');
         if (!isEdit && record.proximoControlISO) {
-          crearEventoSeguimiento({
+          await crearEventoSeguimiento({
             fechaISO: record.proximoControlISO,
             propietario: data.owner,
             petKey,
@@ -15709,7 +15814,7 @@
         closePeluqueriaModal();
         showToast(isEdit ? 'Registro de peluquería y spa actualizado' : 'Peluquería y spa registrada');
         if (!isEdit && record.proximaCitaISO) {
-          crearEventoSeguimiento({
+          await crearEventoSeguimiento({
             fechaISO: record.proximaCitaISO,
             propietario: data.owner,
             petKey,
@@ -19522,7 +19627,7 @@
         }
         showToast((isEdit ? 'Seguimiento actualizado' : 'Seguimiento registrado') + (mensajeEnviar ? ' — mensaje enviado al propietario (simulado)' : ''));
         if (!isEdit && record.proximoControlISO) {
-          crearEventoSeguimiento({
+          await crearEventoSeguimiento({
             fechaISO: record.proximoControlISO,
             propietario: data.owner,
             petKey,
@@ -21156,7 +21261,7 @@
       'propietarios', 'mascotas', 'consultas', 'documentos', 'examenes', 'formulas_medicas',
       'vacunaciones', 'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
       'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes', 'mensajes',
-      'agenda_eventos', 'productos', 'movimientos', 'arqueos', 'ventas_facturas',
+      'agenda_eventos', 'eventos_seguimiento', 'productos', 'movimientos', 'arqueos', 'ventas_facturas',
       'ventas_cotizaciones', 'catalogos_custom', 'documento_plantillas',
       'memberships', 'invites', 'link_requests'
     ];
@@ -26651,7 +26756,7 @@
     const DEMO_SEED = structuredClone({
       patientData, propietarios,
       USUARIOS_SISTEMA, usuarioIdCounter, USUARIO_PRIVILEGIOS,
-      EVENTOS_SEGUIMIENTO, eventosSeguimientoSeq, DISPONIBILIDAD_MEDICOS,
+      EVENTOS_SEGUIMIENTO, DISPONIBILIDAD_MEDICOS,
       AGENDA_EVENTOS, SIIGO_RESOLUCIONES, siigoResolucionSeq,
       SIIGO_DISPOSITIVOS, siigoDispositivoSeq,
       INVENTARIO_SALIDAS, inventarioSalidaIdCounter,
@@ -26684,20 +26789,17 @@
       Object.keys(USUARIO_PRIVILEGIOS).forEach(k => delete USUARIO_PRIVILEGIOS[k]);
       if (seed) Object.assign(USUARIO_PRIVILEGIOS, seed.USUARIO_PRIVILEGIOS);
 
-      EVENTOS_SEGUIMIENTO.length = 0;
-      if (seed) EVENTOS_SEGUIMIENTO.push(...seed.EVENTOS_SEGUIMIENTO);
-      eventosSeguimientoSeq = seed ? seed.eventosSeguimientoSeq : 1;
-
       Object.keys(DISPONIBILIDAD_MEDICOS).forEach(k => delete DISPONIBILIDAD_MEDICOS[k]);
       if (seed) Object.assign(DISPONIBILIDAD_MEDICOS, seed.DISPONIBILIDAD_MEDICOS);
 
-      // AGENDA_EVENTOS ya NO se resetea/siembra acá (mismo criterio que
-      // propietarios/patientData/VENTAS_*, ver nota junto a
-      // cargarDatosClinicaDesdeSupabase()): se carga de verdad desde la tabla
-      // `agenda_eventos`, filtrada por establecimiento_id, en esa función.
-      // EVENTOS_SEGUIMIENTO (arriba) sigue siendo mock a propósito — es un
-      // derivado en memoria de Vacunaciones/Desparasitaciones/Seguimientos,
-      // que tampoco persisten todavía.
+      // AGENDA_EVENTOS y EVENTOS_SEGUIMIENTO ya NO se resetean/siembran acá
+      // (mismo criterio que propietarios/patientData/VENTAS_*, ver nota junto
+      // a cargarDatosClinicaDesdeSupabase()): se cargan de verdad desde las
+      // tablas `agenda_eventos`/`eventos_seguimiento`, filtradas por
+      // establecimiento_id, en esa función. EVENTOS_SEGUIMIENTO se sumó
+      // después: mientras se reseteaba acá, el recordatorio creado por una
+      // vacunación desaparecía en el siguiente login. De Agenda solo queda
+      // mock DISPONIBILIDAD_MEDICOS.
 
       SIIGO_RESOLUCIONES.length = 0;
       if (seed) SIIGO_RESOLUCIONES.push(...seed.SIIGO_RESOLUCIONES);
@@ -27208,6 +27310,23 @@
           const { error: agendaErr } = await window.supabase.from('agenda_eventos').insert(agendaInsertRows);
           if (agendaErr) throw agendaErr;
         }
+
+        // Agenda > Eventos: mismo criterio de pet_key que arriba.
+        // agenda_evento_id se siembra SIEMPRE en null aunque la semilla traiga
+        // 'ag-1': ese id es del mock y no corresponde a ninguna fila real de
+        // agenda_eventos (la columna es un uuid con FK). El único campo que
+        // la UI lee del vínculo es `estado`, que sí se conserva — así la fila
+        // de ejemplo sigue mostrando el badge "Agendado".
+        const eventoSegInsertRows = DEMO_SEED.EVENTOS_SEGUIMIENTO.map(ev => ({
+          establecimiento_id: establecimientoId, created_by: userId,
+          ...filaSupabaseDesdeEventoSeguimiento(ev),
+          pet_key: (ev.petKey && petIdPorKey[ev.petKey]) ? ev.petKey : null,
+          agenda_evento_id: null
+        }));
+        if (eventoSegInsertRows.length) {
+          const { error: eventoSegErr } = await window.supabase.from('eventos_seguimiento').insert(eventoSegInsertRows);
+          if (eventoSegErr) throw eventoSegErr;
+        }
       } catch (err) {
         console.error('[IRIS] No se pudo sembrar la clínica demo en Supabase:', err);
       }
@@ -27220,7 +27339,7 @@
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes, plantillaRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, eventoSegRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes, plantillaRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -27234,6 +27353,7 @@
           window.supabase.from('movimientos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('arqueos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('agenda_eventos').select('*').eq('establecimiento_id', establecimientoId).order('start_iso', { ascending: true }),
+          window.supabase.from('eventos_seguimiento').select('*').eq('establecimiento_id', establecimientoId).order('fecha_sugerida', { ascending: false }),
           window.supabase.from('vacunaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('desparasitaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('cirugias').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
@@ -27259,6 +27379,7 @@
         if (movimientoRes.error) throw movimientoRes.error;
         if (arqueoRes.error) throw arqueoRes.error;
         if (agendaRes.error) throw agendaRes.error;
+        if (eventoSegRes.error) throw eventoSegRes.error;
         if (vacunacionRes.error) throw vacunacionRes.error;
         if (desparasitacionRes.error) throw desparasitacionRes.error;
         if (cirugiaRes.error) throw cirugiaRes.error;
@@ -27276,7 +27397,7 @@
           facturaRows: facturaRes.data || [], cotizacionRows: cotizacionRes.data || [],
           hospRows: hospRes.data || [], productoRows: productoRes.data || [],
           movimientoRows: movimientoRes.data || [], arqueoRows: arqueoRes.data || [],
-          agendaRows: agendaRes.data || [],
+          agendaRows: agendaRes.data || [], eventoSegRows: eventoSegRes.data || [],
           vacunacionRows: vacunacionRes.data || [], desparasitacionRows: desparasitacionRes.data || [],
           cirugiaRows: cirugiaRes.data || [], tareaPendienteRows: tareaPendienteRes.data || [],
           seguimientoRows: seguimientoRes.data || [], remisionRows: remisionRes.data || [],
@@ -27286,11 +27407,11 @@
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows } = await leerTodo());
       }
 
       // Formatos propios de esta clínica (los de fábrica viven en
@@ -27443,6 +27564,13 @@
       agendaRows.forEach(r => AGENDA_EVENTOS.push(construirEventoAgendaDesdeFila(r)));
       refreshAgendaCalendarEvents();
       refreshAgendaPersonalCalendarEvents();
+
+      // Agenda > Eventos: los recordatorios que generan Vacunaciones/
+      // Desparasitaciones/Peluquería/Seguimientos. No hay repintado acá
+      // porque la tabla se renderiza al entrar a la sub-vista
+      // (switchAgendaView), igual que los calendarios de arriba.
+      EVENTOS_SEGUIMIENTO.length = 0;
+      eventoSegRows.forEach(r => EVENTOS_SEGUIMIENTO.push(construirEventoSeguimientoDesdeFila(r)));
 
       // Catálogos "+Registrar X" de Vacunas/Desparasitaciones/Hospitalizaciones
       // (tabla `catalogos_custom`, ver nota junto a resetMockDataForClinic) —

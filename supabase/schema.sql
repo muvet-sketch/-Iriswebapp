@@ -1556,6 +1556,59 @@ create policy "agenda_eventos_delete_member"
   on public.agenda_eventos for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── TABLA: eventos_seguimiento (Agenda > Eventos) ────────────────
+-- Recordatorios generados desde Vacunaciones/Desparasitaciones/
+-- Peluquería/Seguimientos al guardar con fecha de "próximo control"
+-- diligenciada (ver crearEventoSeguimiento() en index.html). Antes vivía
+-- solo en memoria (EVENTOS_SEGUIMIENTO, mock) y se perdía al refrescar.
+-- fecha_sugerida es `date` y no timestamp: el front la maneja como cadena
+-- local ingenua 'YYYY-MM-DD' y la compara como string contra los filtros
+-- de rango y contra "hoy" — mismo criterio que movimientos.fecha.
+-- pet_key (no mascota_id) por el mismo motivo que agenda_eventos.pet_key.
+-- agenda_evento_id apunta a la cita creada con la acción "Agendar";
+-- `on delete set null` porque borrar la cita desvincula el recordatorio,
+-- no lo borra.
+create table if not exists public.eventos_seguimiento (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  fecha_sugerida     date not null,
+  propietario        text,
+  pet_key            text,
+  tipo_evento        text not null,
+  origen             text,
+  estado             text not null default 'pendiente',
+  agenda_evento_id   uuid references public.agenda_eventos (id) on delete set null,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create index if not exists eventos_seguimiento_establecimiento_id_idx
+  on public.eventos_seguimiento (establecimiento_id);
+
+alter table public.eventos_seguimiento enable row level security;
+
+drop policy if exists "eventos_seguimiento_select_member" on public.eventos_seguimiento;
+create policy "eventos_seguimiento_select_member"
+  on public.eventos_seguimiento for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "eventos_seguimiento_insert_member" on public.eventos_seguimiento;
+create policy "eventos_seguimiento_insert_member"
+  on public.eventos_seguimiento for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "eventos_seguimiento_update_member" on public.eventos_seguimiento;
+create policy "eventos_seguimiento_update_member"
+  on public.eventos_seguimiento for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "eventos_seguimiento_delete_member" on public.eventos_seguimiento;
+create policy "eventos_seguimiento_delete_member"
+  on public.eventos_seguimiento for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── TABLA: cirugias (Cirugías/procedimientos) ────────────────────
 -- Antes vivía solo en memoria (patientData[petKey].cirugias, mock) y se
 -- perdía al refrescar — mismo criterio de columnas planas que

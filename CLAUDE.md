@@ -609,9 +609,33 @@ inserta una vez). Por eso `resetMockDataForClinic()` ya NO resetea
 `recordatorio_24h` son `timestamp` SIN zona horaria a propósito — todo
 el módulo trabaja con cadenas locales ingenuas (`'2026-07-06T09:00:00'`,
 con `.split('T')` por todas partes) y con `timestamptz` PostgREST las
-devolvería en UTC con offset, rompiendo FullCalendar y el formateo. Lo
-que sigue mock en Agenda: `EVENTOS_SEGUIMIENTO` y
-`DISPONIBILIDAD_MEDICOS`.
+devolvería en UTC con offset, rompiendo FullCalendar y el formateo.
+
+**`EVENTOS_SEGUIMIENTO` también persiste** (tabla `eventos_seguimiento`,
+migración `20260805_eventos_seguimiento.sql`), con el mismo patrón:
+`crearEventoSeguimiento()` es `async` y hace insert BLOQUEANTE antes de
+tocar el array, el id del registro es el uuid del insert (ya no existe
+`eventosSeguimientoSeq` ni ids `evs-N` — sobreviven solo como semilla
+demo), `guardarEventoAgenda()` persiste el paso a `agendado` +
+`agenda_evento_id` de la misma forma, y
+`cargarDatosClinicaDesdeSupabase()` reconstruye el array. Dos matices
+propios de este módulo:
+- **`crearEventoSeguimiento()` no relanza el error.** Sus 4 llamadores
+  (`guardarVacunacion`/`guardarDesparasitacion`/`guardarPeluqueria`/
+  `guardarSeguimiento`) ya guardaron su propio registro cuando llegan
+  ahí, dentro del mismo `try`: si el recordatorio relanzara, el `catch`
+  del llamador diría "no se pudo guardar la vacunación" sobre una
+  vacunación que sí se guardó. El recordatorio es un derivado — si
+  falla, avisa con su propio toast y el registro principal queda
+  intacto. Mismo criterio en el bloque de "Agendar" de
+  `guardarEventoAgenda()`.
+- **La semilla demo se inserta con `agenda_evento_id` siempre en null**
+  aunque `evs-6` traiga `'ag-1'`: ese id es del mock y la columna es un
+  uuid con FK a `agenda_eventos`. Solo se conserva su `estado`
+  (`'agendado'`), que es lo único que la UI lee — `agendaEventoId` hoy
+  se escribe pero no se lee en ninguna parte.
+
+De Agenda solo queda mock `DISPONIBILIDAD_MEDICOS`.
 
 **Trampa de zona horaria (ya sufrida en el Dashboard) — `fechaISO` NO
 siempre es una fecha local ingenua.** `consultas.fecha_hora` sí es
@@ -1090,7 +1114,7 @@ que existe es lo de abajo. Dos mecanismos, no se reemplazan:
      Supabase pause el proyecto por inactividad (riesgo real del free).
 2. **Respaldo manual desde la app** — Admin > Respaldo de datos
    (`#admin-outer-respaldo`, `descargarRespaldoEstablecimiento()`).
-   Descarga un `.json` con las filas reales de las 26 tablas por
+   Descarga un `.json` con las filas reales de las 27 tablas por
    establecimiento (`RESPALDO_TABLAS`), no el modelo en memoria: el
    objetivo es poder volver a insertar. Si agregas una tabla nueva por
    establecimiento, **agrégala a `RESPALDO_TABLAS`** o el respaldo
