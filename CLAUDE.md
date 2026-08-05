@@ -98,7 +98,23 @@ cierra el script") en vez del literal `</script>`.
 - Modales: mismo patrón `.modal-overlay` / `.modal-card` con
   `onclick="event.stopPropagation()"` para no cerrar al click interno.
 - Paleta: variables CSS `--clinic-accent`, `--surface`, `--border`,
-  `--text-1`, `--text-2` — nunca hardcodear colores nuevos.
+  `--text-1`, `--text-2` — nunca hardcodear colores nuevos. El acento
+  lo elige cada usuario en Mi perfil > Tema (`aplicarTemaClinica()`,
+  `CLINIC_THEMES`), que reescribe `--clinic-accent`/`-light`/`-rgb` en
+  `documentElement` — por eso cualquier color derivado se escribe
+  `rgba(var(--clinic-accent-rgb), α)` y nunca con el hex del tema.
+- Botón "+ Registrar …" de la cabecera de cada módulo del Consultorio:
+  es `.btn-outline` + su clase de rol (`module-create-btn` /
+  `documentos-create-btn` / `seguimiento-create-btn` /
+  `peluqueria-create-btn` / `guarderia-create-btn` — `applySimRole()`
+  las oculta con reglas distintas, ver ahí). Las cinco comparten una
+  regla CSS que las pinta con el acento del tema del usuario (texto y
+  borde `--clinic-accent`, fondo tenue) en vez del gris de
+  `.btn-outline`: son la acción principal de su módulo. Si agregás un
+  módulo con su propia clase de creación, sumala a ese selector; si el
+  botón no necesita regla de rol, usá el hook de solo estilo
+  `.accent-create-btn` (el que usa el "Registrar" del quicknav del
+  Tablero).
 - Restricción de tabs de nivel 1 por rol: objeto `TAB_ROLE_RESTRICTIONS`
   (mapa `data-tab` → array de roles permitidos) + función
   `applyTabRoleVisibility()`, llamada desde `applySimRole()`. A
@@ -153,16 +169,19 @@ cierra el script") en vez del literal `</script>`.
   ÚNICA foto de la mascota en esta pantalla y muestra la imagen real
   (`data.fotoUrl`) con el mismo botón de cámara editable — antes era
   una tarjeta de foto aparte y el avatar de la cabecera solo mostraba
-  la inicial del nombre. "Editar mascota" vive ahora en
-  `.pet-header-right` junto a "Volver a buscar"/"Nueva Consulta" (antes
-  estaba debajo de la foto). Ese bloque de botones ya NO está en la
-  columna derecha de `.pet-header-top-row` (ahí quedó solo el widget
-  "Viendo como"): es una fila propia, `.pet-header-actions-row`, DEBAJO
-  de peso/datos generales y encima de la banda de contexto, para que el
-  histórico de peso suba junto a la identidad. Orden de la tarjeta:
-  identidad → peso/datos generales → acciones → contexto. Al hacer
-  scroll siguen colapsando solo `.pet-header-bottom-row` y
-  `.pet-header-context-row`; identidad y acciones quedan fijas.
+  la inicial del nombre. "Editar mascota" se abre haciendo click en el
+  nombre de la mascota (`.pet-name-title-btn`), no como botón aparte.
+  La ÚNICA acción de la cabecera es el menú "+ Nuevo"
+  (`#btn-nueva-consulta` → `#pet-header-nuevo-menu`), que vive en la
+  columna derecha de `.pet-header-top-row` (`.pet-header-right-col`) —
+  ahí estaba antes el widget "Viendo como", que se mudó al header
+  global de la app. Hubo una fila propia de acciones
+  (`.pet-header-actions-row`, debajo de peso/datos generales) mientras
+  esa columna estaba ocupada; ya no existe, no la reintroduzcas.
+  Orden de la tarjeta: identidad (+ "Nuevo") → peso/datos generales →
+  contexto. Al hacer scroll siguen colapsando solo
+  `.pet-header-bottom-row` y `.pet-header-context-row`; la identidad
+  queda fija, y con ella el botón.
   **Trampa ya sufrida en ese colapso (`setupPatientPaneHeaderCollapse`):**
   colapsar el header AGRANDA el alto visible de `.patient-pane-body`, así
   que el navegador recorta `scrollTop` al nuevo máximo. Con el umbral único
@@ -301,11 +320,17 @@ cierra el script") en vez del literal `</script>`.
     llenar signos vitales y registrar seguimientos son acciones
     DISTINTAS, disponibles para Auxiliar sin ese modo — no las
     gatees con `puedeProgramarTratamientos()`.
-  - El widget "Viendo como" (`.role-sim-widget`) está duplicado en el
-    header del Kardex además del header de Historia — si se agrega
-    otra pantalla de tipo "kardex" (pantalla completa fuera del
-    patient-view), agrégaselo también, si no, no hay forma de probar
-    la restricción de rol sin salir de esa pantalla.
+  - El widget "Viendo como" (`.role-sim-widget`) ya NO se duplica por
+    pantalla: hay una sola instancia, en el header global del app shell
+    (`.header-right`, a la izquierda de la campana, variante
+    `.role-sim-widget-header`), así que cualquier pantalla nueva —
+    incluidas las de tipo "kardex"/Tablero, que son pantallas completas
+    dentro de un tab y no tapan el header — la hereda sin agregar nada.
+    Antes había cinco copias sueltas (Dashboard, buscador de
+    Consultorio, cabecera del paciente, Tablero y Kardex). `applySimRole()`
+    sigue sincronizando por clase (`.role-sim-select` /
+    `[data-privileges-text]`), no por id, así que agregar otra copia
+    sigue siendo posible si algún día hace falta.
 - Patrón del **Tablero de trabajo** (`#tablero-view`, pantalla completa de
   "Registro de consulta", misma mecánica de ocultar `.consultorio-wrapper`
   que el Kardex). Su estilo visual se adoptó del mockup de Stitch

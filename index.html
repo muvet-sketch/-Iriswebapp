@@ -1619,9 +1619,9 @@
     /* Al hacer scroll dentro de .patient-pane-body se le da prioridad al
        panel del módulo seleccionado colapsando esta franja (peso + datos
        generales) — ver setupPatientPaneHeaderCollapse(). Solo colapsa esta
-       fila y la de contexto; la identidad (.pet-header-top-row) y la fila de
-       acciones (.pet-header-actions-row) permanecen fijas para no perder
-       contexto del paciente ni las acciones rápidas. */
+       fila y la de contexto; la identidad (.pet-header-top-row, que incluye
+       el menú "+ Nuevo") permanece fija para no perder contexto del paciente
+       ni las acciones rápidas. */
     .pet-header-card.pet-header-collapsed .pet-header-bottom-row {
       max-height: 0;
       opacity: 0;
@@ -1780,31 +1780,6 @@
     .evento-pet-btn:hover { filter: brightness(0.88); }
     .eventos-row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 
-    .pet-header-right {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    /* Fila propia de acciones (Volver a buscar / Editar mascota / Solicitar a
-       otra clínica / Nueva Consulta), debajo de peso+datos generales y encima
-       de la banda de contexto. No colapsa al hacer scroll: las acciones
-       rápidas tienen que seguir a la vista (mismo criterio que la fila de
-       identidad). */
-    .pet-header-actions-row {
-      justify-content: flex-end;
-      flex-wrap: wrap;
-      margin-top: 14px;
-      padding-top: 14px;
-      border-top: 1px solid var(--border);
-    }
-    /* Colapsada la franja de peso/datos, la fila de acciones queda pegada a
-       la identidad y su separador propio ya sobra. */
-    .pet-header-card.pet-header-collapsed .pet-header-actions-row {
-      margin-top: 12px;
-      padding-top: 12px;
-    }
-
     .btn-outline {
       background: none;
       border: 1px solid var(--border);
@@ -1831,6 +1806,38 @@
     .btn-outline.back-btn:hover {
       color: var(--text-1);
       background-color: #F1F5F9;
+    }
+
+    /* Botones "+ Registrar …" de la cabecera de cada módulo del Consultorio.
+       Toman el color de tema del usuario (--clinic-accent, ver
+       aplicarTemaClinica()) en vez del gris genérico de .btn-outline: son la
+       acción principal de cada módulo y tienen que leerse como tal.
+       Son 5 clases distintas porque applySimRole() les aplica reglas de rol
+       distintas (module-create-btn / documentos- / seguimiento- /
+       peluqueria- / guarderia-); si se agrega otro módulo con su propia
+       clase de creación, súmala también acá. .accent-create-btn es el hook
+       SOLO de estilo, para botones de registro que no llevan ninguna de esas
+       clases de rol (ej. el "Registrar" del quicknav del Tablero). */
+    .btn-outline.module-create-btn,
+    .btn-outline.documentos-create-btn,
+    .btn-outline.seguimiento-create-btn,
+    .btn-outline.peluqueria-create-btn,
+    .btn-outline.guarderia-create-btn,
+    .btn-outline.accent-create-btn {
+      color: var(--clinic-accent);
+      border-color: rgba(var(--clinic-accent-rgb), 0.45);
+      background-color: rgba(var(--clinic-accent-rgb), 0.06);
+      font-weight: 600;
+    }
+
+    .btn-outline.module-create-btn:hover,
+    .btn-outline.documentos-create-btn:hover,
+    .btn-outline.seguimiento-create-btn:hover,
+    .btn-outline.peluqueria-create-btn:hover,
+    .btn-outline.guarderia-create-btn:hover,
+    .btn-outline.accent-create-btn:hover {
+      background-color: rgba(var(--clinic-accent-rgb), 0.12);
+      border-color: var(--clinic-accent);
     }
 
     /* Sub-Módulos del Paciente (Contenido dinámico del Sidebar) */
@@ -3078,10 +3085,14 @@
       .role-sim-widget-header .role-sim-privileges { display: none; }
     }
 
+    /* Acciones del buscador de Consultorio. Era una columna cuando arriba
+       llevaba el widget "Viendo como" (hoy en el header global); con solo
+       los dos botones van en fila. */
     .header-actions-col {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
       gap: 10px;
     }
 
@@ -4845,19 +4856,8 @@
           <h1 class="page-title" id="dashboard-welcome-title">Bienvenido</h1>
           <p class="page-subtitle" id="dashboard-welcome-subtitle">—</p>
         </div>
-        <div class="role-sim-widget">
-          <div class="role-sim-select-wrap">
-            <i data-lucide="eye" style="width:13px;height:13px;"></i>
-            <span>Viendo como:</span>
-            <select class="role-sim-select" onchange="setSimRole(this.value)">
-              <option value="admin">Administrador</option>
-              <option value="medico" selected>Médico Veterinario</option>
-              <option value="auxiliar">Auxiliar</option>
-              <option value="ventas">Ventas</option>
-            </select>
-          </div>
-          <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
-        </div>
+        <!-- El simulador de rol vive ahora en el header global (al lado de la
+             campana), visible desde cualquier pantalla. -->
       </div>
 
       <!-- Tarjetas de estadísticas -->
@@ -5101,19 +5101,6 @@
               <p>Consulte propietarios y mascotas registradas en la clínica</p>
             </div>
             <div class="header-actions-col">
-              <div class="role-sim-widget">
-                <div class="role-sim-select-wrap">
-                  <i data-lucide="eye" style="width:13px;height:13px;"></i>
-                  <span>Viendo como:</span>
-                  <select class="role-sim-select" onchange="setSimRole(this.value)">
-                    <option value="admin">Administrador</option>
-                    <option value="medico" selected>Médico Veterinario</option>
-                    <option value="auxiliar">Auxiliar</option>
-                    <option value="ventas">Ventas</option>
-                  </select>
-                </div>
-                <div class="role-sim-privileges" data-privileges-text>Privilegios activos: —</div>
-              </div>
               <button class="btn-outline" id="btn-vincular-red" data-btn-registrar-propietario onclick="abrirRedVincularModalManual()" title="Traer un tutor que ya existe en otro establecimiento de la red IRIS">
                 <i data-lucide="link" style="width: 16px; height: 16px;"></i> Vincular de la red
               </button>
@@ -6048,18 +6035,6 @@
                 <span class="tablero-header-kicker">Tablero de trabajo</span>
                 <span class="tablero-header-sub">Registro de consulta</span>
               </div>
-              <div class="role-sim-widget">
-                <div class="role-sim-select-wrap">
-                  <i data-lucide="eye" style="width:13px;height:13px;"></i>
-                  <span>Viendo como:</span>
-                  <select class="role-sim-select" onchange="setSimRole(this.value)">
-                    <option value="admin">Administrador</option>
-                    <option value="medico" selected>Médico Veterinario</option>
-                    <option value="auxiliar">Auxiliar</option>
-                    <option value="ventas">Ventas</option>
-                  </select>
-                </div>
-              </div>
             </div>
             <div class="tablero-header-actions">
               <!-- Escapa del modo compacto sin tener que subir el scroll:
@@ -6364,18 +6339,6 @@
               <div>
                 <div class="pet-name-title" id="kardex-pet-name">—</div>
                 <div class="pet-meta-item" id="kardex-pet-meta" style="color:var(--text-2);font-size:12px;">—</div>
-              </div>
-              <div class="role-sim-widget">
-                <div class="role-sim-select-wrap">
-                  <i data-lucide="eye" style="width:13px;height:13px;"></i>
-                  <span>Viendo como:</span>
-                  <select class="role-sim-select" onchange="setSimRole(this.value)">
-                    <option value="admin">Administrador</option>
-                    <option value="medico" selected>Médico Veterinario</option>
-                    <option value="auxiliar">Auxiliar</option>
-                    <option value="ventas">Ventas</option>
-                  </select>
-                </div>
               </div>
             </div>
             <div class="kardex-header-actions">
@@ -8963,9 +8926,10 @@
       // Sincronizar ambos selectores (buscador + ficha)
       document.querySelectorAll('.role-sim-select').forEach(sel => { sel.value = currentSimRole; });
 
-      // Texto de privilegios activos
+      // Texto de privilegios activos — en el header global va truncado a una
+      // línea, así que el texto completo se deja también en el title.
       const text = `Privilegios activos: ${role.privileges.join(' · ')}`;
-      document.querySelectorAll('[data-privileges-text]').forEach(el => { el.textContent = text; });
+      document.querySelectorAll('[data-privileges-text]').forEach(el => { el.textContent = text; el.title = text; });
 
       // Botón "+ Registrar propietario" — hay más de uno (buscador de
       // Consultorio y header de Agenda), por eso se seleccionan por atributo
@@ -13034,7 +12998,7 @@
       document.getElementById('tablero-quicknav-body').innerHTML = `
         <div class="tablero-quicknav-header-row">
           <span class="tablero-quicknav-title"><i data-lucide="${cfg.icon}" style="width:14px;height:14px;color:var(--clinic-accent);"></i> ${cfg.label}</span>
-          <button class="btn-outline" style="padding:5px 8px;font-size:11px;" onclick="abrirTableroRegistroNuevo('${key}')"><i data-lucide="plus" style="width:12px;height:12px;"></i> Registrar</button>
+          <button class="btn-outline accent-create-btn" style="padding:5px 8px;font-size:11px;" onclick="abrirTableroRegistroNuevo('${key}')"><i data-lucide="plus" style="width:12px;height:12px;"></i> Registrar</button>
         </div>
         ${listHtml}
         <button class="btn-outline" style="margin-top:10px;width:100%;padding:7px;font-size:12px;" onclick="abrirModuloCompletoDesdeTablero('${cfg.subtabKey || key}')">Ver ${cfg.label.toLowerCase()} completo <i data-lucide="arrow-right" style="width:12px;height:12px;"></i></button>
