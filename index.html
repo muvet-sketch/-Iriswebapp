@@ -756,6 +756,7 @@
       background: none; border: none; color: var(--clinic-accent); font-size: 12px; font-weight: 600;
       cursor: pointer; padding: 4px 0; font-family: inherit;
     }
+    .doc-template-link:disabled { opacity: .45; cursor: default; }
     .doc-signed-block {
       display: flex; align-items: center; gap: 8px; background-color: rgba(22, 163, 74, 0.08);
       border: 1px solid rgba(22, 163, 74, 0.25); border-radius: 8px; padding: 10px 12px;
@@ -1706,12 +1707,15 @@
       background-color: var(--border);
     }
 
-    /* Temperamento clickeable en la fila de meta: el chip en sí es el mismo
-       .tablero-temperamento-chip del hero del Tablero (no se duplica su
-       estilo); acá solo se le agrega el envoltorio que lo vuelve un botón
-       (lápiz + cursor) para registrarlo/actualizarlo sin pasar por
-       "Editar mascota". */
-    .pet-temperamento-btn {
+    /* Envoltorio genérico "dato de la fila de meta que se edita con un
+       click": muestra un lápiz al pasar el mouse y abre el modal puntual
+       de ese dato sin pasar por "Editar mascota". Lo usan el temperamento
+       (→ #temperamento-modal) y el peso (→ #actualizar-peso-modal). El
+       contenido en sí no lo pone esta clase: el temperamento trae el
+       termómetro (.tablero-temperamento-chip, mismo del hero del Tablero,
+       no se duplica su estilo) y el peso trae su texto. */
+    .pet-temperamento-btn,
+    .pet-peso-btn {
       display: inline-flex;
       align-items: center;
       gap: 5px;
@@ -1721,12 +1725,20 @@
       transition: var(--transition);
       max-width: 260px;
     }
-    .pet-temperamento-btn > span { min-width: 0; }
-    .pet-temperamento-btn i { color: var(--text-2); flex-shrink: 0; opacity: 0; transition: var(--transition); }
-    .pet-temperamento-btn:hover i,
-    .pet-temperamento-btn:focus-visible i { opacity: 1; }
+    .pet-temperamento-btn > span,
+    .pet-peso-btn > span { min-width: 0; }
+    /* Solo el lápiz aparece con el hover — el botón puede traer además su
+       propio icono de dato (ej. la balanza del peso en el hero del
+       Tablero), que tiene que verse siempre. */
+    .pet-edit-hint { color: var(--text-2); flex-shrink: 0; opacity: 0; transition: var(--transition); }
+    .pet-temperamento-btn:hover .pet-edit-hint,
+    .pet-temperamento-btn:focus-visible .pet-edit-hint,
+    .pet-peso-btn:hover .pet-edit-hint,
+    .pet-peso-btn:focus-visible .pet-edit-hint { opacity: 1; }
     .pet-temperamento-btn:hover .tablero-temperamento-chip { filter: brightness(0.96); }
-    .pet-temperamento-btn:focus-visible { outline: 2px solid var(--clinic-accent); outline-offset: 2px; }
+    .pet-peso-btn:hover { color: var(--clinic-accent); }
+    .pet-temperamento-btn:focus-visible,
+    .pet-peso-btn:focus-visible { outline: 2px solid var(--clinic-accent); outline-offset: 2px; }
 
     /* Popover de datos del propietario (hover = vista rápida, click = fija
        con botones de copiar) — disparado desde #pet-profile-owner. */
@@ -2424,10 +2436,6 @@
       border: 1px solid transparent;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    /* El icono hereda el color del tono — sin esto gana la regla genérica
-       .tablero-hero-meta-item i (acento clínico) y el chip rojo/ámbar
-       saldría con el icono verde azulado. */
-    .tablero-temperamento-chip i { color: inherit !important; flex-shrink: 0; }
     .tablero-temperamento-chip.calmo {
       background-color: rgba(16, 185, 129, 0.12); color: #047857; border-color: rgba(16, 185, 129, 0.32);
     }
@@ -2440,6 +2448,41 @@
     .tablero-temperamento-chip.neutro {
       background-color: var(--surface-container); color: var(--text-2); border-color: var(--border);
     }
+
+    /* Termómetro EN LÍNEA dentro del chip (ver temperamentoChipHtml): el
+       nivel de manejo se lee como un termómetro horizontal —bulbo + tubo
+       que se llena 33/66/100%— en vez del icono suelto que había antes.
+       Todo se pinta con `currentColor`, así que hereda el color del tono
+       del chip sin repetir las 4 reglas de color: en `riesgo` (chip rojo
+       sólido) sale blanco solo, y en `neutro` el tubo queda vacío. */
+    .temperamento-term-mini { display: inline-flex; align-items: center; flex-shrink: 0; }
+    .temperamento-term-mini-bulb {
+      width: 9px; height: 9px; border-radius: 50%;
+      background-color: currentColor; flex-shrink: 0;
+    }
+    .temperamento-term-mini-tube {
+      width: 26px; height: 7px; margin-left: -2px; flex-shrink: 0;
+      border: 1px solid currentColor; border-left: none; border-radius: 0 4px 4px 0;
+      display: flex; align-items: stretch; overflow: hidden;
+    }
+    .temperamento-term-mini-fill {
+      background-color: currentColor; border-radius: 0 3px 3px 0;
+      transition: width 0.2s ease;
+    }
+
+    /* Símbolo de sexo (♀/♂) — reemplaza al icono genérico "user" de Lucide,
+       que dibujaba una persona y no decía nada del sexo del paciente. Es un
+       glifo Unicode y no un icono de Lucide a propósito: `mars`/`venus` son
+       iconos recientes y el CDN carga lucide@latest, así que un cambio de
+       versión podría dejarlos sin dibujar. */
+    /* Em-relativo y no px: el mismo símbolo se pinta en la fila de meta del
+       hero (12.5px) y en la tabla de datos generales (13px). */
+    .genero-simbolo {
+      font-size: 1.2em; line-height: 1; font-weight: 700; flex-shrink: 0;
+      vertical-align: -0.06em;
+    }
+    .genero-simbolo.hembra { color: #DB2777; }
+    .genero-simbolo.macho { color: #2563EB; }
 
     /* Termómetro del preview de #temperamento-modal (ver
        temperamentoTermometroHtml()) — mismos 4 tonos que el chip de arriba,
@@ -2943,6 +2986,15 @@
     .tablero-quicknav-record:hover .tablero-quicknav-record-title { color: var(--clinic-accent); }
     .tablero-quicknav-record-title { font-size: 13px; font-weight: 600; color: var(--text-1); }
     .tablero-quicknav-record-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+    /* Línea de detalle opcional (`extra` en TABLERO_QUICKNAV_MODULOS): el
+       dato propio del módulo. Una sola línea con elipsis para que un
+       producto o una lista de pruebas larga no estire la fila; el texto
+       completo queda en el title=, mismo criterio que la banda de contexto
+       del hero. */
+    .tablero-quicknav-record-extra {
+      font-size: 12px; color: var(--text-2); margin-top: 3px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
 
     @media (max-width: 1150px) {
       .tablero-grid { grid-template-columns: 1fr; }
@@ -5329,7 +5381,19 @@
                       <div class="pet-meta-bullet"></div>
                       <div class="pet-meta-item">Edad: <span id="pet-profile-age" style="margin-left: 2px;">3 años 2 meses</span></div>
                       <div class="pet-meta-bullet"></div>
-                      <div class="pet-meta-item">Peso: <span id="pet-profile-weight" style="margin-left: 2px;">4.2 kg</span></div>
+                      <!-- Peso clickeable: abre el mismo
+                           #actualizar-peso-modal que el botón de balanza de
+                           "Histórico de peso" (mismo criterio de affordance
+                           que el nombre de la mascota y el temperamento). -->
+                      <div class="pet-meta-item">
+                        Peso:
+                        <span class="pet-peso-btn" role="button" tabindex="0" title="Actualizar peso"
+                              onclick="openActualizarPesoModal(selectedPetKey)"
+                              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openActualizarPesoModal(selectedPetKey);}">
+                          <span id="pet-profile-weight">4.2 kg</span>
+                          <i data-lucide="pencil" class="pet-edit-hint" style="width:11px;height:11px;"></i>
+                        </span>
+                      </div>
                       <div class="pet-meta-bullet"></div>
                       <div class="pet-meta-item owner-popover-wrap" id="pet-owner-popover-wrap" onmouseenter="showOwnerPopover()" onmouseleave="hideOwnerPopoverIfNotPinned()">
                         Propietario:
@@ -5340,8 +5404,8 @@
                         <div class="owner-popover" id="pet-owner-popover"></div>
                       </div>
                       <div class="pet-meta-bullet"></div>
-                      <!-- Temperamento: mismo chip semáforo del hero del
-                           Tablero (temperamentoChipHtml), acá al lado del
+                      <!-- Temperamento: mismo chip con termómetro del hero
+                           del Tablero (temperamentoChipHtml), acá al lado del
                            propietario y clickeable para registrarlo/
                            actualizarlo sin abrir "Editar mascota". -->
                       <div class="pet-meta-item">
@@ -5349,7 +5413,7 @@
                               onclick="openTemperamentoModal(selectedPetKey)"
                               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openTemperamentoModal(selectedPetKey);}">
                           <span id="pet-header-temperamento"></span>
-                          <i data-lucide="pencil" style="width:11px;height:11px;"></i>
+                          <i data-lucide="pencil" class="pet-edit-hint" style="width:11px;height:11px;"></i>
                         </span>
                       </div>
                     </div>
@@ -9573,6 +9637,12 @@
 
     function closeRegistrarPropietarioModal() {
       document.getElementById('registrar-propietario-modal').classList.remove('show');
+      // Encadenamiento desde el modal de Agenda: se asume cancelación. Los
+      // dos llamadores que SÍ continúan la cadena (guardarPropietario y
+      // redConfirmarVinculacion) capturan la bandera ANTES de cerrar —
+      // mismo criterio que postRegistroMascotaAccion.
+      agendaRegistroPropietarioPendiente = false;
+      setAgendaRegistroSobrepuesto(false);
     }
 
     function handleRegistrarPropietarioOverlayClick(e) {
@@ -9739,6 +9809,9 @@
         renderPropietariosTable();
         renderTutoresTable();
 
+        // Se captura ANTES de cerrar: closeRegistrarPropietarioModal() la
+        // limpia asumiendo una cancelación (ver openRegistrarPropietarioDesdeAgenda).
+        const veniaDeAgenda = agendaRegistroPropietarioPendiente;
         closeRegistrarPropietarioModal();
 
         if (!nuevoPropietario.redVinculado) {
@@ -9748,6 +9821,7 @@
           // puede colgar ninguna mascota (lo impide la policy de `mascotas`).
           renderPropietariosTable();
           showToast('Tutor registrado SIN vincular — verifica su identidad para poder abrir su perfil');
+          if (veniaDeAgenda) aplicarPropietarioNuevoEnAgenda(nombre, null);
           return;
         }
 
@@ -9756,7 +9830,18 @@
         // Encadenar con "Registrar mascota" (Parte B.5) — el propietario recién
         // creado queda preseleccionado/vinculado en ese modal. No espera al
         // PDF/email (ver abajo), que siguen en paralelo sin bloquear la UI.
+        // Si esto viene del modal de Agenda, el tutor se selecciona YA (no
+        // al final de la cadena): registrar la mascota es opcional y
+        // cancelar ese modal no puede perder al tutor recién creado.
+        if (veniaDeAgenda) aplicarPropietarioNuevoEnAgenda(nombre, null);
         openRegistrarMascotaModal(nuevoPropietario.id);
+        if (veniaDeAgenda) {
+          // Después de abrir, no antes: openRegistrarMascotaModal() limpia
+          // postRegistroMascotaAccion, y closeRegistrarPropietarioModal() ya
+          // bajó el z-index de la cadena.
+          setAgendaRegistroSobrepuesto(true);
+          postRegistroMascotaAccion = petKey => aplicarPropietarioNuevoEnAgenda(nombre, petKey);
+        }
 
         generarYSubirPdfPropietario(nuevoPropietario, establecimientoId).catch(err => {
           console.error('[IRIS] Error generando/subiendo el PDF del propietario:', err);
@@ -9999,6 +10084,53 @@
       renderAgendaMascotaSelect(ownerName);
     }
 
+    // ── Registrar un propietario SIN salir del modal de evento ────────
+    // El modal de evento se queda ABIERTO detrás (lo que ya se llenó del
+    // evento no se pierde) y al terminar se preselecciona al tutor nuevo
+    // —y su mascota, si se encadenó con "Registrar mascota"— en los
+    // campos Propietario/Mascota.
+    // Los tres modales de esa cadena (propietario, mascota y el de
+    // vinculación de la red, que puede aparecer en medio) van ANTES que
+    // #agenda-evento-modal en el DOM y todos comparten z-index:300, así
+    // que sin subírselo quedarían pintados DEBAJO del modal de evento —
+    // el mismo problema ya sufrido con delete-confirm-modal (ver
+    // eliminarEventoAgendaClick). Mismo criterio que la calculadora de
+    // dosis sobre el modal de fórmula. Cada modal de la cadena lo baja de
+    // vuelta al cerrarse, para no dejar el z-index alterado cuando se
+    // abran por su cuenta desde otro lado.
+    let agendaRegistroPropietarioPendiente = false;
+    const AGENDA_REGISTRO_MODALES_Z = {
+      'registrar-propietario-modal': '320',
+      'registrar-mascota-modal': '320',
+      'red-vincular-modal': '340'
+    };
+
+    function setAgendaRegistroSobrepuesto(activo) {
+      Object.keys(AGENDA_REGISTRO_MODALES_Z).forEach(id => {
+        document.getElementById(id).style.zIndex = activo ? AGENDA_REGISTRO_MODALES_Z[id] : '';
+      });
+    }
+
+    function openRegistrarPropietarioDesdeAgenda() {
+      if (!ROLES[currentSimRole].canRegisterOwner) return; // botón ya oculto por applySimRole()
+      agendaRegistroPropietarioPendiente = true;
+      setAgendaRegistroSobrepuesto(true);
+      openRegistrarPropietarioModal();
+    }
+
+    // Fin del encadenamiento: repinta el buscador de Propietario con la
+    // lista ya actualizada (getAgendaPropietarioOptions incluye a los
+    // recién registrados) y deja seleccionado al tutor nuevo.
+    function aplicarPropietarioNuevoEnAgenda(ownerName, petKey) {
+      if (!document.getElementById('agenda-evento-modal').classList.contains('show')) return;
+      document.getElementById('ag-propietario-ss-slot').innerHTML = searchableSelectHTML(
+        'ag-propietario', getAgendaPropietarioOptions(), ownerName,
+        'Buscar propietario...', 'onSelectAgendaPropietario'
+      );
+      renderAgendaMascotaSelect(ownerName, petKey);
+      lucide.createIcons();
+    }
+
     function renderAgendaMascotaSelect(ownerName, selectedPetKey) {
       const pets = Object.entries(patientData).filter(([, d]) => d.owner === ownerName);
       const sel = document.getElementById('ag-mascota');
@@ -10044,8 +10176,12 @@
     }
 
     function setAgendaModalCamposDisabled(readonly) {
+      // El botón "+ Registrar propietario nuevo" se deshabilita en vez de
+      // ocultarse: applySimRole() maneja su `display` por rol
+      // (data-btn-registrar-propietario) y le pisaría el ocultamiento.
       ['ag-solo-espacio', 'ag-sin-hora', 'ag-tipo', 'ag-lugar', 'ag-descripcion', 'ag-titulo',
-       'ag-fecha-inicio', 'ag-fecha-fin', 'ag-hora-inicio', 'ag-hora-fin', 'ag-mascota'].forEach(id => {
+       'ag-fecha-inicio', 'ag-fecha-fin', 'ag-hora-inicio', 'ag-hora-fin', 'ag-mascota',
+       'ag-propietario-nuevo-btn'].forEach(id => {
         document.getElementById(id).disabled = readonly;
       });
       const ss = document.querySelector('#ag-propietario-ss-slot .searchable-select');
@@ -10145,6 +10281,7 @@
         const ss = document.querySelector('#ag-propietario-ss-slot .searchable-select');
         if (ss) ss.classList.add('ss-disabled');
         document.getElementById('ag-mascota').disabled = true;
+        document.getElementById('ag-propietario-nuevo-btn').disabled = true;
       }
 
       document.getElementById('agenda-evento-eliminar-btn').style.display = (mode === 'edit') ? 'inline-flex' : 'none';
@@ -11083,7 +11220,12 @@
       // los campos que la cabecera no cubre.
       const items = [
         ['Color', data.color || '—'],
-        ['Género', data.genero || '—'],
+        // Mismo símbolo ♀/♂ del hero del Tablero (ver generoSimboloHtml) —
+        // en el hero reemplazó al icono de persona de Lucide; acá se suma
+        // al texto, que es lo único que había. Espacio duro: las columnas de
+        // esta tabla son angostas y con un espacio normal el símbolo se
+        // separaba de la palabra en dos renglones.
+        ['Género', data.genero ? `${generoSimboloHtml(data.genero)}&nbsp;${data.genero}` : '—'],
         ['Talla', data.talla || '—'],
         ['Estado reproductivo', data.estadoReproductivo || '—'],
         ['Animal de servicio', data.animalServicio ? 'Sí' : 'No'],
@@ -11576,6 +11718,12 @@
         mountPetGeneralCard('pet-header', petKey);
         renderHistoriaTimeline(data);
       }
+      // El hero del Tablero muestra el mismo peso y el mismo histórico, y
+      // desde ahí también se abre este modal — sin esto el número seguiría
+      // mostrando el peso viejo hasta cerrar la consulta.
+      if (selectedPetKey === petKey && document.getElementById('tablero-view').classList.contains('active')) {
+        mountTableroHeader(petKey);
+      }
       if (kardexContext && kardexContext.petKey === petKey) {
         renderWeightChartSVG('kardex-weight-chart', data.pesoHistorico);
       }
@@ -11749,6 +11897,9 @@
       registrandoMascotaPropietarioId = null;
       postRegistroMascotaAccion = null; // cancelado sin guardar — no continuar con la acción pendiente
       nuevaMascotaFotoFile = null;
+      // Segundo (y último) eslabón de la cadena que arranca en el modal de
+      // Agenda — ver openRegistrarPropietarioDesdeAgenda.
+      setAgendaRegistroSobrepuesto(false);
     }
 
     function handleRegistrarMascotaOverlayClick(e) {
@@ -12406,11 +12557,22 @@
         <span class="tablero-hero-meta-item">
           <i data-lucide="${icon}" style="width:14px;height:14px;"></i> ${html}
         </span>`;
+      // El peso es clickeable acá igual que en la cabecera del Consultorio:
+      // abre el mismo #actualizar-peso-modal, que es el único camino que
+      // escribe `pesoHistorico` (no se duplica lógica de guardado).
+      const pesoItem = `
+        <span class="tablero-hero-meta-item pet-peso-btn" role="button" tabindex="0" title="Actualizar peso"
+              onclick="openActualizarPesoModal('${petKey}')"
+              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openActualizarPesoModal('${petKey}');}">
+          <i data-lucide="scale" style="width:14px;height:14px;"></i>
+          <strong>${data.weight || '—'}</strong>
+          <i data-lucide="pencil" class="pet-edit-hint" style="width:11px;height:11px;"></i>
+        </span>`;
       document.getElementById('tablero-pet-meta').innerHTML = [
         metaItem(data.avatarClass === 'cat' ? 'cat' : 'dog', `${data.species} — ${data.breed}`),
         metaItem('calendar', edadTextoParaMostrar(data) || '—'),
-        metaItem('scale', `<strong>${data.weight || '—'}</strong>`),
-        data.genero ? metaItem('user', data.genero) : '',
+        pesoItem,
+        generoMetaItemHtml(data.genero),
         temperamentoChipHtml(data.temperamento)
       ].filter(Boolean).join('');
 
@@ -12419,6 +12581,10 @@
       // — acá solo cambia el alto del trazado, por CSS (.tablero-hero-weight).
       renderWeightChartSVG('tablero-hero-weight-chart', data.pesoHistorico);
       mountTableroOwnerCard(petKey);
+      // Acá y no solo en abrirTableroTrabajo(): esta función también se
+      // vuelve a llamar sola para repintar el hero (ej. tras actualizar el
+      // peso), y sin esto los iconos nuevos quedarían sin dibujar.
+      lucide.createIcons();
     }
 
     // ── Hero compacto al hacer scroll ─────────────────────────────────
@@ -12487,61 +12653,99 @@
     // avisar antes de manipular al paciente.
     // Si no coincide ninguna palabra, el tono es 'neutro' — nunca se asume
     // que un temperamento desconocido es manejable.
+    // `nivel` es el % de llenado del termómetro (la misma escala de 3
+    // niveles en las dos presentaciones: la vertical del modal y la mini
+    // horizontal del chip). `label` nombra el nivel en el title= y en los
+    // ticks de la escala vertical — no lo dupliques en cada render.
     const TEMPERAMENTO_TONOS = [
-      { tono: 'riesgo', icono: 'alert-octagon', palabras: ['agresi', 'muerde', 'mordedor', 'ataca', 'peligros', 'bozal', 'hostil', 'reactiv', 'violent', 'grunon'] },
-      { tono: 'precaucion', icono: 'alert-triangle', palabras: ['nervios', 'ansios', 'miedos', 'temero', 'asustadi', 'inquiet', 'estres', 'desconfia', 'arisc', 'timid', 'huidiz', 'territorial', 'dominante', 'defensiv', 'intoleran', 'dificil', 'terribl', 'caotic', 'hiperactiv', 'dispers', 'brios', 'temperamental', 'groser', 'impredecib'] },
-      { tono: 'calmo', icono: 'smile', palabras: ['docil', 'tranquil', 'calm', 'manso', 'sociable', 'amigable', 'carinos', 'jugueton', 'colaborador', 'noble', 'sumis', 'amable', 'pacific', 'obedien', 'afectuos'] }
+      { tono: 'riesgo', label: 'Riesgo', nivel: 100, icono: 'alert-octagon', palabras: ['agresi', 'muerde', 'mordedor', 'ataca', 'peligros', 'bozal', 'hostil', 'reactiv', 'violent', 'grunon'] },
+      { tono: 'precaucion', label: 'Precaución', nivel: 66, icono: 'alert-triangle', palabras: ['nervios', 'ansios', 'miedos', 'temero', 'asustadi', 'inquiet', 'estres', 'desconfia', 'arisc', 'timid', 'huidiz', 'territorial', 'dominante', 'defensiv', 'intoleran', 'dificil', 'terribl', 'caotic', 'hiperactiv', 'dispers', 'brios', 'temperamental', 'groser', 'impredecib'] },
+      { tono: 'calmo', label: 'Calmo', nivel: 33, icono: 'smile', palabras: ['docil', 'tranquil', 'calm', 'manso', 'sociable', 'amigable', 'carinos', 'jugueton', 'colaborador', 'noble', 'sumis', 'amable', 'pacific', 'obedien', 'afectuos'] }
     ];
+    const TEMPERAMENTO_TONO_NEUTRO = { tono: 'neutro', label: 'Sin clasificar', nivel: 0, icono: 'help-circle' };
 
     function temperamentoTono(texto) {
       if (!texto || !String(texto).trim()) return null;
       const t = String(texto).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); // sin tildes
       // Recorrido de más grave a menos grave: el primero que coincide manda.
       const match = TEMPERAMENTO_TONOS.find(def => def.palabras.some(p => t.includes(p)));
-      return match || { tono: 'neutro', icono: 'help-circle' };
+      return match || TEMPERAMENTO_TONO_NEUTRO;
     }
 
-    function temperamentoChipHtml(texto) {
-      const def = temperamentoTono(texto);
-      const etiqueta = def ? String(texto).trim() : 'Temperamento sin registrar';
-      const clase = def ? def.tono : 'neutro';
-      const icono = def ? def.icono : 'help-circle';
-      // El chip se recorta con elipsis si el temperamento es largo (la fila
-      // de meta es de una línea en modo compacto), así que el texto entero
-      // va también en el title=. Comillas escapadas: es texto libre.
-      const title = def ? `Temperamento: ${etiqueta}` : 'Este paciente no tiene temperamento registrado';
+    // ── SEXO: SÍMBOLO DE MARTE/VENUS ─────────────────────────────────
+    // `mascotas.genero` es 'Hembra'/'Macho' (select cerrado de los modales
+    // de crear/editar mascota), pero se compara normalizado por si llega
+    // un valor escrito de otra forma desde una importación.
+    // Devuelve null cuando no hay género registrado, para que el llamador
+    // pueda omitir el dato en vez de pintar un símbolo que no corresponde.
+    function generoSimbolo(genero) {
+      const g = String(genero || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      if (g.includes('hembra')) return { simbolo: '♀', clase: 'hembra' };
+      if (g.includes('macho')) return { simbolo: '♂', clase: 'macho' };
+      return null;
+    }
+
+    function generoSimboloHtml(genero) {
+      const s = generoSimbolo(genero);
+      return s ? `<span class="genero-simbolo ${s.clase}" aria-hidden="true">${s.simbolo}</span>` : '';
+    }
+
+    // Ítem de la fila de meta del hero del Tablero. Sin género registrado no
+    // se pinta nada; con un género no reconocido se pinta solo el texto.
+    function generoMetaItemHtml(genero) {
+      if (!genero) return '';
       return `
-        <span class="tablero-temperamento-chip ${clase}" title="${title.replace(/"/g, '&quot;')}">
-          <i data-lucide="${icono}" style="width:13px;height:13px;"></i> ${etiqueta}
+        <span class="tablero-hero-meta-item">
+          ${generoSimboloHtml(genero)} ${genero}
         </span>`;
     }
 
-    // Termómetro del semáforo de temperamento — usado SOLO en el preview del
-    // modal #temperamento-modal (el chip compacto sigue siendo la única
-    // representación en hero/cabecera, donde no hay espacio para esto). Es
-    // la misma clasificación de temperamentoTono(), pintada como una escala
-    // de 3 niveles para que quien escribe el texto libre vea de una el
-    // "nivel de cuidado" que le va a quedar, no solo el color final.
+    // Chip de temperamento de la fila de meta (hero del Tablero + cabecera
+    // del paciente del Consultorio). El nivel de manejo se lee como un
+    // TERMÓMETRO horizontal en miniatura (bulbo + tubo llenado al 33/66/100%)
+    // en vez del icono suelto que había antes: es la misma escala de la
+    // versión vertical del modal, para que las dos pantallas y el modal
+    // muestren el mismo objeto y no tres representaciones distintas.
+    function temperamentoChipHtml(texto) {
+      const match = temperamentoTono(texto); // null solo si el campo está vacío
+      const def = match || TEMPERAMENTO_TONO_NEUTRO;
+      const etiqueta = match ? String(texto).trim() : 'Temperamento sin registrar';
+      // El chip se recorta con elipsis si el temperamento es largo (la fila
+      // de meta es de una línea en modo compacto), así que el texto entero
+      // va también en el title=. Comillas escapadas: es texto libre.
+      const title = match
+        ? `Temperamento (${def.label}): ${etiqueta}`
+        : 'Este paciente no tiene temperamento registrado';
+      return `
+        <span class="tablero-temperamento-chip ${def.tono}" title="${title.replace(/"/g, '&quot;')}">
+          <span class="temperamento-term-mini" aria-hidden="true">
+            <span class="temperamento-term-mini-bulb"></span>
+            <span class="temperamento-term-mini-tube"><span class="temperamento-term-mini-fill" style="width:${def.nivel}%"></span></span>
+          </span> ${etiqueta}
+        </span>`;
+    }
+
+    // Termómetro vertical con la escala nombrada — usado SOLO en el preview
+    // del modal #temperamento-modal, donde sí hay espacio para ver los 3
+    // niveles a la vez mientras se escribe el texto libre. En hero/cabecera
+    // el mismo dato se muestra con la mini versión horizontal que trae el
+    // chip (ver temperamentoChipHtml).
     function temperamentoTermometroHtml(texto) {
-      const def = temperamentoTono(texto);
-      const tono = def ? def.tono : 'neutro';
-      const pct = { riesgo: 100, precaucion: 66, calmo: 33, neutro: 0 }[tono];
-      const tick = (cls, label) => `
-        <div class="temperamento-term-tick ${cls}${tono === cls ? ' active' : ''}">
-          <span class="temperamento-term-tick-dot"></span> ${label}
+      const def = temperamentoTono(texto) || TEMPERAMENTO_TONO_NEUTRO;
+      const tick = t => `
+        <div class="temperamento-term-tick ${t.tono}${def.tono === t.tono ? ' active' : ''}">
+          <span class="temperamento-term-tick-dot"></span> ${t.label}
         </div>`;
       return `
         <div class="temperamento-term-wrap">
           <div class="temperamento-term">
             <div class="temperamento-term-tube">
-              <div class="temperamento-term-fill ${tono}" style="height:${pct}%"></div>
+              <div class="temperamento-term-fill ${def.tono}" style="height:${def.nivel}%"></div>
             </div>
-            <div class="temperamento-term-bulb ${tono}"></div>
+            <div class="temperamento-term-bulb ${def.tono}"></div>
           </div>
           <div class="temperamento-term-scale">
-            ${tick('riesgo', 'Riesgo')}
-            ${tick('precaucion', 'Precaución')}
-            ${tick('calmo', 'Calmo')}
+            ${TEMPERAMENTO_TONOS.map(tick).join('')}
           </div>
         </div>`;
     }
@@ -12873,6 +13077,15 @@
     // en este strip), solo dejaron de tener acceso directo desde acá.
     const TABLERO_NAV_ORDEN = ['vacunaciones', 'desparasitaciones', 'formulas', 'laboratorio', 'imagenes', 'documentos'];
 
+    // Nombres de las pruebas/imágenes de un examen, para la línea de detalle
+    // de la mini-lista del Tablero. El rótulo sale de getExamenCampoLabel()
+    // (Prueba/Examen vs. Imagen diagnóstica), el mismo que usan el modal y
+    // la tabla del módulo completo — no se duplica el string por tipo.
+    function examenPruebasNombresResumen(record) {
+      const nombres = (record.pruebas || []).map(p => p.prueba).filter(Boolean);
+      return nombres.length ? `${getExamenCampoLabel(record.tipo)}: ${nombres.join(', ')}` : '';
+    }
+
     const TABLERO_QUICKNAV_MODULOS = {
       vacunaciones: {
         label: 'Vacunaciones', icon: 'syringe',
@@ -12888,6 +13101,7 @@
         getRecords: data => (data.desparasitaciones || []).map((r, idx) => ({ idx, r })),
         line: r => r.tipo,
         sub: r => `${r.fecha}${r.proximoControl ? ' · Próx: ' + r.proximoControl : ''}`,
+        extra: r => r.producto ? `Producto: ${r.producto}` : '',
         openCreate: petKey => openDesparasitacionModal('create', petKey),
         openEdit: (petKey, idx) => openDesparasitacionModal('edit', petKey, idx),
         viewModuleKey: 'desparasitacion'
@@ -12895,8 +13109,12 @@
       formulas: {
         label: 'Fórmulas médicas', icon: 'file-text',
         getRecords: data => (data.formulas || []).map((r, idx) => ({ idx, r })),
-        line: r => r.diagnostico || 'Fórmula médica',
+        // El título es lo recetado (que es de lo que trata una fórmula) y el
+        // diagnóstico pasa a la línea de detalle — antes el diagnóstico era
+        // el título y los medicamentos no se veían en absoluto.
+        line: r => (r.medicamentos || []).map(m => m.nombre).filter(Boolean).join(', ') || 'Fórmula médica',
         sub: r => r.fecha,
+        extra: r => r.diagnostico ? `Diagnóstico: ${r.diagnostico}` : '',
         openCreate: petKey => openFormulaModal('create', petKey),
         openEdit: (petKey, idx) => openFormulaModal('edit', petKey, idx),
         viewModuleKey: 'formula'
@@ -12906,6 +13124,7 @@
         getRecords: data => (data.examenes || []).map((r, idx) => ({ idx, r })).filter(x => x.r.tipo === 'laboratorio'),
         line: r => r.diagnosticoPresuntivo || 'Examen de laboratorio',
         sub: r => `${r.fecha} · ${(r.pruebas || []).length} prueba${(r.pruebas || []).length === 1 ? '' : 's'}`,
+        extra: r => examenPruebasNombresResumen(r),
         openCreate: petKey => openExamenModal('laboratorio', 'create', petKey),
         openEdit: (petKey, idx) => openExamenModal('laboratorio', 'edit', petKey, idx),
         viewModuleKey: 'examen'
@@ -12915,6 +13134,7 @@
         getRecords: data => (data.examenes || []).map((r, idx) => ({ idx, r })).filter(x => x.r.tipo === 'imagen'),
         line: r => r.diagnosticoPresuntivo || 'Imagen diagnóstica',
         sub: r => `${r.fecha} · ${(r.pruebas || []).length} imagen${(r.pruebas || []).length === 1 ? '' : 'es'}`,
+        extra: r => examenPruebasNombresResumen(r),
         openCreate: petKey => openExamenModal('imagen', 'create', petKey),
         openEdit: (petKey, idx) => openExamenModal('imagen', 'edit', petKey, idx),
         viewModuleKey: 'examen'
@@ -12926,12 +13146,7 @@
         sub: r => `${r.fecha} · ${ESTADOS_DOCUMENTO[r.estado] ? ESTADOS_DOCUMENTO[r.estado].label : r.estado}`,
         openCreate: petKey => openDocumentoModal('create', petKey),
         openEdit: (petKey, idx) => openDocumentoModal('edit', petKey, idx),
-        viewModuleKey: 'documento',
-        // Único módulo del strip cuyo subtab del sidebar normal no coincide
-        // con su key (`data-subtab="patient-documentos"`, ver switchSubTab())
-        // — el resto usa el mismo string para ambos. abrirModuloCompletoDesdeTablero()
-        // prefiere este campo si existe.
-        subtabKey: 'patient-documentos'
+        viewModuleKey: 'documento'
       },
       cirugias: {
         label: 'Cirugías/procedimientos', icon: 'scissors',
@@ -13028,25 +13243,37 @@
       const data = patientData[selectedPetKey];
       const registros = cfg.getRecords(data, selectedPetKey);
 
+      // `extra` es opcional por módulo: la línea de detalle con el dato
+      // concreto que hay que poder leer sin abrir el registro (el producto
+      // de una desparasitación, el diagnóstico de una fórmula, la prueba o
+      // la imagen pedida). Vacunaciones no la trae a propósito: su título
+      // ya ES la vacuna. Si un módulo no la define, la fila queda como
+      // estaba (título + subtítulo).
       const listHtml = registros.length
-        ? registros.slice(0, 6).map(({ idx, r }) => `
+        ? registros.slice(0, 6).map(({ idx, r }) => {
+            const extra = cfg.extra ? cfg.extra(r) : '';
+            return `
             <div class="tablero-quicknav-record" onclick="abrirTableroRegistro('${key}', '${idx}')">
-              <div>
+              <div style="min-width:0;">
                 <div class="tablero-quicknav-record-title">${cfg.line(r)}</div>
                 <div class="tablero-quicknav-record-sub">${cfg.sub(r)}</div>
+                ${extra ? `<div class="tablero-quicknav-record-extra" title="${String(extra).replace(/"/g, '&quot;')}">${extra}</div>` : ''}
               </div>
               <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--text-2);"></i>
             </div>
-          `).join('')
+          `;
+          }).join('')
         : `<div class="info-value" style="color:var(--text-2);">Sin registros de ${cfg.label.toLowerCase()}.</div>`;
 
+      // Sin botón "Ver … completo" (se quitó a pedido de negocio): desde el
+      // Tablero se consulta y se registra, y para gestionar el módulo entero
+      // se sale con "Volver". No reintroduzcas el botón acá.
       document.getElementById('tablero-quicknav-body').innerHTML = `
         <div class="tablero-quicknav-header-row">
           <span class="tablero-quicknav-title"><i data-lucide="${cfg.icon}" style="width:14px;height:14px;color:var(--clinic-accent);"></i> ${cfg.label}</span>
           <button class="btn-outline accent-create-btn" style="padding:5px 8px;font-size:11px;" onclick="abrirTableroRegistroNuevo('${key}')"><i data-lucide="plus" style="width:12px;height:12px;"></i> Registrar</button>
         </div>
         ${listHtml}
-        <button class="btn-outline" style="margin-top:10px;width:100%;padding:7px;font-size:12px;" onclick="abrirModuloCompletoDesdeTablero('${cfg.subtabKey || key}')">Ver ${cfg.label.toLowerCase()} completo <i data-lucide="arrow-right" style="width:12px;height:12px;"></i></button>
         ${especieInsightHtml(data)}
       `;
       lucide.createIcons();
@@ -13059,8 +13286,8 @@
     // Click en un registro de la mini-lista: abre el registro guardado en
     // modo solo-lectura (mismo flujo que la acción "Ver" del menú "..." de
     // cada módulo, vía rowActionVer/getRegistroViewData) — no el modal de
-    // edición. Para editar, el usuario abre el módulo completo (botón "Ver
-    // X completo") y usa la acción "Editar" de esa tabla.
+    // edición. Para editar, el usuario sale del Tablero con "Volver" y usa
+    // la acción "Editar" de la tabla de ese módulo en el sidebar.
     function abrirTableroRegistro(key, idOrIdx) {
       const cfg = TABLERO_QUICKNAV_MODULOS[key];
       if (key === 'citas') {
@@ -13081,12 +13308,6 @@
       const cfg = TABLERO_QUICKNAV_MODULOS[key];
       const counterEl = document.querySelector(`#tablero-nav-list .tablero-modchip[data-tablero-modulo="${key}"] .tablero-modchip-count`);
       if (counterEl) counterEl.textContent = cfg.getRecords(patientData[petKey], petKey).length;
-    }
-
-    // Navegación real (sale del Tablero) desde el link "Ver X completo"
-    function abrirModuloCompletoDesdeTablero(subtabName) {
-      cerrarTableroAConsultorio();
-      switchSubTab(subtabName);
     }
 
     // Lista de problemas (Problem List) del Tablero — array nuevo
@@ -20797,11 +21018,20 @@
       renderPropietariosTable();
       renderTutoresTable();
       renderDashboard();
+      // Se captura ANTES de cerrar (ver openRegistrarPropietarioDesdeAgenda).
+      const veniaDeAgenda = agendaRegistroPropietarioPendiente;
       closeRedVincularModal();
       closeRegistrarPropietarioModal();
       showToast(nuevas.length
         ? `Tutor vinculado — ${nuevas.length} ficha${nuevas.length === 1 ? '' : 's'} de mascota importada${nuevas.length === 1 ? '' : 's'}`
         : 'Tutor vinculado a este establecimiento');
+      if (veniaDeAgenda) {
+        // Se vuelve al evento con el tutor ya seleccionado en vez de abrir
+        // su perfil, que quedaría pintado DETRÁS del modal de evento (sigue
+        // abierto) — ver openRegistrarPropietarioDesdeAgenda.
+        aplicarPropietarioNuevoEnAgenda(prop.nombre, nuevas.length === 1 ? nuevas[0].pet_key : undefined);
+        return;
+      }
       abrirPerfilPropietario(prop.id);
     }
 
@@ -31221,6 +31451,7 @@
           <div class="input-group">
             <label class="input-label">Propietario</label>
             <div id="ag-propietario-ss-slot"></div>
+            <button type="button" class="doc-template-link" id="ag-propietario-nuevo-btn" data-btn-registrar-propietario onclick="openRegistrarPropietarioDesdeAgenda()">+ Registrar propietario nuevo</button>
           </div>
           <div class="input-group">
             <label class="input-label" for="ag-mascota">Mascota</label>

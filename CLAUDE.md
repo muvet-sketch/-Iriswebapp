@@ -430,7 +430,19 @@ cierra el script") en vez del literal `</script>`.
     de meta del hero, al lado del sexo (`temperamentoChipHtml()`), porque
     es el dato que condiciona cómo se manipula al paciente y hay que verlo
     antes de tocarlo. No lo reintroduzcas en el contexto — quedaría
-    duplicado. El color es un semáforo de manejo de 4 tonos
+    duplicado. Dentro del chip el nivel de manejo se lee como un
+    **TERMÓMETRO horizontal en miniatura** (`.temperamento-term-mini`:
+    bulbo + tubo llenado al 33/66/100% según `def.nivel`), que reemplazó al
+    icono de Lucide suelto que había antes — es la misma escala de 3
+    niveles que el termómetro vertical del preview de
+    `#temperamento-modal` (`temperamentoTermometroHtml()`), para que las
+    dos pantallas y el modal muestren el mismo objeto y no tres
+    representaciones distintas. `nivel` y `label` viven en
+    `TEMPERAMENTO_TONOS`/`TEMPERAMENTO_TONO_NEUTRO`, no repetidos en cada
+    render. Todo el termómetro mini se pinta con `currentColor` a
+    propósito: hereda el color del tono del chip sin repetir las 4 reglas
+    de color (en `riesgo`, que es chip rojo sólido, sale blanco solo). El
+    color es un semáforo de manejo de 4 tonos
     (`calmo`/`precaucion`/`riesgo`/`neutro`, sobre `--success`/`--warning`/
     `--danger`, sin color nuevo) que sale de `temperamentoTono()`: como
     `mascotas.temperamento` es texto libre a propósito (sin catálogo, ver
@@ -455,6 +467,26 @@ cierra el script") en vez del literal `</script>`.
     chip vuelve a "sin registrar"). El modal muestra el chip en vivo como
     preview, pero sigue siendo un textarea de texto libre — no lo conviertas
     en un select de las palabras de `TEMPERAMENTO_TONOS`.
+  - **Peso clickeable y símbolo de sexo** en esa misma fila de meta:
+    - El peso abre `openActualizarPesoModal(petKey)` —el MISMO
+      `#actualizar-peso-modal` del botón de balanza de "Histórico de peso"
+      de la cabecera del Consultorio, que es el único camino que escribe
+      `pesoHistorico`; no se duplica lógica de guardado—. La cabecera del
+      Consultorio también lo abre haciendo click en `#pet-profile-weight`.
+      Por eso `guardarPesoActualizado()` ahora repinta TAMBIÉN el hero
+      (`mountTableroHeader()` si `#tablero-view` está activo): sin eso el
+      número seguía mostrando el peso viejo hasta cerrar la consulta.
+      El envoltorio clickeable es `.pet-peso-btn`, hermano de
+      `.pet-temperamento-btn` (misma regla CSS, un lápiz que aparece al
+      hover). Ese lápiz lleva la clase `.pet-edit-hint` y es lo único que
+      se oculta: sin ella la regla tapaba también el icono de balanza del
+      propio dato.
+    - El sexo se pinta con el glifo Unicode ♀/♂ (`generoSimbolo()` /
+      `generoSimboloHtml()` / `generoMetaItemHtml()`), no con un icono de
+      Lucide: antes era `user`, que dibuja una persona y no dice nada del
+      sexo del paciente, y `mars`/`venus` son iconos recientes que un
+      cambio de `lucide@latest` podría dejar sin dibujar. El mismo símbolo
+      se suma al texto de la fila Género de `petDataTableHTML()`.
   - La tarjeta "Responsable" (`mountTableroOwnerCard()`) lista además las
     mascotas a cargo de ese tutor como chips, con la del paciente actual
     marcada (`.tablero-owner-pet-chip.current`). Salen de
@@ -828,15 +860,31 @@ entradas en `TABLERO_QUICKNAV_MODULOS` NO se borraron a propósito:
 entradas rompería esas funciones (llaman a `cfg.getRecords(...)` sin
 guard) aunque el chip ya no exista. Si se vuelve a ampliar el strip,
 solo hace falta agregar la key de vuelta a `TABLERO_NAV_ORDEN`, la
-config ya está completa. La entrada `documentos` es la única del
-strip cuyo `key` no coincide con el subtab real del sidebar
-(`data-subtab="patient-documentos"`, no `"documentos"`, ver
-`switchSubTab()`) — por eso trae un campo extra `subtabKey:
-'patient-documentos'` que `renderTableroModuloDetalle()` prefiere por
-sobre `key` al armar el botón "Ver … completo"
-(`cfg.subtabKey || key`). Si se agrega otro módulo cuyo subtab real no
-sea el mismo string que su key en este objeto, seguí el mismo patrón
-en vez de tocar `abrirModuloCompletoDesdeTablero()`.
+config ya está completa.
+
+**El panel "Navegación rápida" NO tiene botón "Ver … completo"** — se
+quitó a pedido de negocio junto con `abrirModuloCompletoDesdeTablero()`
+y el campo `subtabKey` de la entrada `documentos`, que existía solo
+para armar ese botón (era el único módulo del strip cuyo `key` no
+coincide con su `data-subtab` real, `patient-documentos`). Desde el
+Tablero se consulta y se registra; para gestionar el módulo entero se
+sale con "Volver". No lo reintroduzcas — y si alguna vez hace falta,
+acordate de que `documentos` necesita su propio mapeo key → subtab.
+A cambio, cada módulo puede definir un callback **`extra`** en
+`TABLERO_QUICKNAV_MODULOS`: una tercera línea por registro con el dato
+concreto que hay que poder leer sin abrirlo (Producto en
+Desparasitaciones, Diagnóstico en Fórmulas médicas, y los nombres de
+las pruebas/imágenes en Exámenes de laboratorio/Imágenes diagnósticas
+vía `examenPruebasNombresResumen()`, que toma el rótulo de
+`getExamenCampoLabel()` en vez de duplicar el string por tipo). Es
+opcional: Vacunaciones no lo trae a propósito porque su título ya ES la
+vacuna, y un módulo sin `extra` renderiza igual que antes. La línea es
+de UNA sola línea con elipsis y el texto completo en el `title=`, mismo
+criterio que la banda de contexto del hero. Relacionado: el título de
+Fórmulas médicas pasó a ser la lista de medicamentos recetados (que es
+de lo que trata una fórmula) y el diagnóstico bajó a esa línea de
+detalle — antes el diagnóstico era el título y los medicamentos no se
+veían en absoluto.
 
 **Cirugías/procedimientos y Tareas Pendientes SÍ persisten en Supabase**
 (tablas `cirugias`/`tareas_pendientes`, ver `supabase/schema.sql`) —
