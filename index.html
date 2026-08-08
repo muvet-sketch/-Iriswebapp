@@ -572,6 +572,94 @@
     .input-control.field-error, .soap-select-control.field-error { border-color: var(--danger); background-color: #FEF2F2; }
     .form-error-msg { font-size: 11px; color: var(--danger); display: none; margin-top: -6px; }
     .form-error-msg.show { display: block; }
+
+    /* COMPONENTE: DIAGNÓSTICOS PRESUNTIVOS (MULTI-SELECT CON CHIPS Y AUTOCOMPLETE) */
+    .soap-diagnosticos-container {
+      display: flex; flex-direction: column; gap: 6px; position: relative; margin-bottom: 8px;
+    }
+    .diag-multiselect-box {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background-color: #FAFBFD; padding: 6px 10px; min-height: 42px;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+      cursor: text; transition: var(--transition);
+    }
+    .diag-multiselect-box:focus-within,
+    .diag-multiselect-box.focused {
+      border-color: var(--clinic-accent); background-color: var(--surface);
+      box-shadow: 0 0 0 3px rgba(var(--clinic-accent-rgb), 0.1);
+    }
+    .diag-chips-list {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    }
+    .diag-tag-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      background-color: rgba(var(--clinic-accent-rgb), 0.09);
+      color: var(--clinic-accent); border: 1px solid rgba(var(--clinic-accent-rgb), 0.25);
+      transition: var(--transition); animation: diagPillPop 0.15s ease-out; user-select: none;
+    }
+    .diag-tag-pill:hover {
+      background-color: rgba(var(--clinic-accent-rgb), 0.15);
+      border-color: rgba(var(--clinic-accent-rgb), 0.4);
+    }
+    .diag-tag-pill-remove {
+      background: none; border: none; color: var(--clinic-accent); cursor: pointer;
+      padding: 0; display: inline-flex; align-items: center; justify-content: center;
+      width: 14px; height: 14px; border-radius: 50%; opacity: 0.7;
+      transition: var(--transition);
+    }
+    .diag-tag-pill-remove:hover {
+      opacity: 1; background-color: rgba(var(--clinic-accent-rgb), 0.22);
+    }
+    .diag-search-input {
+      border: none; outline: none; font-size: 12.5px; font-family: inherit;
+      background: transparent; flex: 1; min-width: 140px; color: var(--text-1);
+      padding: 3px 0;
+    }
+    .diag-search-input::placeholder { color: var(--text-2); font-size: 12px; }
+    .diag-dropdown {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 60;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; box-shadow: var(--shadow-lg); max-height: 230px;
+      overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+    }
+    .diag-dropdown-item {
+      padding: 7px 10px; border-radius: 6px; font-size: 12.5px; color: var(--text-1);
+      cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; transition: var(--transition);
+    }
+    .diag-dropdown-item:hover, .diag-dropdown-item.active {
+      background-color: rgba(var(--clinic-accent-rgb), 0.08); color: var(--clinic-accent);
+    }
+    .diag-dropdown-item-category {
+      font-size: 10.5px; color: var(--text-2); background-color: #F1F5F9;
+      padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+    }
+    .diag-dropdown-item-custom {
+      color: var(--clinic-accent); font-weight: 600;
+      border-top: 1px dashed var(--border); margin-top: 4px; padding-top: 8px;
+    }
+    .diag-quick-suggestions {
+      display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; align-items: center;
+    }
+    .diag-quick-label {
+      font-size: 11px; color: var(--text-2); font-weight: 600; margin-right: 2px;
+    }
+    .diag-quick-chip {
+      font-size: 11px; color: var(--text-2); background: #F1F5F9;
+      border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 3px;
+      transition: var(--transition); user-select: none; font-family: inherit;
+    }
+    .diag-quick-chip:hover {
+      border-color: var(--clinic-accent); color: var(--clinic-accent);
+      background-color: rgba(var(--clinic-accent-rgb), 0.06);
+    }
+    @keyframes diagPillPop {
+      0% { transform: scale(0.85); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
     .soap-exam-toggle {
       display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
       font-size: 13px; font-weight: 600; color: var(--clinic-accent); padding: 10px 0;
@@ -2913,6 +3001,75 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .audio-soip-nota { margin-top: 6px; font-size: 11.5px; color: var(--text-2); }
+
+    /* Grabador del modal (paso 1). El botón grande es el único control
+       primario: grabar/detener. Lo demás es estado. */
+    .audio-rec-zona {
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+      padding: 22px 16px 18px; border: 1px solid var(--border);
+      border-radius: 12px; background: var(--surface);
+    }
+    .audio-rec-btn {
+      width: 76px; height: 76px; border-radius: 50%; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--clinic-accent); color: #fff;
+      box-shadow: 0 2px 10px rgba(var(--clinic-accent-rgb), 0.35);
+      transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+    }
+    .audio-rec-btn:hover { transform: scale(1.04); }
+    .audio-rec-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .audio-rec-btn i { width: 30px; height: 30px; }
+    /* Grabando: rojo + latido. El halo se hace con box-shadow para no
+       mover el layout (un scale del botón desplazaría el cronómetro). */
+    .audio-rec-btn.grabando { background: var(--danger); box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); animation: audioRecPulso 1.8s infinite; }
+    @keyframes audioRecPulso {
+      0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 55%, transparent); }
+      70%  { box-shadow: 0 0 0 16px color-mix(in srgb, var(--danger) 0%, transparent); }
+      100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 0%, transparent); }
+    }
+    .audio-rec-tiempo {
+      font-size: 30px; font-weight: 600; letter-spacing: .02em;
+      font-variant-numeric: tabular-nums; color: var(--text-1);
+    }
+    .audio-rec-estado { font-size: 12.5px; color: var(--text-2); text-align: center; max-width: 380px; line-height: 1.5; }
+    /* Medidor de nivel: la causa nº1 de una transcripción mala es el
+       micrófono lejos (ver README de scripts/transcripcion). Ver la barra
+       moverse es lo único que avisa ANTES de grabar 40 minutos inservibles. */
+    .audio-rec-nivel { width: 240px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+    .audio-rec-nivel-fill { height: 100%; width: 0%; background: var(--clinic-accent); border-radius: 3px; transition: width .08s linear; }
+    .audio-rec-nivel-fill.bajo { background: var(--warning); }
+    .audio-rec-acciones { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .audio-rec-hint {
+      margin-top: 12px; font-size: 11.5px; color: var(--text-2); line-height: 1.55;
+    }
+    .audio-rec-manual {
+      margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+      font-size: 11.5px; color: var(--text-2);
+    }
+    .audio-rec-manual summary { cursor: pointer; color: var(--clinic-accent); }
+    .audio-rec-manual[open] summary { margin-bottom: 8px; }
+    /* Paso 2: esperando al PC de la oficina. */
+    .audio-espera {
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+      padding: 26px 16px; text-align: center;
+    }
+    .audio-espera-spinner {
+      width: 34px; height: 34px; border-radius: 50%;
+      border: 3px solid var(--border); border-top-color: var(--clinic-accent);
+      animation: audioEsperaGiro .9s linear infinite;
+    }
+    @keyframes audioEsperaGiro { to { transform: rotate(360deg); } }
+    .audio-espera-titulo { font-size: 15px; font-weight: 600; color: var(--text-1); }
+    .audio-espera-texto { font-size: 12.5px; color: var(--text-2); line-height: 1.55; max-width: 420px; }
+    /* Punto de aviso en el botón del Tablero cuando el SOIP ya volvió y el
+       modal está cerrado: sin esto el resultado llega en silencio. */
+    #tablero-audio-btn.audio-listo { position: relative; }
+    #tablero-audio-btn.audio-listo::after {
+      content: ''; position: absolute; top: -3px; right: -3px;
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--success); border: 2px solid var(--card-bg, var(--surface));
+    }
+    #tablero-audio-btn.audio-grabando { color: var(--danger); border-color: var(--danger); }
 
     .tablero-vital-ne { position: relative; flex-shrink: 0; }
     /* El .mini-toggle-input base es display:none (no enfocable). Acá se
@@ -6162,11 +6319,14 @@
               <button class="btn-outline tablero-hero-toggle" id="tablero-hero-toggle" onclick="toggleTableroHeroExpandido()" title="Mostrar/ocultar la ficha completa del paciente">
                 <i data-lucide="chevrons-up-down" style="width:14px;height:14px;"></i> <span id="tablero-hero-toggle-label">Ficha completa</span>
               </button>
-              <!-- Precarga el SOIP a partir del audio ya transcrito de la
-                   consulta (ver scripts/transcripcion/). Solo rellena los
-                   campos: guardar sigue siendo "Finalizar consulta". -->
-              <button class="btn-outline accent-create-btn" id="tablero-audio-btn" onclick="openAudioSoipModal()" title="Precargar el SOIP desde el audio transcrito de la consulta">
-                <i data-lucide="mic" style="width:14px;height:14px;"></i> Desde audio
+              <!-- Graba la consulta con el micrófono del equipo y la manda a
+                   transcribir (ver scripts/transcripcion/). Solo rellena los
+                   campos: guardar sigue siendo "Finalizar consulta".
+                   El rótulo lo reescribe actualizarBotonAudioSoip(): mientras
+                   se graba muestra el cronómetro, y cuando vuelve el SOIP
+                   muestra el punto de aviso. -->
+              <button class="btn-outline accent-create-btn" id="tablero-audio-btn" onclick="openAudioSoipModal()" title="Grabar la consulta y precargar el SOIP desde el audio">
+                <i data-lucide="mic" style="width:14px;height:14px;"></i> <span id="tablero-audio-btn-label">Grabar audio</span>
               </button>
               <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="intentarFinalizarConsulta()">
                 <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
@@ -6404,7 +6564,27 @@
                   <div class="tablero-card-head">
                     <span class="tablero-card-title">Interpretación <span class="soap-required">*</span></span>
                   </div>
-                  <textarea class="soap-textarea" id="tablero-soap-i" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
+
+                  <!-- Diagnósticos presuntivos (uno o varios) -->
+                  <div class="soap-diagnosticos-container" id="tablero-diagnosticos-container">
+                    <label class="input-label" style="font-weight:600;display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+                      <span><i data-lucide="stethoscope" style="width:13px;height:13px;vertical-align:-2px;color:var(--clinic-accent);"></i> Diagnósticos presuntivos</span>
+                      <span style="font-weight:400;font-size:11px;color:var(--text-2);">Elige uno o varios</span>
+                    </label>
+                    <div class="diag-multiselect-box" id="tablero-diag-multiselect-box" onclick="focusDiagInput('tablero')">
+                      <div class="diag-chips-list" id="tablero-diag-chips-list"></div>
+                      <input type="text" id="tablero-diag-input" class="diag-search-input" placeholder="Buscar o escribir diagnóstico presuntivo..." autocomplete="off" oninput="onDiagInputChange('tablero')" onkeydown="onDiagInputKeydown(event, 'tablero')" onfocus="onDiagInputFocus('tablero')">
+                    </div>
+                    <div class="diag-dropdown" id="tablero-diag-dropdown" style="display:none;"></div>
+                    <div class="diag-quick-suggestions" id="tablero-diag-quick-suggestions"></div>
+                  </div>
+
+                  <div style="margin-top:8px;">
+                    <label class="input-label" for="tablero-soap-i" style="font-size:11.5px;color:var(--text-2);margin-bottom:4px;display:block;">
+                      Razonamiento clínico, diagnósticos diferenciales y evolución
+                    </label>
+                    <textarea class="soap-textarea" id="tablero-soap-i" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)..."></textarea>
+                  </div>
                 </div>
               </div>
 
@@ -12200,6 +12380,305 @@
       expandirPetHeader();
     }
 
+    // ── CATÁLOGO Y GESTIÓN DE DIAGNÓSTICOS PRESUNTIVOS ────────────
+    const CATALOGO_DIAGNOSTICOS_VETERINARIOS = [
+      // Infecciosas y parasitarias
+      { nombre: 'Gastroenteritis aguda', categoria: 'Gastrointestinal' },
+      { nombre: 'Otitis externa', categoria: 'Dermatología / Oídos' },
+      { nombre: 'Dermatitis alérgica por pulgas (DAPP)', categoria: 'Dermatología' },
+      { nombre: 'Dermatitis atópica', categoria: 'Dermatología' },
+      { nombre: 'Ehrlichiosis canina', categoria: 'Infecciosa' },
+      { nombre: 'Anaplasmosis', categoria: 'Infecciosa' },
+      { nombre: 'Babesiosis', categoria: 'Infecciosa' },
+      { nombre: 'Parvovirosis canina', categoria: 'Infecciosa' },
+      { nombre: 'Moquillo / Distemper canino', categoria: 'Infecciosa' },
+      { nombre: 'Panleucopenia felina', categoria: 'Infecciosa' },
+      { nombre: 'Rinotraqueitis felina / Complejo respiratorio felino', categoria: 'Infecciosa / Respiratorio' },
+      { nombre: 'Leucemia felina (FeLV)', categoria: 'Infecciosa' },
+      { nombre: 'Inmunodeficiencia felina (FIV)', categoria: 'Infecciosa' },
+      { nombre: 'Peritonitis infecciosa felina (PIF)', categoria: 'Infecciosa' },
+      { nombre: 'Giardiasis', categoria: 'Parasitaria' },
+      { nombre: 'Coccidiosis', categoria: 'Parasitaria' },
+      { nombre: 'Demodicosis', categoria: 'Dermatología / Parasitaria' },
+      { nombre: 'Sarna sarcóptica', categoria: 'Dermatología / Parasitaria' },
+      { nombre: 'Traqueobronquitis infecciosa (Tos de las perreras)', categoria: 'Respiratorio' },
+      { nombre: 'Leptospirosis', categoria: 'Infecciosa' },
+      { nombre: 'Toxoplasmosis', categoria: 'Parasitaria' },
+      { nombre: 'Micoplasmosis / Hemoplasmosis', categoria: 'Infecciosa' },
+
+      // Gastrointestinal y hepático
+      { nombre: 'Hiporexia / Anorexia en estudio', categoria: 'Gastrointestinal' },
+      { nombre: 'Pancreatitis aguda', categoria: 'Gastrointestinal' },
+      { nombre: 'Pancreatitis crónica', categoria: 'Gastrointestinal' },
+      { nombre: 'Cuerpo extraño gastrointestinal', categoria: 'Gastrointestinal' },
+      { nombre: 'Indigestión / Sobrecarga alimentaria', categoria: 'Gastrointestinal' },
+      { nombre: 'Enfermedad inflamatoria intestinal (IBD)', categoria: 'Gastrointestinal' },
+      { nombre: 'Colitis aguda', categoria: 'Gastrointestinal' },
+      { nombre: 'Gingivoestomatitis crónica felina', categoria: 'Oral / Dental' },
+      { nombre: 'Enfermedad periodontal', categoria: 'Oral / Dental' },
+      { nombre: 'Lipidosis hepática', categoria: 'Hepático' },
+      { nombre: 'Hepatopatía en estudio', categoria: 'Hepático' },
+      { nombre: 'Triaditis felina', categoria: 'Gastrointestinal' },
+
+      // Renal y urinario
+      { nombre: 'Enfermedad renal crónica (ERC)', categoria: 'Renal / Urinario' },
+      { nombre: 'Insuficiencia renal aguda (IRA)', categoria: 'Renal / Urinario' },
+      { nombre: 'Infección del tracto urinario (ITU)', categoria: 'Renal / Urinario' },
+      { nombre: 'Cistitis idiopática felina (CIF)', categoria: 'Renal / Urinario' },
+      { nombre: 'Urolitiasis / Cálculos vesicales', categoria: 'Renal / Urinario' },
+      { nombre: 'Obstrucción uretral felina', categoria: 'Renal / Urinario' },
+
+      // Respiratorio y cardiovascular
+      { nombre: 'Asma felina / Bronquitis alérgica', categoria: 'Respiratorio' },
+      { nombre: 'Colapso traqueal', categoria: 'Respiratorio' },
+      { nombre: 'Síndrome braquicefálico', categoria: 'Respiratorio' },
+      { nombre: 'Enfermedad valvular degenerativa mitral (EVDM)', categoria: 'Cardiovascular' },
+      { nombre: 'Cardiomiopatía hipertrófica felina (CMH)', categoria: 'Cardiovascular' },
+      { nombre: 'Cardiomiopatía dilatada (CMD)', categoria: 'Cardiovascular' },
+
+      // Endocrino y metabólico
+      { nombre: 'Diabetes mellitus', categoria: 'Endocrino' },
+      { nombre: 'Hipotiroidismo canino', categoria: 'Endocrino' },
+      { nombre: 'Hipertiroidismo felino', categoria: 'Endocrino' },
+      { nombre: 'Síndrome de Cushing (Hiperadrenocorticismo)', categoria: 'Endocrino' },
+      { nombre: 'Enfermedad de Addison (Hipoadrenocorticismo)', categoria: 'Endocrino' },
+
+      // Dermatología y anexos
+      { nombre: 'Pioderma superficial', categoria: 'Dermatología' },
+      { nombre: 'Dermatofitosis / Tiña', categoria: 'Dermatología' },
+      { nombre: 'Malassezia dermatitis', categoria: 'Dermatología' },
+      { nombre: 'Complejo granuloma eosinofílico', categoria: 'Dermatología' },
+
+      // Oftalmología
+      { nombre: 'Conjuntivitis', categoria: 'Oftalmología' },
+      { nombre: 'Úlcera corneal', categoria: 'Oftalmología' },
+      { nombre: 'Queratoconjuntivitis seca (ojo seco)', categoria: 'Oftalmología' },
+      { nombre: 'Glaucoma', categoria: 'Oftalmología' },
+      { nombre: 'Uveítis anterior', categoria: 'Oftalmología' },
+
+      // Músculo-esquelético y traumatología
+      { nombre: 'Displasia de cadera', categoria: 'Músculo-esquelético' },
+      { nombre: 'Ruptura de ligamento cruzado craneal', categoria: 'Músculo-esquelético' },
+      { nombre: 'Luxación patelar', categoria: 'Músculo-esquelético' },
+      { nombre: 'Hernia discal / Discopatía', categoria: 'Neurología / Músculo-esquelético' },
+      { nombre: 'Osteoartritis / Osteoartrosis', categoria: 'Músculo-esquelético' },
+      { nombre: 'Politraumatismo', categoria: 'Trauma' },
+      { nombre: 'Claudicación en estudio', categoria: 'Músculo-esquelético' },
+
+      // Oncología y reproductivo
+      { nombre: 'Piometra', categoria: 'Reproductivo' },
+      { nombre: 'Neoplasia / Masa en estudio', categoria: 'Oncología' },
+      { nombre: 'Linfoma', categoria: 'Oncología' },
+      { nombre: 'Mastocitoma', categoria: 'Oncología' },
+      { nombre: 'Tumor venéreo transmisible (TVT)', categoria: 'Oncología' },
+      { nombre: 'Hiperplasia prostática benigna', categoria: 'Reproductivo' },
+
+      // Generales / Sistémicos
+      { nombre: 'Deshidratación', categoria: 'Sistémico' },
+      { nombre: 'Síndrome febril / Pirexia de origen desconocido', categoria: 'Sistémico' },
+      { nombre: 'Anemia en estudio', categoria: 'Hematológico' },
+      { nombre: 'Intoxicación / Envenenamiento', categoria: 'Toxicología' },
+      { nombre: 'Dolor abdominal agudo', categoria: 'Sistémico' }
+    ];
+
+    const DIAGNOSTICOS_SUGERIDOS_RAPIDOS = [
+      'Gastroenteritis aguda',
+      'Otitis externa',
+      'Dermatitis alérgica por pulgas (DAPP)',
+      'Hiporexia / Anorexia en estudio',
+      'Enfermedad periodontal',
+      'Enfermedad renal crónica (ERC)',
+      'Parvovirosis canina',
+      'Ehrlichiosis canina',
+      'Deshidratación'
+    ];
+
+    const diagnosticosPresuntivosState = {
+      tablero: [],
+      soap: []
+    };
+
+    function getDiagSelected(scope) {
+      return diagnosticosPresuntivosState[scope] || [];
+    }
+
+    function setDiagSelected(scope, list) {
+      diagnosticosPresuntivosState[scope] = Array.isArray(list) ? [...list] : [];
+      renderDiagPills(scope);
+      renderDiagQuickSuggestions(scope);
+    }
+
+    function addDiagPresuntivo(scope, diagName) {
+      if (!diagName || !diagName.trim()) return;
+      const clean = diagName.trim();
+      const current = diagnosticosPresuntivosState[scope] || [];
+      if (!current.some(d => d.toLowerCase() === clean.toLowerCase())) {
+        current.push(clean);
+        diagnosticosPresuntivosState[scope] = current;
+      }
+      const input = document.getElementById(`${scope}-diag-input`);
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+      closeDiagDropdown(scope);
+      renderDiagPills(scope);
+      renderDiagQuickSuggestions(scope);
+
+      if (scope === 'tablero') {
+        const step = document.querySelector('.tablero-step[data-tablero-step="i"]');
+        const iEl = document.getElementById('tablero-soap-i');
+        if (iEl) iEl.classList.remove('field-error');
+        if (step) step.classList.toggle('filled', (iEl && iEl.value.trim() !== '') || current.length > 0);
+      } else if (scope === 'soap') {
+        const iEl = document.getElementById('soap-i');
+        if (iEl) iEl.classList.remove('field-error');
+      }
+    }
+
+    function removeDiagPresuntivo(scope, idx) {
+      const current = diagnosticosPresuntivosState[scope] || [];
+      if (idx >= 0 && idx < current.length) {
+        current.splice(idx, 1);
+        diagnosticosPresuntivosState[scope] = current;
+        renderDiagPills(scope);
+        renderDiagQuickSuggestions(scope);
+      }
+      if (scope === 'tablero') {
+        const step = document.querySelector('.tablero-step[data-tablero-step="i"]');
+        const iEl = document.getElementById('tablero-soap-i');
+        if (step) step.classList.toggle('filled', (iEl && iEl.value.trim() !== '') || current.length > 0);
+      }
+    }
+
+    function renderDiagPills(scope) {
+      const container = document.getElementById(`${scope}-diag-chips-list`);
+      if (!container) return;
+      const list = diagnosticosPresuntivosState[scope] || [];
+      container.innerHTML = list.map((d, idx) => `
+        <span class="diag-tag-pill" title="${escapeHtml(d)}">
+          <span>${escapeHtml(d)}</span>
+          <button type="button" class="diag-tag-pill-remove" onclick="event.stopPropagation(); removeDiagPresuntivo('${scope}', ${idx})" aria-label="Eliminar diagnóstico">
+            <i data-lucide="x" style="width:11px;height:11px;"></i>
+          </button>
+        </span>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function renderDiagQuickSuggestions(scope) {
+      const container = document.getElementById(`${scope}-diag-quick-suggestions`);
+      if (!container) return;
+      const selected = diagnosticosPresuntivosState[scope] || [];
+      const available = DIAGNOSTICOS_SUGERIDOS_RAPIDOS.filter(d => !selected.some(s => s.toLowerCase() === d.toLowerCase()));
+      if (!available.length) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = `
+        <span class="diag-quick-label">Sugeridos:</span>
+        ${available.slice(0, 5).map(d => `
+          <button type="button" class="diag-quick-chip" onclick="addDiagPresuntivo('${scope}', '${escapeHtml(d)}')" title="Agregar ${escapeHtml(d)}">
+            <i data-lucide="plus" style="width:10px;height:10px;"></i>
+            <span>${escapeHtml(d)}</span>
+          </button>
+        `).join('')}
+      `;
+      lucide.createIcons();
+    }
+
+    function onDiagInputChange(scope) {
+      const input = document.getElementById(`${scope}-diag-input`);
+      const dropdown = document.getElementById(`${scope}-diag-dropdown`);
+      if (!input || !dropdown) return;
+      const val = input.value.trim().toLowerCase();
+      const selected = diagnosticosPresuntivosState[scope] || [];
+
+      const matches = CATALOGO_DIAGNOSTICOS_VETERINARIOS.filter(item => {
+        if (selected.some(s => s.toLowerCase() === item.nombre.toLowerCase())) return false;
+        if (!val) return true;
+        return item.nombre.toLowerCase().includes(val) || (item.categoria && item.categoria.toLowerCase().includes(val));
+      });
+
+      const exactMatch = CATALOGO_DIAGNOSTICOS_VETERINARIOS.some(item => item.nombre.toLowerCase() === val);
+      const alreadySelected = selected.some(s => s.toLowerCase() === val);
+
+      let html = '';
+      if (val && !exactMatch && !alreadySelected) {
+        const rawVal = input.value.trim();
+        html += `
+          <div class="diag-dropdown-item diag-dropdown-item-custom" onclick="addDiagPresuntivo('${scope}', '${escapeHtml(rawVal)}')">
+            <span><i data-lucide="plus-circle" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"></i> Agregar "<strong>${escapeHtml(rawVal)}</strong>" (personalizado)</span>
+          </div>
+        `;
+      }
+
+      if (matches.length > 0) {
+        html += matches.slice(0, 15).map(item => `
+          <div class="diag-dropdown-item" onclick="addDiagPresuntivo('${scope}', '${escapeHtml(item.nombre)}')">
+            <span>${escapeHtml(item.nombre)}</span>
+            <span class="diag-dropdown-item-category">${escapeHtml(item.categoria)}</span>
+          </div>
+        `).join('');
+      } else if (!val) {
+        html += '<div style="padding:8px 10px;font-size:12px;color:var(--text-2);">Escribe para buscar o agregar un diagnóstico...</div>';
+      } else if (exactMatch || alreadySelected) {
+        html += '<div style="padding:8px 10px;font-size:12px;color:var(--text-2);">Sin más coincidencias en el catálogo</div>';
+      }
+
+      dropdown.innerHTML = html;
+      dropdown.style.display = html ? 'flex' : 'none';
+      lucide.createIcons();
+    }
+
+    function onDiagInputKeydown(e, scope) {
+      const input = document.getElementById(`${scope}-diag-input`);
+      const dropdown = document.getElementById(`${scope}-diag-dropdown`);
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (input && input.value.trim()) {
+          const firstItem = dropdown ? dropdown.querySelector('.diag-dropdown-item') : null;
+          if (firstItem) {
+            firstItem.click();
+          } else {
+            addDiagPresuntivo(scope, input.value.trim());
+          }
+        }
+      } else if (e.key === 'Backspace') {
+        if (input && input.value === '') {
+          const current = diagnosticosPresuntivosState[scope] || [];
+          if (current.length > 0) {
+            removeDiagPresuntivo(scope, current.length - 1);
+          }
+        }
+      } else if (e.key === 'Escape') {
+        closeDiagDropdown(scope);
+      }
+    }
+
+    function onDiagInputFocus(scope) {
+      onDiagInputChange(scope);
+    }
+
+    function focusDiagInput(scope) {
+      const input = document.getElementById(`${scope}-diag-input`);
+      if (input) input.focus();
+    }
+
+    function closeDiagDropdown(scope) {
+      const dropdown = document.getElementById(`${scope}-diag-dropdown`);
+      if (dropdown) dropdown.style.display = 'none';
+    }
+
+    document.addEventListener('click', function(e) {
+      ['tablero', 'soap'].forEach(scope => {
+        const container = document.getElementById(`${scope}-diagnosticos-container`);
+        if (container && !container.contains(e.target)) {
+          closeDiagDropdown(scope);
+        }
+      });
+    });
+
     // ── MODAL: NUEVA CONSULTA (SOIP) ────────────────────────────
     const EXAM_SYSTEMS = [
       'Cardiovascular', 'Respiratorio', 'Digestivo', 'Urinario', 'Reproductivo',
@@ -12264,14 +12743,15 @@
       document.getElementById('soap-pet-name').textContent = data.name;
       document.getElementById('soap-pet-meta').textContent = `${data.species} · ${data.breed} · ${data.owner}`;
 
-      // Reset de campos
+      // Reset de campos y diagnósticos presuntivos
+      setDiagSelected('soap', []);
       document.getElementById('soap-fecha').value = getNowDatetimeLocalValue();
       document.getElementById('soap-motivo').value = 'Consulta general';
       ['soap-s', 'soap-o', 'soap-i', 'soap-p'].forEach(id => {
         const el = document.getElementById(id);
         el.value = '';
         el.classList.remove('field-error');
-        el.oninput = () => { if (el.value.trim() !== '') el.classList.remove('field-error'); };
+        el.oninput = () => { if (el.value.trim() !== '' || (id === 'soap-i' && getDiagSelected('soap').length > 0)) el.classList.remove('field-error'); };
       });
 
       // Reset examen físico por sistema
@@ -12341,10 +12821,12 @@
       document.getElementById('soap-o').value = record.objetivo || '';
       document.getElementById('soap-i').value = record.interpretacion || '';
       document.getElementById('soap-p').value = record.plan || '';
+      setDiagSelected('soap', record.diagnosticosPresuntivos || []);
+
       ['soap-s', 'soap-o', 'soap-i', 'soap-p'].forEach(id => {
         const el = document.getElementById(id);
         el.classList.remove('field-error');
-        el.oninput = () => { if (el.value.trim() !== '') el.classList.remove('field-error'); };
+        el.oninput = () => { if (el.value.trim() !== '' || (id === 'soap-i' && getDiagSelected('soap').length > 0)) el.classList.remove('field-error'); };
       });
 
       renderExamSystems();
@@ -12376,16 +12858,6 @@
     // formulario de fórmula (con la salida "Finalizar consulta sin fórmula"
     // en su footer, ver openFormulaModal). Al guardar ahí, guardarFormula()
     // encadena el cierre de la consulta solo.
-    //
-    // El criterio es "el paciente no tiene fórmulas", no "esta consulta no
-    // generó fórmula": una fórmula no queda atada a la consulta en el
-    // modelo actual, así que un paciente con fórmulas previas finaliza
-    // directo, sin interrupción.
-    //
-    // Solo aplica al Tablero. El modal clásico de consulta (prefijo
-    // 'soap-') sigue llamando a guardarConsulta() directo — el gate no
-    // estaba pedido ahí y ese modal también se usa para EDITAR consultas
-    // viejas, donde exigir una fórmula nueva no tiene sentido.
     function intentarFinalizarConsulta() {
       const data = patientData[selectedPetKey];
       if (data && !(data.formulas || []).length) {
@@ -12408,6 +12880,8 @@
     async function guardarConsulta(idPrefix, examBodyId) {
       idPrefix = idPrefix || 'soap-';
       examBodyId = examBodyId || 'soap-exam-body';
+      const scope = (idPrefix === 'soap-') ? 'soap' : 'tablero';
+      const diagPresuntivos = getDiagSelected(scope);
 
       const sEl = document.getElementById(idPrefix + 's');
       const oEl = document.getElementById(idPrefix + 'o');
@@ -12415,21 +12889,17 @@
       const pEl = document.getElementById(idPrefix + 'p');
 
       let valid = true;
-      [sEl, iEl, pEl].forEach(el => {
+      [sEl, pEl].forEach(el => {
         const empty = el.value.trim() === '';
         el.classList.toggle('field-error', empty);
         if (empty) valid = false;
       });
+      const iEmpty = iEl.value.trim() === '' && diagPresuntivos.length === 0;
+      iEl.classList.toggle('field-error', iEmpty);
+      if (iEmpty) valid = false;
       if (!valid) return;
 
       const data = patientData[selectedPetKey];
-      // selectedPetKey puede quedar apuntando a una mascota que ya no está
-      // en patientData (ej. otra clínica/dispositivo la eliminó o la
-      // trasladó mientras esta pantalla seguía abierta) — mismo caso ya
-      // contemplado en bootstrapSession() (ver su nota junto a
-      // "si patientData se acaba de reconstruir"). Sin este guard,
-      // data.mascotaId truena más abajo con un TypeError críptico en vez de
-      // avisarle al usuario que tiene que volver a buscar la mascota.
       if (!data) {
         showToast('Esta mascota ya no está disponible — vuelve a buscarla');
         if (idPrefix === 'tablero-soap-') cerrarTableroAConsultorio();
@@ -12481,10 +12951,6 @@
         if (fc) parts.push(`FC ${fc} lpm`);
         if (fr) parts.push(`FR ${fr} rpm`);
         if (crt) parts.push(`TLLC ${crt}`);
-        // Sin guion de relleno cuando falta una de las dos: un "PA —/80"
-        // deja constancia de que la sistólica existe y quedó en blanco, y
-        // un vital no evaluado no puede dejar rastro (ver
-        // toggleVitalNoEvaluado()). Solo se imprime lo que sí se midió.
         if (pas && pad) parts.push(`PA ${pas}/${pad} mmHg`);
         else if (pas) parts.push(`PAS ${pas} mmHg`);
         else if (pad) parts.push(`PAD ${pad} mmHg`);
@@ -12492,7 +12958,9 @@
         if (parts.length) vitalsLine = ` (${parts.join(' · ')})`;
       }
 
-      let summary = `S: ${sEl.value.trim()}<br>O: ${oEl.value.trim()}${vitalsLine}<br>I: ${iEl.value.trim()}<br>P: ${pEl.value.trim()}`;
+      const diagLine = diagPresuntivos.length ? `<br>Dx presuntivo: ${diagPresuntivos.join(', ')}` : '';
+      const finalInterpretacion = iEl.value.trim() || (diagPresuntivos.length ? diagPresuntivos.join(', ') : '');
+      let summary = `S: ${sEl.value.trim()}<br>O: ${oEl.value.trim()}${vitalsLine}<br>I: ${finalInterpretacion}${diagLine}<br>P: ${pEl.value.trim()}`;
       if (examFindings.length) {
         summary += `<br>Examen físico por sistema: ${examFindings.join(' · ')}`;
       }
@@ -12513,14 +12981,12 @@
             motivo: motivo || null,
             subjetivo: sEl.value.trim(),
             objetivo: oEl.value.trim(),
-            interpretacion: iEl.value.trim(),
+            interpretacion: finalInterpretacion,
+            diagnosticos_presuntivos: diagPresuntivos,
             plan: pEl.value.trim(),
             examen_fisico: examFindings,
             usuario
           };
-          // Los signos vitales solo viven en el Tablero de trabajo (ver nota
-          // arriba) — si se edita desde el modal clásico (sin esos campos en
-          // el DOM), no se incluyen en el payload para no pisarlos con null.
           if (vitalTempEl) Object.assign(payload, { vital_temp: vitals.temp, vital_fc: vitals.fc, vital_fr: vitals.fr, vital_crt: vitals.crt, vital_pas: vitals.pas, vital_pad: vitals.pad, vital_pam: vitals.pam });
 
           if (isEditing) {
@@ -12539,11 +13005,16 @@
           }
         }
 
+        const titleText = (diagPresuntivos.length > 0) ? diagPresuntivos.join(', ') : finalInterpretacion;
+
         if (isEditing) {
           const registro = data.consultas.find(c => c.dbId === dbId);
           if (registro) Object.assign(registro, {
             fechaISO: fechaHoraISO, fecha: formatFechaHoraCorta(fechaHoraISO), motivo: motivo || 'Consulta general',
-            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), interpretacion: iEl.value.trim(), plan: pEl.value.trim(),
+            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(),
+            interpretacion: finalInterpretacion,
+            diagnosticosPresuntivos: diagPresuntivos,
+            plan: pEl.value.trim(),
             examenFisico: examFindings, usuario
           });
           const tItem = data.timeline.find(t => t.dbId === dbId);
@@ -12551,14 +13022,17 @@
             type: motivo,
             date: formatFechaHoraCorta(fechaHoraISO),
             dateSortKey: fechaHoraISO,
-            title: iEl.value.trim().length > 90 ? iEl.value.trim().slice(0, 90) + '…' : iEl.value.trim(),
+            title: titleText.length > 90 ? titleText.slice(0, 90) + '…' : titleText,
             summary,
             vet: usuario
           });
         } else {
           data.consultas.unshift({
             dbId, fechaISO: fechaHoraISO, fecha: formatFechaHoraCorta(fechaHoraISO), motivo: motivo || 'Consulta general',
-            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(), interpretacion: iEl.value.trim(), plan: pEl.value.trim(),
+            subjetivo: sEl.value.trim(), objetivo: oEl.value.trim(),
+            interpretacion: finalInterpretacion,
+            diagnosticosPresuntivos: diagPresuntivos,
+            plan: pEl.value.trim(),
             vitalTemp: vitals.temp, vitalFc: vitals.fc, vitalFr: vitals.fr, vitalCrt: vitals.crt,
             vitalPas: vitals.pas, vitalPad: vitals.pad, vitalPam: vitals.pam,
             examenFisico: examFindings, usuario
@@ -12568,7 +13042,7 @@
             type: motivo,
             date: formatFechaConsulta(fechaValue),
             dateSortKey: fechaHoraISO,
-            title: iEl.value.trim().length > 90 ? iEl.value.trim().slice(0, 90) + '…' : iEl.value.trim(),
+            title: titleText.length > 90 ? titleText.slice(0, 90) + '…' : titleText,
             summary: summary,
             vet: usuario
           });
@@ -13015,23 +13489,109 @@
       });
     }
 
-    // ── Cargar el SOIP desde un audio ya transcrito ────────────────────
+    // ── Grabar la consulta y precargar el SOIP ─────────────────────────
     // Cierra el flujo audio → Whisper → LLM → formulario; todo el pipeline
-    // previo vive en scripts/transcripcion/ (README.md ahí).
+    // de transcripción vive en scripts/transcripcion/ (README.md ahí).
     //
     // Este bloque SOLO PRECARGA los campos del Tablero. No guarda, no
-    // finaliza y no toca Supabase: la consulta la revisa y la firma el
-    // veterinario con "Finalizar consulta", igual que si la hubiera escrito
-    // a mano. Un LLM no cierra una historia clínica.
+    // finaliza y no toca la consulta: la revisa y la firma el veterinario
+    // con "Finalizar consulta", igual que si la hubiera escrito a mano. Un
+    // LLM no cierra una historia clínica.
     //
-    // El .json se lee con FileReader en el navegador — no se sube a ningún
-    // servidor, que es lo que corresponde con audio clínico de pacientes
-    // reales.
+    // El recorrido completo del audio:
+    //   1. MediaRecorder graba acá (Opus mono, ver AUDIO_SOIP_FORMATOS).
+    //   2. Se sube al bucket privado `audios-consultas` y se inserta una
+    //      fila en `consultas_audio` con estado 'subido'.
+    //   3. El PC de la oficina (scripts/transcripcion/puente_iris.py) la ve,
+    //      baja el audio a la carpeta "Audios Consultas" — sincronizada con
+    //      Drive, así que el archivo termina también en Drive —, lo
+    //      transcribe con vigilante.py, extrae el SOIP con extraer_soip.py y
+    //      escribe el .json de vuelta en `resultado` con estado 'listo'.
+    //   4. Acá se consulta esa fila cada AUDIO_SOIP_POLL_MS hasta que llegue.
+    //
+    // El id de la fila viaja DENTRO del nombre del archivo (prefijo
+    // `IRIS-<id>__`): vigilante.py y extraer_soip.py conservan el stem a lo
+    // largo de todo el pipeline, así que el .json final se puede volver a
+    // asociar a la fila sin tocar ninguno de los dos scripts.
     let audioSoipPayload = null;
+
+    // Nada de esto se persiste salvo `audioSoipPendiente` (localStorage):
+    // una transcripción tarda minutos y la página se puede recargar en el
+    // medio, pero una grabación en curso muere con la pestaña igual.
+    let audioSoipRec = null;          // MediaRecorder activo
+    let audioSoipStream = null;       // MediaStream del micrófono (hay que cerrarlo a mano)
+    let audioSoipChunks = [];
+    let audioSoipBlob = null;         // grabación terminada, todavía sin enviar
+    let audioSoipFormato = null;      // entrada de AUDIO_SOIP_FORMATOS en uso
+    let audioSoipMsAcumulados = 0;    // duración de los tramos ya cerrados (pausas)
+    let audioSoipInicioTramo = 0;
+    let audioSoipTicker = null;
+    let audioSoipAudioCtx = null;     // medidor de nivel
+    let audioSoipAnalyser = null;
+    let audioSoipNivelRaf = null;
+    let audioSoipPendiente = null;    // {id, petKey, petName, enviadoEn, estado, resultado}
+    let audioSoipPoller = null;
+    let audioSoipSubiendo = false;
+
+    const AUDIO_SOIP_PENDIENTE_KEY = 'iris_audio_soip_pendiente';
+    const AUDIO_SOIP_POLL_MS = 15000;
+    // Un pendiente más viejo que esto se descarta al restaurar: si el PC de
+    // la oficina estuvo apagado toda la noche, el veterinario ya no está
+    // esperando ese borrador y arrastrarlo solo confunde.
+    const AUDIO_SOIP_PENDIENTE_TTL_MS = 8 * 60 * 60 * 1000;
+
+    // MediaRecorder no acepta el mismo contenedor en todos los navegadores:
+    // Chrome/Edge/Firefox dan webm/opus y Safari solo mp4. Se toma el primero
+    // soportado y su extensión viaja con el archivo, porque del otro lado
+    // ffmpeg decide por extensión/contenido y `vigilante.py` filtra por
+    // extensión (EXTENSIONES_AUDIO).
+    const AUDIO_SOIP_FORMATOS = [
+      { mime: 'audio/webm;codecs=opus', ext: 'webm' },
+      { mime: 'audio/ogg;codecs=opus',  ext: 'ogg'  },
+      { mime: 'audio/webm',             ext: 'webm' },
+      { mime: 'audio/mp4',              ext: 'm4a'  }
+    ];
 
     function audioSoipNormalizarNombre(s) {
       return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '')
         .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    function audioSoipFormatTiempo(ms) {
+      const total = Math.floor(ms / 1000);
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      const dos = n => String(n).padStart(2, '0');
+      return h > 0 ? `${h}:${dos(m)}:${dos(s)}` : `${dos(m)}:${dos(s)}`;
+    }
+
+    function audioSoipMsGrabados() {
+      const enCurso = (audioSoipRec && audioSoipRec.state === 'recording')
+        ? Date.now() - audioSoipInicioTramo : 0;
+      return audioSoipMsAcumulados + enCurso;
+    }
+
+    function audioSoipGrabando() {
+      return !!audioSoipRec && (audioSoipRec.state === 'recording' || audioSoipRec.state === 'paused');
+    }
+
+    // ── Paso visible del modal ──────────────────────────────────────────
+    function audioSoipMostrarPaso(paso) {
+      const pasos = { grabar: 'audio-soip-paso-grabar', espera: 'audio-soip-paso-espera', preview: 'audio-soip-paso-preview' };
+      Object.entries(pasos).forEach(([k, id]) => {
+        document.getElementById(id).style.display = (k === paso) ? '' : 'none';
+      });
+      document.getElementById('audio-soip-enviar-btn').style.display = 'none';
+      document.getElementById('audio-soip-aplicar-btn').style.display = 'none';
+      document.getElementById('audio-soip-cerrar-btn').textContent =
+        (paso === 'espera') ? 'Seguir escribiendo' : 'Cancelar';
+      const titulos = {
+        grabar: 'Grabar audio de la consulta',
+        espera: 'Audio enviado a transcribir',
+        preview: 'Borrador desde el audio'
+      };
+      document.getElementById('audio-soip-modal-title').textContent = titulos[paso];
     }
 
     function openAudioSoipModal() {
@@ -13040,17 +13600,35 @@
         return;
       }
       audioSoipPayload = null;
-      document.getElementById('audio-soip-file').value = '';
-      document.getElementById('audio-soip-paso-archivo').style.display = '';
-      document.getElementById('audio-soip-paso-preview').style.display = 'none';
-      document.getElementById('audio-soip-paso-preview').innerHTML = '';
-      document.getElementById('audio-soip-aplicar-btn').style.display = 'none';
       document.getElementById('audio-soip-error').innerHTML = '';
+      document.getElementById('audio-soip-espera-error').innerHTML = '';
+      document.getElementById('audio-soip-paso-preview').innerHTML = '';
       document.getElementById('audio-soip-modal-pet').textContent = patientData[selectedPetKey].name;
       document.getElementById('audio-soip-modal').classList.add('show');
+
+      // Un pendiente de OTRO paciente no se abre acá: cargar el SOIP de una
+      // mascota en la ficha de otra es el error que más caro sale de todo
+      // este flujo. Se avisa y se deja grabar normalmente.
+      const propio = audioSoipPendiente && audioSoipPendiente.petKey === selectedPetKey;
+      if (propio && audioSoipPendiente.resultado) {
+        audioSoipPayload = audioSoipPendiente.resultado;
+        renderAudioSoipPreview();
+      } else if (propio && audioSoipPendiente.estado !== 'error') {
+        audioSoipMostrarPaso('espera');
+        renderAudioSoipEspera();
+      } else {
+        // Incluye el caso fallido: no tiene sentido dejar al veterinario en
+        // una pantalla de espera de algo que ya se sabe que no va a llegar.
+        audioSoipMostrarPaso('grabar');
+        renderAudioSoipGrabador();
+      }
       lucide.createIcons();
     }
 
+    // Cerrar el modal NO detiene la grabación ni cancela la transcripción:
+    // el caso normal es grabar toda la consulta mientras se escribe el SOIP
+    // a mano, con el modal cerrado. El estado se sigue viendo en el botón
+    // del Tablero (ver actualizarBotonAudioSoip).
     function closeAudioSoipModal() {
       document.getElementById('audio-soip-modal').classList.remove('show');
       audioSoipPayload = null;
@@ -13064,6 +13642,459 @@
       document.getElementById('audio-soip-error').innerHTML =
         `<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span>${msg}</span></div>`;
       lucide.createIcons();
+    }
+
+    // ── Grabador ────────────────────────────────────────────────────────
+    function renderAudioSoipGrabador() {
+      const btn = document.getElementById('audio-rec-btn');
+      const estado = document.getElementById('audio-rec-estado');
+      const acciones = document.getElementById('audio-rec-acciones');
+      const nivel = document.getElementById('audio-rec-nivel');
+      const enviar = document.getElementById('audio-soip-enviar-btn');
+      document.getElementById('audio-rec-tiempo').textContent = audioSoipFormatTiempo(audioSoipMsGrabados());
+
+      const grabando = audioSoipGrabando();
+      btn.classList.toggle('grabando', audioSoipRec && audioSoipRec.state === 'recording');
+      btn.innerHTML = `<i data-lucide="${grabando ? 'square' : 'mic'}"></i>`;
+      btn.disabled = audioSoipSubiendo;
+      nivel.style.visibility = grabando ? '' : 'hidden';
+
+      let nota = '';
+      if (audioSoipPendiente && audioSoipPendiente.estado === 'error' && audioSoipPendiente.petKey === selectedPetKey) {
+        nota = `<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span>El audio anterior de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> no se pudo transcribir. Quedó en la carpeta del equipo de la clínica para revisarlo a mano; acá puedes grabar de nuevo.</span></div>`;
+      } else if (audioSoipPendiente && audioSoipPendiente.petKey !== selectedPetKey) {
+        nota = audioSoipPendiente.resultado
+          ? `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>El borrador de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> ya está listo. Ábrelo desde su Tablero.</span></div>`
+          : `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>Hay un audio de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> transcribiéndose. Si envías este, ese borrador se pierde de vista.</span></div>`;
+      }
+      document.getElementById('audio-soip-error').innerHTML = nota;
+
+      if (audioSoipSubiendo) {
+        estado.textContent = 'Enviando el audio…';
+        acciones.innerHTML = '';
+      } else if (audioSoipRec && audioSoipRec.state === 'recording') {
+        estado.textContent = 'Grabando. Puedes cerrar esta ventana y seguir escribiendo.';
+        acciones.innerHTML = `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()"><i data-lucide="pause" style="width:14px;height:14px;"></i> Pausar</button>`;
+      } else if (audioSoipRec && audioSoipRec.state === 'paused') {
+        estado.textContent = 'En pausa — el micrófono sigue tomado, nada se está grabando.';
+        acciones.innerHTML = `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()"><i data-lucide="play" style="width:14px;height:14px;"></i> Reanudar</button>`;
+      } else if (audioSoipBlob) {
+        const mb = (audioSoipBlob.size / (1024 * 1024)).toFixed(1);
+        estado.innerHTML = `Grabación de <strong>${audioSoipFormatTiempo(audioSoipMsAcumulados)}</strong> (${mb} MB) lista para enviar.`;
+        acciones.innerHTML = `
+          <button class="btn-secondary" onclick="descartarGrabacionAudioSoip()"><i data-lucide="trash-2" style="width:14px;height:14px;"></i> Descartar</button>
+          <a class="btn-secondary" href="${URL.createObjectURL(audioSoipBlob)}" download="${escapeHtml(audioSoipNombreArchivo('local'))}" style="text-decoration:none;"><i data-lucide="download" style="width:14px;height:14px;"></i> Guardar copia</a>`;
+        enviar.style.display = '';
+      } else {
+        estado.textContent = 'Pulsa para grabar la consulta. Deja el micrófono a 30–50 cm de quien habla.';
+        acciones.innerHTML = '';
+      }
+      lucide.createIcons();
+    }
+
+    function toggleGrabacionAudioSoip() {
+      if (audioSoipGrabando()) detenerGrabacionAudioSoip();
+      else iniciarGrabacionAudioSoip();
+    }
+
+    async function iniciarGrabacionAudioSoip() {
+      document.getElementById('audio-soip-error').innerHTML = '';
+      // getUserMedia solo existe en contexto seguro (https o localhost). Sin
+      // esto el fallo es un TypeError sobre `undefined` que no dice nada.
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+        audioSoipError('Este navegador no permite grabar desde la página. Abre IRIS por <strong>https</strong> (no como archivo local) o usa Chrome/Edge actualizado.');
+        return;
+      }
+      audioSoipFormato = AUDIO_SOIP_FORMATOS.find(f => MediaRecorder.isTypeSupported(f.mime)) || null;
+
+      try {
+        audioSoipStream = await navigator.mediaDevices.getUserMedia({
+          // El problema medido de los audios reales es voz lejana con picos
+          // que saturan (ver README de scripts/transcripcion): el control
+          // automático de ganancia ayuda justo con eso. La limpieza fuerte
+          // (loudnorm + VAD) la sigue haciendo ffmpeg del otro lado.
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+      } catch (err) {
+        const msg = (err && err.name === 'NotAllowedError')
+          ? 'No diste permiso al micrófono. Habilítalo en el candado de la barra de direcciones y vuelve a intentar.'
+          : (err && err.name === 'NotFoundError')
+            ? 'No se encontró ningún micrófono en este equipo.'
+            : 'No se pudo abrir el micrófono: ' + escapeHtml((err && err.message) || 'error desconocido');
+        audioSoipError(msg);
+        return;
+      }
+
+      audioSoipChunks = [];
+      audioSoipBlob = null;
+      audioSoipMsAcumulados = 0;
+      try {
+        audioSoipRec = new MediaRecorder(audioSoipStream, {
+          ...(audioSoipFormato ? { mimeType: audioSoipFormato.mime } : {}),
+          // Voz mono: 32 kbps en Opus alcanza de sobra y mantiene una
+          // consulta de 40 min por debajo de 10 MB (el bucket corta en 50).
+          audioBitsPerSecond: 32000
+        });
+      } catch (err) {
+        audioSoipSoltarMicrofono();
+        audioSoipError('Este navegador no pudo iniciar la grabación: ' + escapeHtml((err && err.message) || 'formato no soportado'));
+        return;
+      }
+
+      audioSoipRec.ondataavailable = e => { if (e.data && e.data.size) audioSoipChunks.push(e.data); };
+      audioSoipRec.onstop = () => {
+        const tipo = (audioSoipFormato && audioSoipFormato.mime) || (audioSoipChunks[0] && audioSoipChunks[0].type) || 'audio/webm';
+        audioSoipBlob = new Blob(audioSoipChunks, { type: tipo });
+        audioSoipChunks = [];
+        audioSoipSoltarMicrofono();
+        renderAudioSoipGrabador();
+        actualizarBotonAudioSoip();
+      };
+      // Trozos de 1 s: si el navegador se cae a los 30 minutos, lo grabado
+      // hasta ahí ya está en memoria y no se pierde entero.
+      audioSoipRec.start(1000);
+      audioSoipInicioTramo = Date.now();
+      audioSoipArrancarMedidorNivel();
+      audioSoipArrancarTicker();
+      window.addEventListener('beforeunload', audioSoipAvisoSalida);
+      renderAudioSoipGrabador();
+      actualizarBotonAudioSoip();
+    }
+
+    function pausarGrabacionAudioSoip() {
+      if (!audioSoipRec) return;
+      if (audioSoipRec.state === 'recording') {
+        audioSoipRec.pause();
+        audioSoipMsAcumulados += Date.now() - audioSoipInicioTramo;
+      } else if (audioSoipRec.state === 'paused') {
+        audioSoipRec.resume();
+        audioSoipInicioTramo = Date.now();
+      }
+      renderAudioSoipGrabador();
+      actualizarBotonAudioSoip();
+    }
+
+    function detenerGrabacionAudioSoip() {
+      if (!audioSoipRec) return;
+      if (audioSoipRec.state === 'recording') audioSoipMsAcumulados += Date.now() - audioSoipInicioTramo;
+      try { audioSoipRec.stop(); } catch (e) { /* ya detenido */ }
+      audioSoipRec = null;
+      audioSoipPararTicker();
+      window.removeEventListener('beforeunload', audioSoipAvisoSalida);
+      // El blob se arma en onstop (asíncrono): el render final lo dispara ahí.
+    }
+
+    function descartarGrabacionAudioSoip() {
+      audioSoipBlob = null;
+      audioSoipMsAcumulados = 0;
+      renderAudioSoipGrabador();
+      actualizarBotonAudioSoip();
+    }
+
+    // Soltar el MediaStream es obligatorio: sin esto el indicador de
+    // micrófono del navegador se queda encendido después de detener.
+    function audioSoipSoltarMicrofono() {
+      if (audioSoipStream) {
+        audioSoipStream.getTracks().forEach(t => t.stop());
+        audioSoipStream = null;
+      }
+      if (audioSoipNivelRaf) { cancelAnimationFrame(audioSoipNivelRaf); audioSoipNivelRaf = null; }
+      if (audioSoipAudioCtx) {
+        try { audioSoipAudioCtx.close(); } catch (e) { /* ya cerrado */ }
+        audioSoipAudioCtx = null;
+        audioSoipAnalyser = null;
+      }
+    }
+
+    function audioSoipAvisoSalida(e) {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    }
+
+    function audioSoipArrancarTicker() {
+      audioSoipPararTicker();
+      audioSoipTicker = setInterval(() => {
+        const el = document.getElementById('audio-rec-tiempo');
+        if (el) el.textContent = audioSoipFormatTiempo(audioSoipMsGrabados());
+        actualizarBotonAudioSoip();
+      }, 500);
+    }
+
+    function audioSoipPararTicker() {
+      if (audioSoipTicker) { clearInterval(audioSoipTicker); audioSoipTicker = null; }
+    }
+
+    // Medidor de nivel — es lo único que avisa ANTES de grabar 40 minutos
+    // inservibles que el micrófono está demasiado lejos.
+    function audioSoipArrancarMedidorNivel() {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx || !audioSoipStream) return;
+      try {
+        audioSoipAudioCtx = new Ctx();
+        const fuente = audioSoipAudioCtx.createMediaStreamSource(audioSoipStream);
+        audioSoipAnalyser = audioSoipAudioCtx.createAnalyser();
+        audioSoipAnalyser.fftSize = 512;
+        fuente.connect(audioSoipAnalyser);
+      } catch (e) {
+        audioSoipAnalyser = null;
+        return;
+      }
+      const datos = new Uint8Array(audioSoipAnalyser.fftSize);
+      const pintar = () => {
+        if (!audioSoipAnalyser) return;
+        audioSoipAnalyser.getByteTimeDomainData(datos);
+        let suma = 0;
+        for (let i = 0; i < datos.length; i++) {
+          const v = (datos[i] - 128) / 128;
+          suma += v * v;
+        }
+        const rms = Math.sqrt(suma / datos.length);
+        const pct = Math.min(100, Math.round(rms * 320));
+        const fill = document.getElementById('audio-rec-nivel-fill');
+        if (fill) {
+          fill.style.width = pct + '%';
+          fill.classList.toggle('bajo', pct < 8);
+        }
+        audioSoipNivelRaf = requestAnimationFrame(pintar);
+      };
+      pintar();
+    }
+
+    function audioSoipNombreArchivo(id) {
+      const data = patientData[selectedPetKey] || {};
+      const hoy = new Date();
+      const fecha = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+      const nombre = audioSoipNormalizarNombre(data.name).replace(/\s+/g, '-') || 'paciente';
+      const ext = (audioSoipFormato && audioSoipFormato.ext) || 'webm';
+      return `IRIS-${id}__${fecha}_${nombre}.${ext}`;
+    }
+
+    // ── Envío ───────────────────────────────────────────────────────────
+    async function enviarAudioSoip() {
+      if (!audioSoipBlob || audioSoipSubiendo) return;
+      const petKey = selectedPetKey;
+      const data = patientData[petKey];
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data || !data.mascotaId) {
+        audioSoipError('No hay una clínica activa — no se puede enviar el audio.');
+        return;
+      }
+
+      audioSoipSubiendo = true;
+      renderAudioSoipGrabador();
+      document.getElementById('audio-soip-enviar-btn').style.display = 'none';
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        if (!userId) throw new Error('sesión sin usuario');
+
+        // El id se genera acá (y no se deja al default de la tabla) porque
+        // tiene que ir dentro del nombre del archivo ANTES de subirlo.
+        const id = (crypto.randomUUID ? crypto.randomUUID()
+          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+              const r = Math.random() * 16 | 0;
+              return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            }));
+        const nombre = audioSoipNombreArchivo(id);
+        // Carpeta por usuario, misma convención que el bucket `pdfs`.
+        const ruta = `${userId}/${nombre}`;
+        const mime = audioSoipBlob.type || 'audio/webm';
+
+        const { error: upError } = await window.supabase.storage
+          .from('audios-consultas')
+          .upload(ruta, audioSoipBlob, { contentType: mime, upsert: false });
+        if (upError) throw upError;
+
+        const { error: rowError } = await window.supabase.from('consultas_audio').insert({
+          id,
+          establecimiento_id: currentSession.activeMembership.establecimientoId,
+          mascota_id: data.mascotaId,
+          pet_key: petKey,
+          paciente_nombre: data.name,
+          audio_path: ruta,
+          audio_nombre: nombre,
+          audio_mime: mime,
+          duracion_seg: Math.round(audioSoipMsAcumulados / 1000),
+          tamano_bytes: audioSoipBlob.size,
+          estado: 'subido',
+          created_by: userId
+        });
+        // Si la fila no entra, el audio queda huérfano en el bucket y nadie
+        // lo va a transcribir: se borra para no dejar basura acumulándose.
+        if (rowError) {
+          await window.supabase.storage.from('audios-consultas').remove([ruta]);
+          throw rowError;
+        }
+
+        audioSoipPendiente = {
+          id, petKey, petName: data.name,
+          enviadoEn: Date.now(),
+          duracionSeg: Math.round(audioSoipMsAcumulados / 1000),
+          estado: 'subido', resultado: null
+        };
+        audioSoipGuardarPendiente();
+        audioSoipBlob = null;
+        audioSoipMsAcumulados = 0;
+        audioSoipSubiendo = false;
+        arrancarPollAudioSoip();
+        actualizarBotonAudioSoip();
+        audioSoipMostrarPaso('espera');
+        renderAudioSoipEspera();
+        showToast('Audio enviado — te avisamos cuando el borrador esté listo');
+      } catch (err) {
+        audioSoipSubiendo = false;
+        console.error('[IRIS] enviarAudioSoip', err);
+        renderAudioSoipGrabador();
+        document.getElementById('audio-soip-enviar-btn').style.display = '';
+        const detalle = (err && err.message) ? escapeHtml(err.message) : 'error desconocido';
+        audioSoipError(`No se pudo enviar el audio (${detalle}). La grabación sigue acá — vuelve a intentar.`);
+      }
+    }
+
+    // ── Espera del resultado ────────────────────────────────────────────
+    function renderAudioSoipEspera() {
+      if (!audioSoipPendiente) return;
+      const min = Math.max(1, Math.round((Date.now() - audioSoipPendiente.enviadoEn) / 60000));
+      const dur = audioSoipPendiente.duracionSeg ? audioSoipFormatTiempo(audioSoipPendiente.duracionSeg * 1000) : null;
+      const titulo = audioSoipPendiente.estado === 'transcribiendo'
+        ? 'Transcribiendo la consulta…' : 'Audio en cola…';
+      document.getElementById('audio-espera-titulo').textContent = titulo;
+      document.getElementById('audio-espera-texto').innerHTML = `
+        El audio de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong>${dur ? ` (${dur})` : ''}
+        ya está en el equipo de la clínica. Transcribir una consulta larga puede tardar varios minutos.<br><br>
+        Cierra esta ventana y sigue trabajando: cuando el borrador llegue te avisamos y aparecerá en
+        <strong>Grabar audio</strong>.<br>
+        <span style="opacity:.75;">Enviado hace ${min} min.</span>`;
+    }
+
+    function audioSoipGuardarPendiente() {
+      try {
+        if (audioSoipPendiente) localStorage.setItem(AUDIO_SOIP_PENDIENTE_KEY, JSON.stringify(audioSoipPendiente));
+        else localStorage.removeItem(AUDIO_SOIP_PENDIENTE_KEY);
+      } catch (e) { /* modo privado / cuota — el pendiente vive en memoria igual */ }
+    }
+
+    // "Descartar y grabar de nuevo" desde el paso de espera. Deja de mirar
+    // esa transcripción, pero NO la cancela del lado del equipo de la
+    // clínica: el audio ya está allá y se va a transcribir igual (queda en
+    // la carpeta, como cualquier audio dejado a mano).
+    function descartarPendienteAudioSoip() {
+      audioSoipOlvidarPendiente();
+      audioSoipMostrarPaso('grabar');
+      renderAudioSoipGrabador();
+      lucide.createIcons();
+    }
+
+    function audioSoipOlvidarPendiente() {
+      audioSoipPendiente = null;
+      audioSoipGuardarPendiente();
+      if (audioSoipPoller) { clearInterval(audioSoipPoller); audioSoipPoller = null; }
+      actualizarBotonAudioSoip();
+    }
+
+    // Se llama al final del script del app shell: una transcripción tarda
+    // minutos y la página se puede recargar en el medio.
+    function audioSoipRestaurarPendiente() {
+      let guardado = null;
+      try { guardado = JSON.parse(localStorage.getItem(AUDIO_SOIP_PENDIENTE_KEY) || 'null'); } catch (e) { guardado = null; }
+      if (!guardado || !guardado.id) return;
+      if (Date.now() - (guardado.enviadoEn || 0) > AUDIO_SOIP_PENDIENTE_TTL_MS) {
+        try { localStorage.removeItem(AUDIO_SOIP_PENDIENTE_KEY); } catch (e) { /* nada que limpiar */ }
+        return;
+      }
+      audioSoipPendiente = guardado;
+      arrancarPollAudioSoip();
+      actualizarBotonAudioSoip();
+    }
+
+    function arrancarPollAudioSoip() {
+      if (audioSoipPoller) clearInterval(audioSoipPoller);
+      audioSoipPoller = setInterval(pollAudioSoipPendiente, AUDIO_SOIP_POLL_MS);
+      pollAudioSoipPendiente();
+    }
+
+    async function pollAudioSoipPendiente() {
+      // Sin sesión todavía (recarga en frío) no se pregunta, pero el
+      // intervalo sigue vivo y reintenta en la siguiente vuelta.
+      if (!audioSoipPendiente || audioSoipPendiente.resultado) return;
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) return;
+
+      const { data, error } = await window.supabase.from('consultas_audio')
+        .select('estado, resultado, error_mensaje').eq('id', audioSoipPendiente.id).maybeSingle();
+      if (error) { console.error('[IRIS] pollAudioSoipPendiente', error); return; }
+      if (!data) { audioSoipOlvidarPendiente(); return; }   // la fila se borró
+
+      audioSoipPendiente.estado = data.estado;
+      const abiertoEnEstePaciente = document.getElementById('audio-soip-modal').classList.contains('show')
+        && audioSoipPendiente.petKey === selectedPetKey;
+
+      if (data.estado === 'error') {
+        if (audioSoipPoller) { clearInterval(audioSoipPoller); audioSoipPoller = null; }
+        const detalle = data.error_mensaje ? escapeHtml(data.error_mensaje) : 'el equipo de la clínica no pudo procesarlo';
+        if (abiertoEnEstePaciente) {
+          document.getElementById('audio-soip-espera-error').innerHTML =
+            `<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span>No se pudo transcribir el audio: ${detalle}. El archivo quedó en la carpeta de la clínica para revisarlo a mano.</span></div>`;
+          lucide.createIcons();
+        }
+        showToast('No se pudo transcribir el audio de ' + audioSoipPendiente.petName);
+        audioSoipPendiente.resultado = null;
+        audioSoipGuardarPendiente();
+        actualizarBotonAudioSoip();
+        return;
+      }
+
+      if (data.estado === 'listo' && data.resultado && data.resultado.campos) {
+        if (audioSoipPoller) { clearInterval(audioSoipPoller); audioSoipPoller = null; }
+        audioSoipPendiente.resultado = data.resultado;
+        audioSoipGuardarPendiente();
+        actualizarBotonAudioSoip();
+        if (abiertoEnEstePaciente) {
+          audioSoipPayload = data.resultado;
+          renderAudioSoipPreview();
+        } else {
+          showToast('Borrador desde el audio listo para ' + audioSoipPendiente.petName);
+        }
+        return;
+      }
+
+      audioSoipGuardarPendiente();
+      if (abiertoEnEstePaciente) renderAudioSoipEspera();
+    }
+
+    // El botón del Tablero es el único indicador cuando el modal está
+    // cerrado: cronómetro mientras se graba, punto verde cuando el borrador
+    // volvió.
+    function actualizarBotonAudioSoip() {
+      const btn = document.getElementById('tablero-audio-btn');
+      const label = document.getElementById('tablero-audio-btn-label');
+      if (!btn || !label) return;
+      const grabando = audioSoipGrabando();
+      const listo = !!(audioSoipPendiente && audioSoipPendiente.resultado);
+      btn.classList.toggle('audio-grabando', grabando);
+      btn.classList.toggle('audio-listo', listo && !grabando);
+      if (grabando) {
+        label.textContent = (audioSoipRec.state === 'paused' ? 'Pausa ' : '● ') + audioSoipFormatTiempo(audioSoipMsGrabados());
+      } else if (audioSoipBlob) {
+        label.textContent = 'Audio sin enviar';
+      } else if (listo) {
+        label.textContent = 'Borrador listo';
+      } else if (audioSoipPendiente && audioSoipPendiente.estado === 'error') {
+        label.textContent = 'Grabar audio';
+      } else if (audioSoipPendiente) {
+        label.textContent = 'Transcribiendo…';
+      } else {
+        label.textContent = 'Grabar audio';
+      }
+    }
+
+    // Salir del Tablero suelta el micrófono sí o sí (el indicador del
+    // navegador quedaría encendido con la pantalla cerrada). Lo grabado no
+    // se pierde: queda como grabación sin enviar.
+    function detenerGrabacionAudioSoipAlSalir() {
+      if (!audioSoipGrabando()) return;
+      detenerGrabacionAudioSoip();
+      showToast('Grabación detenida — vuelve a "Grabar audio" para enviarla');
     }
 
     function onAudioSoipArchivo(input) {
@@ -13209,8 +14240,7 @@
 
       const cont = document.getElementById('audio-soip-paso-preview');
       cont.innerHTML = html;
-      document.getElementById('audio-soip-paso-archivo').style.display = 'none';
-      cont.style.display = '';
+      audioSoipMostrarPaso('preview');
       const btn = document.getElementById('audio-soip-aplicar-btn');
       btn.style.display = '';
       btn.textContent = mismatch ? `Cargar igual en la ficha de ${data.name}` : 'Cargar en el formulario';
@@ -13273,6 +14303,18 @@
         document.getElementById('tablero-soap-exam-body').classList.add('expanded');
       }
 
+      // Diagnósticos presuntivos sugeridos desde audio / LLM
+      if (c.diagnosticos_presuntivos && Array.isArray(c.diagnosticos_presuntivos) && c.diagnosticos_presuntivos.length) {
+        setDiagSelected('tablero', c.diagnosticos_presuntivos);
+        const step = document.querySelector('.tablero-step[data-tablero-step="i"]');
+        if (step) step.classList.add('filled');
+      }
+
+      // El borrador ya está en el formulario: el pendiente cumplió su
+      // función y se olvida (si no, el botón seguiría diciendo "Borrador
+      // listo" y volvería a ofrecer el mismo texto en la consulta siguiente).
+      if (audioSoipPendiente && audioSoipPendiente.resultado === d) audioSoipOlvidarPendiente();
+
       closeAudioSoipModal();
       let msg = 'Formulario precargado desde el audio — revísalo antes de finalizar';
       if (omitidos.length) msg += `. Sin cargar (marcados como no evaluados): ${omitidos.join(', ')}`;
@@ -13301,6 +14343,7 @@
       // actualizara por error ese registro viejo en vez de crear uno nuevo.
       editingConsultaContext = null;
 
+      setDiagSelected('tablero', []);
       document.getElementById('tablero-soap-fecha').value = getNowDatetimeLocalValue();
       document.getElementById('tablero-soap-motivo').value = 'Consulta general';
       ['tablero-soap-s', 'tablero-soap-o', 'tablero-soap-i', 'tablero-soap-p'].forEach(id => {
@@ -13312,7 +14355,7 @@
         el.classList.remove('field-error');
         if (step) step.classList.remove('filled');
         el.oninput = () => {
-          const lleno = el.value.trim() !== '';
+          const lleno = el.value.trim() !== '' || (id === 'tablero-soap-i' && getDiagSelected('tablero').length > 0);
           if (lleno) el.classList.remove('field-error');
           if (step) step.classList.toggle('filled', lleno);
         };
@@ -13342,10 +14385,15 @@
       // Después de .active: con la vista todavía en display:none, fijar
       // scrollTop no tiene efecto (el elemento no tiene caja que scrollear).
       resetTableroSticky();
+      // El botón de audio arrastra estado entre consultas (un borrador que
+      // volvió, una grabación sin enviar): que su rótulo lo diga desde el
+      // primer momento, no recién al abrir el modal.
+      actualizarBotonAudioSoip();
       lucide.createIcons();
     }
 
     function cerrarTableroAConsultorio() {
+      detenerGrabacionAudioSoipAlSalir();
       document.getElementById('tablero-view').classList.remove('active');
       restaurarVistaPacienteConsultorio();
       // Si se finalizó una consulta acá dentro, "Motivo última consulta"
@@ -14635,6 +15683,8 @@
         ? `<div class="info-label">Signos vitales</div><div class="info-value">${vitalsParts.join(' · ')}</div>` : '';
       const examHTML = (record.examenFisico && record.examenFisico.length)
         ? `<div class="info-label">Examen físico por sistema</div><div class="info-value">${record.examenFisico.join('<br>')}</div>` : '';
+      const diagHTML = (record.diagnosticosPresuntivos && record.diagnosticosPresuntivos.length)
+        ? `<div class="info-label">Diagnósticos presuntivos</div><div class="info-value" style="color:var(--clinic-accent);font-weight:600;">${record.diagnosticosPresuntivos.join(' · ')}</div>` : '';
       return `
         <div class="info-label">Fecha</div>
         <div class="info-value">${record.fecha}</div>
@@ -14646,7 +15696,8 @@
         <div class="info-value">${record.objetivo || '—'}</div>
         ${vitalsHTML}
         ${examHTML}
-        <div class="info-label">Interpretación (diagnóstico)</div>
+        ${diagHTML}
+        <div class="info-label">Interpretación (diagnóstico / razonamiento)</div>
         <div class="info-value">${record.interpretacion || '—'}</div>
         <div class="info-label">Plan</div>
         <div class="info-value">${record.plan || '—'}</div>
@@ -14951,15 +16002,22 @@
         if (emptyState) emptyState.style.display = 'flex';
       } else {
         if (emptyState) emptyState.style.display = 'none';
-        tbody.innerHTML = data.consultas.map(c => `
-          <tr data-consulta-row="${c.dbId}">
-            <td>${c.fecha}</td>
-            <td>${c.motivo || '—'}</td>
-            <td>${c.interpretacion ? (c.interpretacion.length > 60 ? c.interpretacion.slice(0, 60) + '…' : c.interpretacion) : '—'}</td>
-            <td>${c.usuario || '—'}</td>
-            <td style="text-align: right;">${renderRowActionsMenu('consulta', `${petKey}:${c.dbId}`)}</td>
-          </tr>
-        `).join('');
+        tbody.innerHTML = data.consultas.map(c => {
+          let diagHTML = '';
+          if (c.diagnosticosPresuntivos && c.diagnosticosPresuntivos.length) {
+            diagHTML = `<div style="font-weight:600;color:var(--clinic-accent);font-size:12px;margin-bottom:2px;">${c.diagnosticosPresuntivos.join(', ')}</div>`;
+          }
+          const interpText = c.interpretacion ? (c.interpretacion.length > 60 ? c.interpretacion.slice(0, 60) + '…' : c.interpretacion) : '—';
+          return `
+            <tr data-consulta-row="${c.dbId}">
+              <td>${c.fecha}</td>
+              <td>${c.motivo || '—'}</td>
+              <td>${diagHTML}<div style="font-size:12px;color:var(--text-1);">${interpText}</div></td>
+              <td>${c.usuario || '—'}</td>
+              <td style="text-align: right;">${renderRowActionsMenu('consulta', `${petKey}:${c.dbId}`)}</td>
+            </tr>
+          `;
+        }).join('');
       }
 
       const counter = document.querySelector('.sidebar-item[data-subtab="consultas"] .sidebar-counter');
@@ -27571,18 +28629,22 @@
       if (r.vital_pam != null) vitalsParts.push(`PAM ${r.vital_pam} mmHg`);
       const vitalsLine = vitalsParts.length ? ` (${vitalsParts.join(' · ')})` : '';
 
-      let summary = `S: ${r.subjetivo || ''}<br>O: ${r.objetivo || ''}${vitalsLine}<br>I: ${r.interpretacion || ''}<br>P: ${r.plan || ''}`;
+      const diagPresuntivos = Array.isArray(r.diagnosticos_presuntivos) ? r.diagnosticos_presuntivos : [];
+      const diagLine = diagPresuntivos.length ? `<br>Dx presuntivo: ${diagPresuntivos.join(', ')}` : '';
+      let summary = `S: ${r.subjetivo || ''}<br>O: ${r.objetivo || ''}${vitalsLine}<br>I: ${r.interpretacion || ''}${diagLine}<br>P: ${r.plan || ''}`;
       const examFindings = Array.isArray(r.examen_fisico) ? r.examen_fisico : [];
       if (examFindings.length) {
         summary += `<br>Examen físico por sistema: ${examFindings.join(' · ')}`;
       }
+
+      const titleText = (diagPresuntivos.length > 0) ? diagPresuntivos.join(', ') : (r.interpretacion || '');
 
       return {
         dbId: r.id,
         type: r.motivo || 'Consulta general',
         date: formatFechaHoraCorta(r.fecha_hora),
         dateSortKey: r.fecha_hora,
-        title: (r.interpretacion || '').length > 90 ? r.interpretacion.slice(0, 90) + '…' : (r.interpretacion || ''),
+        title: titleText.length > 90 ? titleText.slice(0, 90) + '…' : titleText,
         summary,
         vet: r.usuario || ''
       };
@@ -27601,6 +28663,7 @@
         subjetivo: r.subjetivo || '',
         objetivo: r.objetivo || '',
         interpretacion: r.interpretacion || '',
+        diagnosticosPresuntivos: Array.isArray(r.diagnosticos_presuntivos) ? r.diagnosticos_presuntivos : [],
         plan: r.plan || '',
         vitalTemp: r.vital_temp, vitalFc: r.vital_fc, vitalFr: r.vital_fr, vitalCrt: r.vital_crt,
         vitalPas: r.vital_pas, vitalPad: r.vital_pad, vitalPam: r.vital_pam,
@@ -28592,6 +29655,11 @@
         // shell, pero forzado a Perfil (Tarea 4)
         if (!activeMembership) aplicarModoSinEstablecimiento();
         else aplicarModoConEstablecimiento();
+
+        // Un audio enviado a transcribir sobrevive a la recarga de la
+        // página (tarda minutos): se retoma la consulta de su estado acá,
+        // que es la primera línea con sesión activa de verdad.
+        audioSoipRestaurarPendiente();
       } catch (err) {
         console.error('bootstrapSession() falló antes de entrar al shell —', err);
         goTo('screen-f');
@@ -28877,7 +29945,27 @@
           <div class="soap-letter">I</div>
           <div class="soap-block-body">
             <label class="soap-block-label">Interpretación <span class="soap-required">*</span></label>
-            <textarea class="soap-textarea" id="soap-i" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)"></textarea>
+
+            <!-- Diagnósticos presuntivos (uno o varios) -->
+            <div class="soap-diagnosticos-container" id="soap-diagnosticos-container">
+              <label class="input-label" style="font-weight:600;display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+                <span><i data-lucide="stethoscope" style="width:13px;height:13px;vertical-align:-2px;color:var(--clinic-accent);"></i> Diagnósticos presuntivos</span>
+                <span style="font-weight:400;font-size:11px;color:var(--text-2);">Elige uno o varios</span>
+              </label>
+              <div class="diag-multiselect-box" id="soap-diag-multiselect-box" onclick="focusDiagInput('soap')">
+                <div class="diag-chips-list" id="soap-diag-chips-list"></div>
+                <input type="text" id="soap-diag-input" class="diag-search-input" placeholder="Buscar o escribir diagnóstico presuntivo..." autocomplete="off" oninput="onDiagInputChange('soap')" onkeydown="onDiagInputKeydown(event, 'soap')" onfocus="onDiagInputFocus('soap')">
+              </div>
+              <div class="diag-dropdown" id="soap-diag-dropdown" style="display:none;"></div>
+              <div class="diag-quick-suggestions" id="soap-diag-quick-suggestions"></div>
+            </div>
+
+            <div style="margin-top:4px;">
+              <label class="input-label" for="soap-i" style="font-size:11.5px;color:var(--text-2);margin-bottom:4px;display:block;">
+                Razonamiento clínico, diagnósticos diferenciales y evolución
+              </label>
+              <textarea class="soap-textarea" id="soap-i" placeholder="Diagnóstico presuntivo o definitivo, diagnósticos diferenciales, estado del problema (activo/crónico/resuelto)..."></textarea>
+            </div>
           </div>
         </div>
 
@@ -30056,37 +31144,74 @@
     </div>
   </div>
 
-  <!-- Modal: Cargar consulta desde audio transcrito -->
-  <!-- Paso 3 del flujo audio → Whisper → LLM → formulario (ver
-       scripts/transcripcion/README.md). Mismo patrón de 2 pasos
-       (seleccionar → previsualizar → confirmar) que "Importar clientes":
-       el archivo se lee en el navegador, no se sube a ningún lado. -->
+  <!-- Modal: Grabar la consulta y precargar el SOIP -->
+  <!-- Cierra el flujo audio → Whisper → LLM → formulario (ver
+       scripts/transcripcion/README.md) sin mover archivos a mano: se graba
+       acá, el audio se sube al bucket `audios-consultas`, el PC de la
+       oficina lo baja a la carpeta "Audios Consultas" (sincronizada con
+       Drive), lo transcribe y devuelve el SOIP en consultas_audio.resultado.
+       Tres pasos excluyentes: grabar → esperar → previsualizar. -->
   <div class="modal-overlay" id="audio-soip-modal" onclick="handleAudioSoipOverlayClick(event)">
     <div class="soap-modal-card" style="width:660px;" onclick="event.stopPropagation()">
       <div class="soap-modal-header">
         <div class="soap-modal-pet">
-          <span class="soap-modal-pet-name">Cargar desde audio</span>
+          <span class="soap-modal-pet-name" id="audio-soip-modal-title">Grabar audio de la consulta</span>
           <span class="soap-modal-pet-meta" id="audio-soip-modal-pet"></span>
         </div>
         <button class="soap-modal-close" onclick="closeAudioSoipModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
       </div>
       <div class="soap-modal-body">
-        <div id="audio-soip-paso-archivo">
-          <div class="input-group">
-            <label class="input-label" for="audio-soip-file">Archivo de consulta (.json)</label>
-            <input type="file" accept=".json,application/json" id="audio-soip-file" class="input-control"
-                   style="padding:8px 12px;" onchange="onAudioSoipArchivo(this)">
-            <div style="margin-top:6px;font-size:11.5px;color:var(--text-2);">
-              Es el archivo que deja <code>extraer_soip.py</code> en la carpeta <strong>Consultas</strong>.
-              Se lee en este equipo — no se envía a ningún servidor.
+        <div id="audio-soip-paso-grabar">
+          <div class="audio-rec-zona">
+            <button class="audio-rec-btn" id="audio-rec-btn" onclick="toggleGrabacionAudioSoip()" title="Grabar / detener">
+              <i data-lucide="mic"></i>
+            </button>
+            <div class="audio-rec-tiempo" id="audio-rec-tiempo">00:00</div>
+            <div class="audio-rec-nivel" id="audio-rec-nivel" style="visibility:hidden;">
+              <div class="audio-rec-nivel-fill" id="audio-rec-nivel-fill"></div>
             </div>
+            <div class="audio-rec-estado" id="audio-rec-estado">
+              Pulsa para grabar la consulta. Deja el micrófono a 30–50 cm de quien habla.
+            </div>
+            <div class="audio-rec-acciones" id="audio-rec-acciones"></div>
+          </div>
+          <!-- Redactado para ser cierto en los tres estados de la zona
+               (sin grabar / grabando / grabación lista): el texto es fijo y
+               solo cambia el de .audio-rec-estado. -->
+          <div class="audio-rec-hint">
+            El audio se envía al equipo de la clínica, que lo transcribe y devuelve el SOIP para
+            revisar. No hace falta esperar acá: puedes cerrar esta ventana — la grabación no se
+            detiene — y te avisamos en el botón <strong>Grabar audio</strong> cuando el borrador
+            esté listo.
           </div>
           <div id="audio-soip-error"></div>
+          <!-- Escape cuando el equipo de la oficina está apagado: el .json de
+               la carpeta Consultas se sigue pudiendo cargar a mano. -->
+          <details class="audio-rec-manual">
+            <summary>¿Ya tienes el .json de la carpeta Consultas?</summary>
+            <input type="file" accept=".json,application/json" id="audio-soip-file" class="input-control"
+                   style="padding:8px 12px;" onchange="onAudioSoipArchivo(this)">
+            <div style="margin-top:6px;">Se lee en este equipo — no se envía a ningún servidor.</div>
+          </details>
+        </div>
+        <div id="audio-soip-paso-espera" style="display:none;">
+          <div class="audio-espera">
+            <div class="audio-espera-spinner"></div>
+            <div class="audio-espera-titulo" id="audio-espera-titulo">Transcribiendo la consulta…</div>
+            <div class="audio-espera-texto" id="audio-espera-texto"></div>
+            <!-- Salida del paso de espera: sin esto, un audio que se quedó
+                 colgado deja el modal bloqueado sin forma de grabar otro. -->
+            <button class="btn-secondary" onclick="descartarPendienteAudioSoip()">
+              <i data-lucide="mic" style="width:14px;height:14px;"></i> Descartar y grabar de nuevo
+            </button>
+          </div>
+          <div id="audio-soip-espera-error"></div>
         </div>
         <div id="audio-soip-paso-preview" style="display:none;"></div>
       </div>
       <div class="soap-modal-footer">
-        <button class="btn-secondary" onclick="closeAudioSoipModal()">Cancelar</button>
+        <button class="btn-secondary" id="audio-soip-cerrar-btn" onclick="closeAudioSoipModal()">Cancelar</button>
+        <button class="btn-primary" id="audio-soip-enviar-btn" onclick="enviarAudioSoip()" style="display:none;">Enviar a transcribir</button>
         <button class="btn-primary" id="audio-soip-aplicar-btn" onclick="aplicarAudioSoip()" style="display:none;">Cargar en el formulario</button>
       </div>
     </div>

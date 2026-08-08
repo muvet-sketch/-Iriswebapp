@@ -120,6 +120,10 @@ class ConsultaExtraida(BaseModel):
         description="Diagnostico presuntivo o definitivo y diferenciales. "
                     "Si en el audio no se dice ninguno, cadena vacia."
     )
+    diagnosticos_presuntivos: List[str] = Field(
+        default_factory=list,
+        description="Lista de diagnosticos presuntivos o diferenciales identificados en el audio (ej: ['Otitis externa', 'Gastroenteritis aguda'])."
+    )
     plan: str = Field(
         description="Plan terapeutico, procedimientos, proximo control, recomendaciones. "
                     "Si no se dice, cadena vacia."
@@ -342,6 +346,7 @@ def a_formato_formulario(consulta: ConsultaExtraida, payload: dict, avisos: List
             "s": consulta.subjetivo,
             "o": consulta.objetivo,
             "i": consulta.interpretacion,
+            "diagnosticos_presuntivos": consulta.diagnosticos_presuntivos,
             "p": consulta.plan,
             # null = no evaluado. guardarConsulta() los guarda como null y no
             # dejan rastro en la consulta, que es justo lo que se pidio.

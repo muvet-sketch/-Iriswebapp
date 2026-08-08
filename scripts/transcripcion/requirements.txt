@@ -7,6 +7,14 @@
 faster-whisper>=1.2.1
 watchdog>=6.0.0
 
+# Paso 1 en GPU NVIDIA (opcional; sin esto todo corre en CPU igual que antes).
+# faster-whisper NO trae los DLL de CUDA/cuDNN en Windows: con device="cuda"
+# revienta al cargar el modelo si no los encuentra. Estos dos paquetes los
+# aportan, y vigilante.py los ubica solo (ver _preparar_dlls_cuda).
+# Si el equipo ya tiene torch compilado con CUDA, esos DLL ya estan y no hace
+# falta instalar nada mas.
+#   python -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+
 # Paso 2 - extraccion del SOIP
 anthropic>=0.116.0
 pydantic>=2.0

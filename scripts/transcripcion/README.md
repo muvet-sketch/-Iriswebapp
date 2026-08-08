@@ -1,20 +1,31 @@
 # Transcripción de audios de consulta
 
-Flujo **audio → transcripción → LLM → formulario IRIS**.
+Flujo **audio → transcripción → LLM → formulario IRIS**, automático de punta a
+punta: el veterinario pulsa **Grabar audio** en el Tablero de trabajo y, cuando
+el borrador está listo, el mismo botón se lo avisa. Nadie copia archivos a mano.
 
-- **Paso 1 — `vigilante.py`**: vigila una carpeta sincronizada con Google Drive,
-  y cada audio que aparece lo limpia, lo transcribe con Whisper y deja un `.txt`
-  y un `.json`.
+- **Paso 0 — `puente_iris.py`**: baja los audios que graba la app a la carpeta
+  vigilada (que está sincronizada con Drive, así que quedan también en
+  **Audios Consultas** de Drive) y, al final del recorrido, devuelve el SOIP a
+  la app. Es el único que habla con Supabase.
+- **Paso 1 — `vigilante.py`**: vigila esa carpeta, y cada audio que aparece lo
+  limpia, lo transcribe con Whisper y deja un `.txt` y un `.json`.
 - **Paso 2 — `extraer_soip.py`**: lee esos `.json` y produce el SOIP estructurado
   (motivo, S/O/I/P, 7 signos vitales, hallazgos por sistema) listo para el
   formulario.
 - **`vocabulario_clinico.py`**: vocabulario del dominio compartido por los dos
   pasos (ver sección abajo).
 
+Los pasos 1 y 2 no saben nada de la app y siguen funcionando igual con un audio
+dejado a mano en la carpeta.
+
 ## Uso
+
+Hacen falta **las dos ventanas** abiertas en el PC de la oficina:
 
 ```bat
 iniciar_vigilante.bat
+iniciar_puente.bat
 ```
 
 O desde la terminal:
@@ -26,6 +37,10 @@ python vigilante.py --modelo small   # más rápido, menos preciso
 python vigilante.py --sin-limpiar    # sin limpieza de audio (para comparar)
 ```
 
+El modelo por defecto **no es fijo**: usa la GPU NVIDIA si el equipo tiene una
+(ver "Mediciones" abajo). Para forzarlo, `IRIS_WHISPER_DEVICE=cpu` o
+`IRIS_WHISPER_MODEL=medium`.
+
 Paso 2 (requiere `ANTHROPIC_API_KEY` en el entorno):
 
 ```bash
@@ -36,16 +51,62 @@ python extraer_soip.py --rehacer     # reprocesa todo
 ## Carpetas
 
 ```
-Audios Consultas\          <- dejar los audios acá (sincronizada con Drive)
+Audios Consultas\          <- acá aterrizan los audios (sincronizada con Drive)
   Procesados\              <- audio ya transcrito (se mueve solo)
   Transcripciones\         <- .txt y .json del paso 1
-  Consultas\               <- SOIP estructurado del paso 2  <-- ENTRADA DEL PASO 3
+  Consultas\               <- SOIP estructurado del paso 2
   Fallidos\                <- audios que reventaron, para revisar a mano
-  _estado.json             <- registro de lo procesado (no borrar)
+  _estado.json             <- registro de lo procesado por vigilante (no borrar)
+  _puente.json             <- registro de lo publicado por el puente (no borrar)
   _vigilante.log           <- historial
+  _puente.log              <- historial
 ```
 
 La ruta se cambia con la variable de entorno `IRIS_AUDIO_DIR`.
+
+## Paso 0 — el puente con la app (`puente_iris.py`)
+
+```bash
+python puente_iris.py                # ciclo continuo (cada 20 s)
+python puente_iris.py --una-vez      # una pasada y sale
+python puente_iris.py --sin-extraer  # no llama al LLM; solo mueve archivos
+```
+
+Necesita dos variables de entorno: `IRIS_SUPABASE_SERVICE_KEY` (la
+*service_role* key del proyecto) y la `ANTHROPIC_API_KEY` que ya usaba el paso
+2. La service key **salta las policies RLS** — es la única forma de que este
+equipo lea audios de cualquier usuario de la clínica. Va en una variable de
+entorno del PC, nunca en el repo, que es público.
+
+Cada vuelta hace tres cosas:
+
+1. Busca filas de `consultas_audio` en estado `subido`, baja el audio del bucket
+   `audios-consultas` a la carpeta vigilada y pasa la fila a `transcribiendo`.
+   Después borra la copia del bucket: **es solo transporte**, la copia que se
+   guarda es la de Drive.
+2. Extrae el SOIP de las transcripciones nuevas llamando a
+   `extraer_soip.procesar_archivo()`.
+3. Sube el `.json` de `Consultas\` a la fila (`resultado`, estado `listo`), que
+   es lo que el navegador está esperando.
+
+Tres decisiones que conviene no deshacer:
+
+- **El id de la consulta viaja dentro del NOMBRE del archivo**
+  (`IRIS-<uuid>__2026-08-08_canela-gomez.webm`). Es lo que permite volver a
+  asociar el `.json` final con la consulta que lo pidió, y funciona porque
+  `vigilante.py` y `extraer_soip.py` conservan el *stem* a lo largo de todo el
+  recorrido. Gracias a eso ninguno de los dos necesitó cambios. Si algún día uno
+  renombra los archivos, este puente se rompe en silencio.
+- **Solo toca lo que empieza con `IRIS-`.** Un audio dejado a mano en la carpeta
+  se sigue transcribiendo como siempre, pero el puente no le extrae el SOIP: esa
+  extracción cuesta una llamada a la API por archivo y nadie la pidió.
+- **Escribe en `.part` y renombra.** `vigilante.py` escucha `on_moved` justamente
+  porque así aparecen los archivos que baja Drive; además evita que llegue a ver
+  un archivo a medio escribir.
+
+El audio que graba el navegador es **Opus mono a 32 kbps** dentro de WebM
+(Safari da `.m4a`). Una consulta de 40 minutos pesa menos de 10 MB — el bucket
+corta en 50 MB, que son unas 3,5 horas.
 
 ## Paso 2 — extracción del SOIP
 
@@ -112,23 +173,79 @@ marca local): agregarlo a la lista que corresponda del módulo; solo si además
 se oye muy seguido en los audios, sumarlo también al final de
 `PROMPT_WHISPER` y volver a medir los tokens.
 
-## Mediciones en este equipo
+## Mediciones — el modelo por defecto depende del equipo
 
-Ryzen 5 3500U, 8 hilos, 10 GB RAM, **sin GPU**. Sobre audio real de consulta:
+El script elige solo: **`large-v3` si hay GPU NVIDIA, `medium` si no**
+(`IRIS_WHISPER_MODEL` lo fuerza, `IRIS_WHISPER_DEVICE=cpu` desactiva la GPU).
+
+### Equipo sin GPU — Ryzen 5 3500U, 8 hilos, 10 GB RAM
 
 | Configuración | Velocidad | Consulta de 38 min | Calidad |
 |---|---|---|---|
 | openai-whisper `small`, audio crudo | 0,28× | ~2,2 h | inservible |
 | faster-whisper `large-v3-turbo` | 0,19× | ~3,3 h | no mejor que medium |
 | faster-whisper `small` | 1,88× | ~20 min | aceptable |
-| **faster-whisper `medium`** | **0,94×** | **~40 min** | **elegida** |
+| **faster-whisper `medium`** | **0,94×** | **~40 min** | **elegida sin GPU** |
 
 `medium` se eligió por precisión, no por velocidad. En la misma frase:
 
 - `small` → "hace 30 días no soy contento de **los primeros dos segundos**"
 - `medium` → "hace 30 días usted contó que son **los primeros síntomas**"
 
-Como el proceso corre desatendido, la exactitud clínica vale más que terminar antes.
+### Equipo con GPU — i5-9300H, 8 GB RAM, GTX 1050 (3 GB VRAM)
+
+Todo en `int8`, sobre el mismo audio real de 18 min:
+
+| Configuración | Velocidad | Consulta de 38 min | VRAM |
+|---|---|---|---|
+| `medium` en CPU | 0,68× | ~56 min | — |
+| `medium` en GPU, `float32` | 0,91× | ~42 min | 2,9 GB |
+| **`large-v3` en GPU, beam 1** | **6,10×** | **~6 min** | **2,0 GB** |
+| `large-v3-turbo` en GPU, beam 5 | 8,23× | ~5 min | 1,1 GB |
+
+Dos cosas que sorprenden y conviene no "corregir":
+
+- **La CPU de este equipo es más lenta que la del otro** (0,68× contra 0,94×)
+  pese a ser un procesador mejor: tiene 8 GB de RAM y muy poca libre. La ganancia
+  acá viene de la GPU, no del procesador.
+- **En GPU el límite es la VRAM, y quien decide es el ancho del beam.** Con
+  `beam_size=5` `large-v3` se queda sin memoria; con `beam_size=1` corre a 6,1×.
+  Por eso `BEAM_SIZE_GPU` es 1 y `BEAM_SIZE_CPU` sigue siendo 5. Un OOM aparece
+  al *recorrer* los segmentos, no al llamar a `transcribe()`, porque el
+  generador es perezoso.
+
+`large-v3` se eligió otra vez por precisión, y la diferencia es del tipo que
+importa — sobre el mismo audio, comparado contra el `medium` del otro equipo:
+
+| Se dijo | `medium` | `large-v3` |
+|---|---|---|
+| "Ella es Samba, ¿cierto?" (nombre de la paciente) | "¿Ella de Sampa es cierto?" | "Ella es samba, ¿cierto?" |
+| "Fabuloso" (desinfectante) | "fomoroso" | "fabulosos" |
+
+Es exactamente lo que `vocabulario_clinico.py` existe para proteger: nombres
+propios y de producto. Como el proceso corre desatendido, la exactitud clínica
+vale más que terminar antes — el criterio no cambió, cambió lo que alcanza.
+
+### Si la GPU se queda sin memoria
+
+No se pierde el audio: `_plan_de_intentos()` baja un escalón y reintenta —
+`large-v3` en GPU → `large-v3-turbo` en GPU (un tercio de VRAM) → `medium` en
+CPU. El modelo que **realmente** produjo el texto queda en el `.json`
+(`modelo`/`dispositivo`/`beam_size`) y en `_estado.json`, así que nunca hay que
+adivinar con qué se transcribió. Verificado forzando el OOM con
+`IRIS_BEAM_SIZE_GPU=5`.
+
+### Requisito de la GPU en Windows
+
+`faster-whisper` no trae los DLL de CUDA/cuDNN. Los aporta `torch` compilado con
+CUDA si ya está instalado, o si no:
+
+```bash
+python -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+
+`_preparar_dlls_cuda()` los ubica solo. Sin ellos el script no falla: detecta que
+no hay GPU utilizable y sigue en CPU.
 
 ## Por qué el script hace lo que hace
 
@@ -162,9 +279,16 @@ Tres decisiones que no son obvias y que conviene no deshacer:
 ## Lo que más mejoraría el resultado
 
 **Acercar el micrófono.** Ningún modelo compensa un audio grabado a dos metros.
-Un celular a 30-50 cm de quien habla, o un micrófono de solapa de USD 15, mejora
+Un equipo a 30-50 cm de quien habla, o un micrófono de solapa de USD 15, mejora
 la transcripción más que saltar de `medium` a `large`. Los errores que quedan hoy
 son de audio, no de modelo.
 
-Conviene además nombrar los audios de forma consistente, por ejemplo
-`2026-08-07_Canela_Gomez.m4a`, para poder cruzarlos con el paciente después.
+Por eso el grabador del Tablero muestra un **medidor de nivel** mientras graba:
+es lo único que avisa —antes de grabar 40 minutos inservibles— que el micrófono
+está demasiado lejos. Si la barra casi no se mueve mientras alguien habla, hay
+que acercar el equipo.
+
+El nombre del archivo ya no hay que cuidarlo: lo arma la app
+(`IRIS-<uuid>__2026-08-08_canela-gomez.webm`), y trae la fecha y el paciente
+además del id. Solo aplica al que se deje a mano en la carpeta, donde sigue
+conviniendo algo como `2026-08-07_Canela_Gomez.m4a`.

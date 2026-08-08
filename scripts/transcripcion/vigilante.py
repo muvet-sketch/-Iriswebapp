@@ -7,7 +7,7 @@ Que hace:
   1. Vigila la carpeta de audios y detecta archivos nuevos (incluidos los que baja Drive).
   2. Espera a que el archivo termine de sincronizar (tamano estable), no un sleep fijo.
   3. LIMPIA el audio con ffmpeg (mono 16 kHz, filtro de ruido, normalizacion de volumen).
-  4. Transcribe con faster-whisper en espanol.
+  4. Transcribe con faster-whisper en espanol, en GPU NVIDIA si hay una y si no en CPU.
   5. Escribe <nombre>.txt y <nombre>.json en Transcripciones/ y mueve el audio a Procesados/.
   6. Lleva un registro en _estado.json para no repetir trabajo si se reinicia.
 
@@ -18,13 +18,19 @@ Uso:
     python vigilante.py --sin-limpiar    # salta la limpieza de audio (para comparar)
 
 Config por variables de entorno (opcional):
-    IRIS_AUDIO_DIR      carpeta vigilada
-    IRIS_WHISPER_MODEL  tiny | base | small | medium | large-v3-turbo
+    IRIS_AUDIO_DIR       carpeta vigilada
+    IRIS_WHISPER_MODEL   tiny | base | small | medium | large-v3-turbo | large-v3
+                         (por defecto large-v3 con GPU, medium sin GPU)
+    IRIS_WHISPER_DEVICE  auto (por defecto) | cuda | cpu
 
 Requisitos: faster-whisper, watchdog, ffmpeg en el PATH.
+Para usar GPU en Windows hacen falta ademas los DLL de CUDA/cuDNN, que
+faster-whisper NO trae: los aportan torch con CUDA o los paquetes
+nvidia-cublas-cu12 / nvidia-cudnn-cu12 (ver _preparar_dlls_cuda).
 """
 
 import argparse
+import gc
 import json
 import logging
 import os
@@ -57,18 +63,49 @@ CARPETA_FALLIDOS = CARPETA_VIGILADA / "Fallidos"
 ARCHIVO_ESTADO = CARPETA_VIGILADA / "_estado.json"
 ARCHIVO_LOG = CARPETA_VIGILADA / "_vigilante.log"
 
-# Medido en este equipo (Ryzen 5 3500U, 8 hilos, sin GPU) sobre audio real de consulta:
-#   small           1.88x tiempo real   (38 min de audio -> ~20 min)
-#   medium          0.94x tiempo real   (38 min de audio -> ~40 min)  <- elegido
-#   large-v3-turbo  0.19x tiempo real   (38 min de audio -> ~3 horas)
-# 'medium' se eligio por precision, no por velocidad: en la misma frase 'small'
-# entendio "los primeros dos segundos" donde 'medium' entendio "los primeros
-# sintomas". Como esto corre desatendido, la exactitud clinica vale mas que
-# terminar antes. 'turbo' es inviable: 10x mas lento sin mejor texto.
-MODELO_WHISPER = os.environ.get("IRIS_WHISPER_MODEL", "medium")
+# El modelo por defecto DEPENDE del equipo, porque el que conviene en CPU y el
+# que conviene en GPU no son el mismo (medido sobre el mismo audio real de
+# consulta, ver la tabla del README):
+#
+#   Sin GPU (Ryzen 5 3500U, 8 hilos)     medium         0.94x   <- por defecto
+#   Con GPU (GTX 1050 3 GB)              large-v3       6.10x   <- por defecto
+#
+# En CPU 'medium' se eligio por precision: 'small' entendio "los primeros dos
+# segundos" donde 'medium' entendio "los primeros sintomas", y large-v3-turbo
+# era inviable (0.19x). Con GPU el calculo cambia por completo: alcanza para el
+# modelo COMPLETO large-v3, que sobre el mismo audio acerto el nombre de la
+# paciente ("Ella es samba") y el producto real ("fabulosos") donde medium
+# entendio "¿Ella de Sampa es cierto?" y "fomoroso". Sigue valiendo el criterio
+# de siempre: esto corre desatendido, la exactitud clinica vale mas que terminar
+# antes.
+DISPOSITIVO_WHISPER = os.environ.get("IRIS_WHISPER_DEVICE", "auto")  # auto | cuda | cpu
 HILOS_CPU = int(os.environ.get("IRIS_CPU_THREADS", os.cpu_count() or 4))
 
-EXTENSIONES_AUDIO = {".mp3", ".wav", ".m4a", ".ogg", ".opus", ".flac", ".aac", ".wma", ".mp4"}
+MODELO_POR_DEFECTO_GPU = "large-v3"
+MODELO_POR_DEFECTO_CPU = "medium"
+# Modelo de respaldo en GPU: 4 capas de decoder contra las 32 de large-v3, asi
+# que necesita la TERCERA parte de VRAM (1.1 GB contra 2.0 GB) y va aun mas
+# rapido (8.2x). Es a donde se cae si large-v3 no entra (ver transcribir()).
+MODELO_RESPALDO_GPU = "large-v3-turbo"
+
+# En una GPU de 3 GB el ancho del beam es lo que decide si large-v3 entra o no:
+# con beam 5 revienta por falta de VRAM y con beam 1 corre a 6.1x. En CPU no hay
+# esa restriccion y se mantiene el beam 5 de siempre.
+BEAM_SIZE_GPU = int(os.environ.get("IRIS_BEAM_SIZE_GPU", "1"))
+BEAM_SIZE_CPU = int(os.environ.get("IRIS_BEAM_SIZE_CPU", "5"))
+
+# El asignador asincrono de CUDA fragmenta mucho menos la VRAM, que es
+# justamente el recurso escaso aca. Se fija antes de que se importe ctranslate2
+# (lo lee al cargarse) y se puede desactivar con IRIS_CUDA_ALLOCATOR=default.
+_ASIGNADOR_CUDA = os.environ.get("IRIS_CUDA_ALLOCATOR", "cuda_malloc_async")
+if _ASIGNADOR_CUDA != "default":
+    os.environ.setdefault("CT2_CUDA_ALLOCATOR", _ASIGNADOR_CUDA)
+
+# .webm es lo que graba el navegador desde el Tablero de trabajo (Opus dentro
+# de WebM; Safari da .m4a y Firefox puede dar .ogg). ffmpeg los lee sin nada
+# extra, pero sin la extension en esta lista el vigilante los ignoraba.
+EXTENSIONES_AUDIO = {".mp3", ".wav", ".m4a", ".ogg", ".opus", ".flac", ".aac",
+                     ".wma", ".mp4", ".webm"}
 
 # Carpetas temporales de Drive para escritorio: nunca mirar adentro.
 CARPETAS_IGNORADAS = {".tmp.drivedownload", ".tmp.driveupload", "Procesados",
@@ -253,23 +290,142 @@ def limpiar_audio(origen: Path, destino: Path) -> bool:
 
 _modelo = None
 _modelo_nombre = None
+_modelo_dispositivo = None
 
 
-def obtener_modelo(nombre):
-    global _modelo, _modelo_nombre
-    if _modelo is None or _modelo_nombre != nombre:
-        log.info("Cargando modelo '%s' (la primera vez lo descarga)...", nombre)
+def _preparar_dlls_cuda():
+    """
+    ctranslate2 en Windows NO trae los DLL de CUDA/cuDNN: con device='cuda'
+    revienta al cargar el modelo si no los encuentra. Los toma prestados de
+    paquetes pip que si los incluyen: torch con CUDA (torch/lib) o los
+    paquetes nvidia-cublas-cu12 / nvidia-cudnn-cu12 (nvidia/*/bin).
+    Registrar un directorio que no aplica es inocuo, por eso se agregan todos
+    los que existan.
+    """
+    if os.name != "nt":
+        return
+    import importlib.util
+    candidatos = []
+    spec = importlib.util.find_spec("torch")
+    if spec and spec.submodule_search_locations:
+        candidatos.append(Path(list(spec.submodule_search_locations)[0]) / "lib")
+    for paquete in ("nvidia.cublas", "nvidia.cudnn"):
+        try:
+            spec = importlib.util.find_spec(paquete)
+        except ModuleNotFoundError:
+            spec = None
+        if spec and spec.submodule_search_locations:
+            candidatos.append(Path(list(spec.submodule_search_locations)[0]) / "bin")
+    for carpeta in candidatos:
+        if carpeta.is_dir():
+            os.add_dll_directory(str(carpeta))
+
+
+def _hay_gpu_utilizable() -> bool:
+    try:
+        _preparar_dlls_cuda()
+        import ctranslate2
+        return ctranslate2.get_cuda_device_count() > 0
+    except Exception as e:
+        log.info("GPU no utilizable (%s). Se usa CPU.", e)
+        return False
+
+
+_hay_gpu_cache = None
+
+
+def dispositivo_disponible() -> str:
+    """'cuda' o 'cpu' segun IRIS_WHISPER_DEVICE y lo que haya en el equipo."""
+    global _hay_gpu_cache
+    if DISPOSITIVO_WHISPER == "cpu":
+        return "cpu"
+    if DISPOSITIVO_WHISPER == "cuda":
+        return "cuda"
+    if _hay_gpu_cache is None:
+        _hay_gpu_cache = _hay_gpu_utilizable()
+    return "cuda" if _hay_gpu_cache else "cpu"
+
+
+def modelo_por_defecto(dispositivo: str) -> str:
+    return MODELO_POR_DEFECTO_GPU if dispositivo == "cuda" else MODELO_POR_DEFECTO_CPU
+
+
+def beam_size_para(dispositivo: str) -> int:
+    return BEAM_SIZE_GPU if dispositivo == "cuda" else BEAM_SIZE_CPU
+
+
+def obtener_modelo(nombre, dispositivo):
+    global _modelo, _modelo_nombre, _modelo_dispositivo
+    if _modelo is None or _modelo_nombre != nombre or _modelo_dispositivo != dispositivo:
+        # Soltar el modelo viejo ANTES de cargar el nuevo: si no, durante un
+        # instante conviven los dos en VRAM y el respaldo tambien se queda sin
+        # memoria, que es justo el caso en el que se lo llama.
+        _modelo = None
+        _modelo_nombre = None
+        _modelo_dispositivo = None
+        gc.collect()
+
+        log.info("Cargando modelo '%s' en %s (la primera vez lo descarga)...", nombre, dispositivo)
         from faster_whisper import WhisperModel  # import tardio: --help responde al instante
         t0 = time.time()
-        # int8 en CPU: ~6x mas rapido que openai-whisper y usa mucha menos RAM.
-        _modelo = WhisperModel(nombre, device="cpu", compute_type="int8", cpu_threads=HILOS_CPU)
+        if dispositivo == "cuda":
+            _preparar_dlls_cuda()
+        # int8 sirve en ambos: en CPU es ~6x mas rapido que openai-whisper con
+        # mucha menos RAM; en GPU Pascal (GTX 1050) es ademas el unico tipo
+        # reducido disponible (float16 no tiene soporte eficiente en esa
+        # generacion, y float32 no deja VRAM para el decoder).
+        _modelo = WhisperModel(nombre, device=dispositivo, compute_type="int8",
+                               cpu_threads=HILOS_CPU)
         _modelo_nombre = nombre
-        log.info("Modelo cargado en %.1f s.", time.time() - t0)
+        _modelo_dispositivo = dispositivo
+        log.info("Modelo cargado en %.1f s (%s).", time.time() - t0, dispositivo)
     return _modelo
 
 
-def transcribir(ruta: Path, nombre_modelo: str) -> dict:
-    modelo = obtener_modelo(nombre_modelo)
+def _es_falta_de_memoria(e: Exception) -> bool:
+    return "out of memory" in str(e).lower()
+
+
+def _plan_de_intentos(nombre_modelo: str, dispositivo: str):
+    """
+    Que probar, en orden, si la GPU se queda sin VRAM.
+
+    En una GPU chica el margen es real: large-v3 carga en 2.0 de los 3.0 GB y
+    el decoder puede no entrar segun el audio. Antes de rendirse y mandar el
+    audio a Fallidos conviene bajar un escalon, porque cualquiera de los dos
+    respaldos da mejor texto que no tener transcripcion:
+      1. el modelo pedido en GPU
+      2. large-v3-turbo en GPU  (un tercio de la VRAM, y mas rapido)
+      3. el modelo de CPU       (lento pero no depende de la VRAM)
+    """
+    intentos = [(nombre_modelo, dispositivo)]
+    if dispositivo == "cuda":
+        if nombre_modelo != MODELO_RESPALDO_GPU:
+            intentos.append((MODELO_RESPALDO_GPU, "cuda"))
+        intentos.append((MODELO_POR_DEFECTO_CPU, "cpu"))
+    return intentos
+
+
+def transcribir(ruta: Path, nombre_modelo: str, dispositivo: str = None) -> dict:
+    if dispositivo is None:
+        dispositivo = dispositivo_disponible()
+
+    intentos = _plan_de_intentos(nombre_modelo, dispositivo)
+    for indice, (nombre, disp) in enumerate(intentos):
+        try:
+            return _transcribir_con(ruta, nombre, disp)
+        except Exception as e:
+            ultimo = indice == len(intentos) - 1
+            if ultimo or not _es_falta_de_memoria(e):
+                raise
+            siguiente = intentos[indice + 1]
+            log.warning("Sin memoria con '%s' en %s. Reintento con '%s' en %s.",
+                        nombre, disp, siguiente[0], siguiente[1])
+
+
+def _transcribir_con(ruta: Path, nombre_modelo: str, dispositivo: str) -> dict:
+    modelo = obtener_modelo(nombre_modelo, dispositivo)
+    beam = beam_size_para(dispositivo)
     t0 = time.time()
     segmentos_gen, info = modelo.transcribe(
         str(ruta),
@@ -279,15 +435,19 @@ def transcribir(ruta: Path, nombre_modelo: str) -> dict:
         # alucine en los tramos mudos (el clasico "y y y y y y" repetido).
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=500),
-        beam_size=5,
+        beam_size=beam,
         condition_on_previous_text=False,  # un error no se propaga al resto
     )
-    # transcribe() devuelve un generador perezoso: el trabajo ocurre al recorrerlo.
+    # transcribe() devuelve un generador perezoso: el trabajo ocurre al recorrerlo,
+    # asi que un error de VRAM aparece ACA y no en la llamada de arriba.
     segmentos = [
         {"inicio": round(s.start, 2), "fin": round(s.end, 2), "texto": s.text.strip()}
         for s in segmentos_gen
     ]
     return {
+        "modelo": nombre_modelo,
+        "dispositivo": dispositivo,
+        "beam_size": beam,
         "texto": " ".join(s["texto"] for s in segmentos).strip(),
         "segmentos": segmentos,
         "idioma": info.language,
@@ -357,7 +517,12 @@ def procesar_audio(ruta: Path, estado: dict, nombre_modelo: str, limpiar: bool =
     payload = {
         "archivo_audio": ruta.name,
         "transcrito_en": datetime.now().isoformat(timespec="seconds"),
-        "modelo": nombre_modelo,
+        # El modelo REAL, que puede no ser el pedido si hubo que bajar un
+        # escalon por VRAM (ver _plan_de_intentos): quien lea la transcripcion
+        # tiene que poder saber con que se produjo.
+        "modelo": resultado["modelo"],
+        "dispositivo": resultado["dispositivo"],
+        "beam_size": resultado["beam_size"],
         "audio_limpiado": temporal is not None or (limpiar and fuente is not ruta),
         "idioma": resultado["idioma"],
         "duracion_audio_seg": resultado["duracion_audio_seg"],
@@ -370,8 +535,9 @@ def procesar_audio(ruta: Path, estado: dict, nombre_modelo: str, limpiar: bool =
 
     dur_audio = resultado["duracion_audio_seg"] or 0
     dur_proc = resultado["duracion_proceso_seg"] or 1
-    log.info("Listo: %.0f s de audio en %.0f s (%.2fx tiempo real) -> %s [%d caracteres, %d segmentos]",
-             dur_audio, dur_proc, dur_audio / dur_proc, ruta_txt.name,
+    log.info("Listo: %.0f s de audio en %.0f s (%.2fx tiempo real, %s/%s) -> %s [%d caracteres, %d segmentos]",
+             dur_audio, dur_proc, dur_audio / dur_proc,
+             resultado["modelo"], resultado["dispositivo"], ruta_txt.name,
              len(texto), len(resultado["segmentos"]))
 
     vista = texto[:300] + ("..." if len(texto) > 300 else "")
@@ -391,7 +557,7 @@ def procesar_audio(ruta: Path, estado: dict, nombre_modelo: str, limpiar: bool =
     estado["procesados"][clave] = {
         "fecha": datetime.now().isoformat(timespec="seconds"),
         "transcripcion": ruta_txt.name,
-        "modelo": nombre_modelo,
+        "modelo": resultado["modelo"],
     }
     guardar_estado(estado)
 
@@ -484,8 +650,11 @@ class VigiaAudios(FileSystemEventHandler):
 
 def main():
     parser = argparse.ArgumentParser(description="Vigilante de audios -> Whisper")
-    parser.add_argument("--modelo", default=MODELO_WHISPER,
-                        help="tiny | base | small | medium | large-v3-turbo")
+    # Sin --modelo el valor NO se puede fijar aca: depende de si hay GPU, y eso
+    # se averigua recien al arrancar (ver modelo_por_defecto()).
+    parser.add_argument("--modelo", default=os.environ.get("IRIS_WHISPER_MODEL"),
+                        help="tiny | base | small | medium | large-v3-turbo | large-v3 "
+                             "(por defecto: large-v3 con GPU, medium sin GPU)")
     parser.add_argument("--una-vez", action="store_true",
                         help="Procesa lo pendiente y sale, sin quedarse vigilando")
     parser.add_argument("--sin-limpiar", action="store_true",
@@ -498,17 +667,22 @@ def main():
     for carpeta in (CARPETA_VIGILADA, CARPETA_PROCESADOS, CARPETA_TRANSCRIPCIONES):
         carpeta.mkdir(parents=True, exist_ok=True)
 
+    dispositivo = dispositivo_disponible()
+    modelo = args.modelo or modelo_por_defecto(dispositivo)
+
     log.info("=" * 64)
     log.info("Carpeta vigilada : %s", CARPETA_VIGILADA)
     log.info("Transcripciones  : %s", CARPETA_TRANSCRIPCIONES)
-    log.info("Modelo           : %s  (%d hilos, int8)", args.modelo, HILOS_CPU)
+    log.info("Dispositivo      : %s%s", dispositivo,
+             "  (GPU NVIDIA)" if dispositivo == "cuda" else f"  ({HILOS_CPU} hilos)")
+    log.info("Modelo           : %s  (int8, beam %d)", modelo, beam_size_para(dispositivo))
     log.info("Limpieza de audio: %s", "si" if limpiar else "NO")
     log.info("=" * 64)
 
     estado = cargar_estado()
 
     # Un solo hilo transcribe, siempre. Todo lo demas solo encola.
-    hilo = threading.Thread(target=trabajador, args=(estado, args.modelo, limpiar), daemon=True)
+    hilo = threading.Thread(target=trabajador, args=(estado, modelo, limpiar), daemon=True)
     hilo.start()
 
     log.info("Barriendo pendientes...")

@@ -547,6 +547,74 @@ cierra el script") en vez del literal `</script>`.
     `oninput` que ya fijaba `abrirTableroTrabajo()` para limpiar
     `field-error` — un solo handler por textarea, no agregues otro.
 
+## Grabar audio de la consulta → SOIP (botón "Grabar audio" del Tablero)
+Flujo completo: el Tablero graba con el micrófono del equipo, el audio va a
+Supabase, el PC de la oficina lo transcribe y devuelve el SOIP para
+precargar el formulario. El pipeline de transcripción vive en
+`scripts/transcripcion/` (README propio ahí) y el paso 3 —el navegador— en
+el bloque "Grabar la consulta y precargar el SOIP" de `index.html`.
+Antes el botón se llamaba "Desde audio" y pedía a mano el `.json` que dejaba
+`extraer_soip.py`; eso sobrevive solo como escape dentro de un `<details>`
+del modal, para cuando el equipo de la oficina está apagado.
+
+- **Recorrido del audio, y por qué es así.** `MediaRecorder` (Opus mono a
+  32 kbps) → bucket privado `audios-consultas` + fila en `consultas_audio`
+  con estado `subido` → `puente_iris.py` la baja a la carpeta
+  `Audios Consultas`, **que está sincronizada con Drive**, así que el audio
+  queda en Drive sin que nadie suba nada → `vigilante.py` la transcribe →
+  `extraer_soip.py` extrae el SOIP → el puente escribe ese `.json` en
+  `consultas_audio.resultado` con estado `listo` → el navegador, que
+  consulta la fila cada 15 s, pinta la previsualización de siempre.
+  No se usó la API de Drive desde el navegador a propósito: exigiría OAuth
+  de Google en una app cuya sesión es de Supabase, y el archivo termina en
+  Drive igual por la carpeta sincronizada.
+- **El id de la fila viaja DENTRO del nombre del archivo**
+  (`IRIS-<uuid>__2026-08-08_canela-gomez.webm`, lo arma
+  `audioSoipNombreArchivo()`). Es lo que permite reasociar el `.json` final
+  con la consulta que lo pidió, y funciona porque `vigilante.py` y
+  `extraer_soip.py` conservan el *stem* de punta a punta — por eso ninguno
+  de los dos necesitó cambios. Si algún día uno de ellos renombra archivos,
+  esto se rompe en silencio.
+- **El bucket es solo transporte.** El puente borra el objeto apenas lo
+  baja: la copia que se guarda es la de Drive, y el plan free tiene poco
+  espacio. Por eso tampoco hay política de retención en Supabase.
+- **Cerrar el modal NO detiene nada** — ni la grabación ni la
+  transcripción. El caso real es grabar la consulta entera mientras se
+  escribe el SOIP a mano, con el modal cerrado. El único indicador en ese
+  rato es el botón (`actualizarBotonAudioSoip()`): cronómetro mientras
+  graba, "Transcribiendo…", punto verde cuando el borrador volvió. Salir
+  del Tablero sí detiene la grabación (`detenerGrabacionAudioSoipAlSalir()`
+  desde `cerrarTableroAConsultorio()`) porque hay que soltar el
+  `MediaStream`: si no, el indicador de micrófono del navegador se queda
+  encendido con la pantalla cerrada.
+- **El pendiente sobrevive a la recarga de la página** (`localStorage`,
+  `audioSoipRestaurarPendiente()` llamada al final de `bootstrapSession()`):
+  transcribir una consulta larga tarda minutos y nadie se queda quieto
+  mirando. Caduca a las 8 h — si el PC de la oficina estuvo apagado toda la
+  noche, arrastrar ese borrador solo confunde.
+- **Un pendiente de OTRO paciente no se abre en la ficha actual.** Cargar
+  el SOIP de una mascota en la historia de otra es el error más caro de
+  todo este flujo; `openAudioSoipModal()` compara `petKey` y, si no
+  coincide, muestra el grabador con un aviso. El guard por nombre que ya
+  tenía `renderAudioSoipPreview()` (el audio menciona a otra mascota) sigue
+  igual y es independiente de este.
+- Lo que este bloque **no** hace no cambió: solo PRECARGA los campos. No
+  guarda, no finaliza y no toca `consultas`. Un LLM no cierra una historia
+  clínica.
+- El medidor de nivel (`.audio-rec-nivel`) no es decorado: el problema
+  medido nº 1 de los audios reales es el micrófono lejos (ver "Lo que más
+  mejoraría el resultado" en el README del pipeline), y ver la barra es lo
+  único que avisa antes de grabar 40 minutos inservibles.
+- `vigilante.py` tuvo que sumar `.webm` a `EXTENSIONES_AUDIO`: es lo que
+  graba Chrome/Edge. Safari da `.m4a` y Firefox puede dar `.ogg`, los tres
+  ya estaban o se agregaron.
+- **`consultas_audio` NO está en `RESPALDO_TABLAS`, y es a propósito** (no
+  es el olvido contra el que avisa la sección de RESPALDOS). Es un buzón de
+  trabajo: sus filas se consumen en minutos y lo que importa —el SOIP— o
+  ya está en `consultas` porque el veterinario lo cargó y finalizó, o
+  todavía no existe. Respaldar la fila sin el audio (que se borra del
+  bucket y vive en Drive) no permitiría reconstruir nada.
+
 ## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·
 Desparasitaciones · Hospitalizaciones/ambulatorios ·
