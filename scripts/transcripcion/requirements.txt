@@ -1,0 +1,12 @@
+# Transcripcion de audios de consulta.
+# Requiere ademas ffmpeg en el PATH (https://www.gyan.dev/ffmpeg/builds/).
+#
+# Instalar:  python -m pip install -r requirements.txt
+
+# Paso 1 - transcripcion
+faster-whisper>=1.2.1
+watchdog>=6.0.0
+
+# Paso 2 - extraccion del SOIP
+anthropic>=0.116.0
+pydantic>=2.0

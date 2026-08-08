@@ -9,3 +9,7 @@ iris-respaldo-*.zip
 iris-respaldo-*.zip.gpg
 respaldos-iris/
 *.dump
+
+# Python (scripts/transcripcion)
+__pycache__/
+*.py[cod]

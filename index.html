@@ -2860,6 +2860,60 @@
        abrir el Tablero (resetVitalesNoEvaluados()) y nunca se persiste. */
     .tablero-vital-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
     .tablero-vital-head .tablero-vital-label { min-width: 0; }
+    /* Previsualización del modal "Cargar desde audio" (paso 3 del flujo de
+       transcripción). Solo colores de la paleta — nada hardcodeado, y los
+       derivados con rgba(var(--clinic-accent-rgb), α) como el resto. */
+    .audio-soip-alert {
+      display: flex; gap: 8px; align-items: flex-start;
+      padding: 9px 11px; border-radius: 8px; margin-bottom: 10px;
+      font-size: 12.5px; line-height: 1.45;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-1);
+    }
+    .audio-soip-alert i { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+    .audio-soip-alert.danger {
+      border-color: var(--danger); color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 8%, transparent);
+    }
+    .audio-soip-alert.warn {
+      border-color: var(--warning); color: var(--text-1);
+      background: color-mix(in srgb, var(--warning) 10%, transparent);
+    }
+    .audio-soip-alert.info {
+      border-color: var(--clinic-accent);
+      background: rgba(var(--clinic-accent-rgb), 0.07);
+    }
+    .audio-soip-meta {
+      display: flex; flex-wrap: wrap; gap: 14px;
+      padding: 8px 0 12px; margin-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px; color: var(--text-2);
+    }
+    .audio-soip-campo { margin-bottom: 13px; }
+    .audio-soip-campo-label {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .04em; color: var(--text-2); margin-bottom: 4px;
+    }
+    .audio-soip-campo-valor {
+      font-size: 12.5px; line-height: 1.5; color: var(--text-1);
+      white-space: pre-wrap; max-height: 132px; overflow-y: auto;
+      padding: 7px 9px; border-radius: 6px; background: var(--surface);
+      border: 1px solid var(--border);
+    }
+    .audio-soip-campo-valor.vacio { color: var(--text-2); font-style: italic; }
+    /* table-layout:fixed para que los anchos en % manden: sin él las tres
+       columnas se reparten por contenido y la cita queda en 2 caracteres. */
+    .audio-soip-vitales { width: 100%; border-collapse: collapse; font-size: 12.5px; table-layout: fixed; }
+    .audio-soip-vitales td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
+    .audio-soip-vitales td:nth-child(1) { color: var(--text-2); width: 28%; }
+    .audio-soip-vitales td:nth-child(2) { width: 20%; }
+    /* La cita del audio es la prueba de que el número no se inventó, así que
+       necesita ancho de verdad; el texto completo va en el title=. */
+    .audio-soip-vitales td.cita {
+      width: 52%; color: var(--text-2); font-style: italic;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .audio-soip-nota { margin-top: 6px; font-size: 11.5px; color: var(--text-2); }
+
     .tablero-vital-ne { position: relative; flex-shrink: 0; }
     /* El .mini-toggle-input base es display:none (no enfocable). Acá se
        vuelve una capa transparente encima del track para que el switch
@@ -6107,6 +6161,12 @@
                    (ver toggleTableroHeroExpandido()). -->
               <button class="btn-outline tablero-hero-toggle" id="tablero-hero-toggle" onclick="toggleTableroHeroExpandido()" title="Mostrar/ocultar la ficha completa del paciente">
                 <i data-lucide="chevrons-up-down" style="width:14px;height:14px;"></i> <span id="tablero-hero-toggle-label">Ficha completa</span>
+              </button>
+              <!-- Precarga el SOIP a partir del audio ya transcrito de la
+                   consulta (ver scripts/transcripcion/). Solo rellena los
+                   campos: guardar sigue siendo "Finalizar consulta". -->
+              <button class="btn-outline accent-create-btn" id="tablero-audio-btn" onclick="openAudioSoipModal()" title="Precargar el SOIP desde el audio transcrito de la consulta">
+                <i data-lucide="mic" style="width:14px;height:14px;"></i> Desde audio
               </button>
               <button class="btn-primary" id="tablero-soap-guardar-btn" onclick="intentarFinalizarConsulta()">
                 <i data-lucide="check-circle-2" style="width:14px;height:14px;"></i> Finalizar consulta
@@ -12953,6 +13013,270 @@
         const input = document.getElementById(range.getAttribute('data-vital-for'));
         if (input) input.oninput = () => syncVitalSliderDesdeInput(input);
       });
+    }
+
+    // ── Cargar el SOIP desde un audio ya transcrito ────────────────────
+    // Cierra el flujo audio → Whisper → LLM → formulario; todo el pipeline
+    // previo vive en scripts/transcripcion/ (README.md ahí).
+    //
+    // Este bloque SOLO PRECARGA los campos del Tablero. No guarda, no
+    // finaliza y no toca Supabase: la consulta la revisa y la firma el
+    // veterinario con "Finalizar consulta", igual que si la hubiera escrito
+    // a mano. Un LLM no cierra una historia clínica.
+    //
+    // El .json se lee con FileReader en el navegador — no se sube a ningún
+    // servidor, que es lo que corresponde con audio clínico de pacientes
+    // reales.
+    let audioSoipPayload = null;
+
+    function audioSoipNormalizarNombre(s) {
+      return (s || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+
+    function openAudioSoipModal() {
+      if (!selectedPetKey || !patientData[selectedPetKey]) {
+        showToast('Abre primero la consulta de un paciente');
+        return;
+      }
+      audioSoipPayload = null;
+      document.getElementById('audio-soip-file').value = '';
+      document.getElementById('audio-soip-paso-archivo').style.display = '';
+      document.getElementById('audio-soip-paso-preview').style.display = 'none';
+      document.getElementById('audio-soip-paso-preview').innerHTML = '';
+      document.getElementById('audio-soip-aplicar-btn').style.display = 'none';
+      document.getElementById('audio-soip-error').innerHTML = '';
+      document.getElementById('audio-soip-modal-pet').textContent = patientData[selectedPetKey].name;
+      document.getElementById('audio-soip-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeAudioSoipModal() {
+      document.getElementById('audio-soip-modal').classList.remove('show');
+      audioSoipPayload = null;
+    }
+
+    function handleAudioSoipOverlayClick(e) {
+      if (e.target === document.getElementById('audio-soip-modal')) closeAudioSoipModal();
+    }
+
+    function audioSoipError(msg) {
+      document.getElementById('audio-soip-error').innerHTML =
+        `<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span>${msg}</span></div>`;
+      lucide.createIcons();
+    }
+
+    function onAudioSoipArchivo(input) {
+      document.getElementById('audio-soip-error').innerHTML = '';
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onerror = () => audioSoipError('No se pudo leer el archivo.');
+      reader.onload = () => {
+        let datos;
+        try {
+          datos = JSON.parse(reader.result);
+        } catch (err) {
+          audioSoipError('Ese archivo no es un JSON válido. Elige el .json de la carpeta <strong>Consultas</strong>, no el de Transcripciones.');
+          return;
+        }
+        if (!datos || typeof datos !== 'object' || !datos.campos || typeof datos.campos !== 'object') {
+          audioSoipError('El archivo no tiene la estructura esperada (falta <code>campos</code>). ¿Es el .json de <strong>Consultas</strong>?');
+          return;
+        }
+        audioSoipPayload = datos;
+        renderAudioSoipPreview();
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    // Vitales del payload → ids del Tablero. Las claves son las mismas que
+    // escribe extraer_soip.py y los ids son los de guardarConsulta('tablero-soap-'),
+    // así que este mapa es el contrato entre el script y el formulario.
+    const AUDIO_SOIP_VITALES = [
+      { key: 'vital-temp', label: 'Temperatura', unidad: '°C' },
+      { key: 'vital-fc', label: 'Frec. cardíaca', unidad: 'lpm' },
+      { key: 'vital-fr', label: 'Frec. respiratoria', unidad: 'rpm' },
+      { key: 'vital-crt', label: 'TLLC', unidad: '' },
+      { key: 'vital-pas', label: 'PAS', unidad: 'mmHg' },
+      { key: 'vital-pad', label: 'PAD', unidad: 'mmHg' },
+      { key: 'vital-pam', label: 'PAM', unidad: 'mmHg' }
+    ];
+
+    function renderAudioSoipPreview() {
+      const d = audioSoipPayload;
+      const c = d.campos || {};
+      const data = patientData[selectedPetKey];
+      const avisos = [];
+
+      // Guard más importante de todo el flujo: cargar el audio de un
+      // paciente en la ficha de otro escribiría una historia clínica
+      // ajena. Se avisa fuerte, pero se deja continuar porque el audio
+      // puede no nombrar nunca a la mascota (o nombrarla mal: la
+      // transcripción de un nombre propio es justo lo que peor sale).
+      const mencionado = d.paciente_mencionado;
+      let mismatch = false;
+      if (mencionado && audioSoipNormalizarNombre(mencionado) !== audioSoipNormalizarNombre(data.name)) {
+        mismatch = true;
+        avisos.push({
+          tono: 'danger',
+          texto: `El audio habla de <strong>${mencionado}</strong>, pero tienes abierta la ficha de <strong>${data.name}</strong>. Verifica que sea el paciente correcto antes de cargar.`
+        });
+      } else if (!mencionado) {
+        avisos.push({ tono: 'warn', texto: 'El audio no menciona el nombre de la mascota — no se pudo verificar que corresponda a este paciente.' });
+      }
+
+      // La interpretación es obligatoria en guardarConsulta(): si viene
+      // vacía, "Finalizar consulta" va a bloquear hasta que la escriban.
+      if (!(c.i || '').trim()) {
+        avisos.push({ tono: 'warn', texto: 'En el audio no se dijo ningún diagnóstico. <strong>Interpretación</strong> queda vacía y tendrás que escribirla: sin ella no se puede finalizar la consulta.' });
+      }
+      if (!(c.p || '').trim()) {
+        avisos.push({ tono: 'warn', texto: '<strong>Plan</strong> quedó vacío y también es obligatorio para finalizar.' });
+      }
+
+      // Aviso de sobrescritura: si ya hay algo escrito a mano, se pierde.
+      const yaEscrito = ['s', 'o', 'i', 'p']
+        .some(k => (document.getElementById('tablero-soap-' + k).value || '').trim() !== '');
+      if (yaEscrito) {
+        avisos.push({ tono: 'warn', texto: 'Ya hay texto escrito en el formulario. Cargar el audio lo <strong>reemplaza</strong>.' });
+      }
+
+      (d.avisos_automaticos || []).forEach(a => avisos.push({ tono: 'warn', texto: a }));
+
+      const vitalesConValor = AUDIO_SOIP_VITALES.filter(v => c[v.key] !== null && c[v.key] !== undefined && c[v.key] !== '');
+      const evidencia = d.evidencia_vitales || {};
+
+      const bloqueTexto = (titulo, valor) => {
+        const v = (valor || '').trim();
+        return `
+          <div class="audio-soip-campo">
+            <div class="audio-soip-campo-label">${titulo}</div>
+            <div class="audio-soip-campo-valor${v ? '' : ' vacio'}">${v ? escapeHtml(v) : 'Sin contenido en el audio'}</div>
+          </div>`;
+      };
+
+      const html = `
+        ${avisos.map(a => `<div class="audio-soip-alert ${a.tono}"><i data-lucide="${a.tono === 'danger' ? 'alert-triangle' : 'info'}"></i><span>${a.texto}</span></div>`).join('')}
+
+        <div class="audio-soip-meta">
+          <span><strong>Audio:</strong> ${escapeHtml((d.origen && d.origen.archivo_audio) || '—')}</span>
+          <span><strong>Motivo:</strong> ${escapeHtml(c.motivo || '—')}</span>
+          <span><strong>Vitales:</strong> ${vitalesConValor.length} de 7</span>
+        </div>
+
+        ${bloqueTexto('S — Subjetivo', c.s)}
+        ${bloqueTexto('O — Objetivo', c.o)}
+        ${bloqueTexto('I — Interpretación', c.i)}
+        ${bloqueTexto('P — Plan', c.p)}
+
+        <div class="audio-soip-campo">
+          <div class="audio-soip-campo-label">Signos vitales</div>
+          ${vitalesConValor.length ? `
+            <table class="audio-soip-vitales">
+              ${vitalesConValor.map(v => {
+                const cita = evidencia[v.key.replace('vital-', '')] || '';
+                return `
+                <tr>
+                  <td>${v.label}</td>
+                  <td><strong>${escapeHtml(String(c[v.key]))}</strong> ${v.unidad}</td>
+                  <td class="cita" title="${escapeHtml(cita)}">${cita ? '“' + escapeHtml(cita) + '”' : ''}</td>
+                </tr>`; }).join('')}
+            </table>
+            <div class="audio-soip-nota">Los ${7 - vitalesConValor.length} restantes quedan vacíos: nadie los dijo en el audio.</div>
+          ` : `<div class="audio-soip-campo-valor vacio">Ninguno. En el audio no se dictó ningún signo vital verificable, así que los 7 quedan vacíos.</div>`}
+        </div>
+
+        ${(d.examen_sistemas || []).length ? `
+          <div class="audio-soip-campo">
+            <div class="audio-soip-campo-label">Examen por sistemas</div>
+            <table class="audio-soip-vitales">
+              ${d.examen_sistemas.map(h => `<tr><td>${escapeHtml(h.sistema)}</td><td><strong>${escapeHtml(h.estado)}</strong></td><td class="cita" title="${escapeHtml(h.detalle || '')}">${escapeHtml(h.detalle || '')}</td></tr>`).join('')}
+            </table>
+          </div>` : ''}
+
+        ${(d.notas_revision || '').trim() ? `
+          <div class="audio-soip-campo">
+            <div class="audio-soip-campo-label">Qué revisar</div>
+            <div class="audio-soip-campo-valor">${escapeHtml(d.notas_revision)}</div>
+          </div>` : ''}
+
+        <div class="audio-soip-alert info">
+          <i data-lucide="pen-line"></i>
+          <span>Esto solo rellena el formulario. Revisa y corrige lo que haga falta: la consulta se guarda cuando <strong>tú</strong> pulses "Finalizar consulta".</span>
+        </div>
+      `;
+
+      const cont = document.getElementById('audio-soip-paso-preview');
+      cont.innerHTML = html;
+      document.getElementById('audio-soip-paso-archivo').style.display = 'none';
+      cont.style.display = '';
+      const btn = document.getElementById('audio-soip-aplicar-btn');
+      btn.style.display = '';
+      btn.textContent = mismatch ? `Cargar igual en la ficha de ${data.name}` : 'Cargar en el formulario';
+      lucide.createIcons();
+    }
+
+    function aplicarAudioSoip() {
+      const d = audioSoipPayload;
+      if (!d) return;
+      const c = d.campos || {};
+      const omitidos = [];
+
+      // Motivo: solo si es una de las opciones reales del select.
+      const motivoSel = document.getElementById('tablero-soap-motivo');
+      if (c.motivo && [...motivoSel.options].some(o => o.value === c.motivo)) {
+        motivoSel.value = c.motivo;
+      }
+
+      // S/O/I/P. Se dispara 'input' en vez de replicar la lógica del badge:
+      // el handler que marca .filled ya lo asignó abrirTableroTrabajo() y
+      // debe seguir habiendo uno solo por textarea.
+      ['s', 'o', 'i', 'p'].forEach(k => {
+        const el = document.getElementById('tablero-soap-' + k);
+        el.value = c[k] || '';
+        el.dispatchEvent(new Event('input'));
+      });
+
+      // Vitales: SOLO los que traen valor. Un null no se toca — el campo
+      // queda vacío y guardarConsulta() lo persiste como null, que es
+      // exactamente lo que pide "no evaluado": sin rastro en ningún lado.
+      // Tampoco se destildan los interruptores de "no evaluado": si el
+      // veterinario ya marcó uno a mano, esa decisión manda sobre el audio.
+      AUDIO_SOIP_VITALES.forEach(v => {
+        const valor = c[v.key];
+        if (valor === null || valor === undefined || valor === '') return;
+        const input = document.getElementById('tablero-soap-' + v.key);
+        if (!input) return;
+        if (input.disabled) { omitidos.push(v.label); return; }
+        input.value = valor;
+        syncVitalSliderDesdeInput(input);   // posiciona el slider y prende .has-value
+      });
+
+      // Examen por sistemas. Los que no vengan quedan en "No evaluado",
+      // que es el estado por defecto que pinta renderExamSystems().
+      const body = document.getElementById('tablero-soap-exam-body');
+      let algunSistema = false;
+      (d.examen_sistemas || []).forEach(h => {
+        const i = EXAM_SYSTEMS.indexOf(h.sistema);
+        if (i < 0) return;
+        const select = body.querySelector(`[data-exam-select="${i}"]`);
+        const detail = body.querySelector(`[data-exam-detail="${i}"]`);
+        if (!select) return;
+        select.value = (h.estado === 'Normal' || h.estado === 'Alterado') ? h.estado : 'No evaluado';
+        handleExamSelectChange('tablero-soap-exam-body', i);
+        if (select.value === 'Alterado' && detail) detail.value = h.detalle || '';
+        algunSistema = true;
+      });
+      if (algunSistema) {
+        document.getElementById('tablero-soap-exam-toggle').classList.add('expanded');
+        document.getElementById('tablero-soap-exam-body').classList.add('expanded');
+      }
+
+      closeAudioSoipModal();
+      let msg = 'Formulario precargado desde el audio — revísalo antes de finalizar';
+      if (omitidos.length) msg += `. Sin cargar (marcados como no evaluados): ${omitidos.join(', ')}`;
+      showToast(msg);
     }
 
     // Tablero de trabajo — pantalla completa de consulta (mismo patrón que
@@ -24494,6 +24818,17 @@
     function escapeJsAttr(txt) {
       return String(txt).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     }
+    // Texto arbitrario → contenido HTML seguro. Distinto de escapeJsAttr(),
+    // que prepara un string para vivir dentro de un onclick. Este es para
+    // interpolar texto de origen externo en un innerHTML: sin él, un '<'
+    // en el texto (o markup deliberado en un archivo importado) rompe el
+    // render. Lo usa el modal "Cargar desde audio", que pinta texto que
+    // viene de un .json de fuera de la app.
+    function escapeHtml(txt) {
+      return String(txt == null ? '' : txt)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
 
     // De dónde sale la base del día que se está abriendo. Tres casos:
     //  'congelada' — el día ya está Cerrado: se conserva la base con la que
@@ -29717,6 +30052,42 @@
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeTemperamentoModal()">Cancelar</button>
         <button class="btn-primary" id="temperamento-guardar-btn" onclick="guardarTemperamento()">Guardar temperamento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cargar consulta desde audio transcrito -->
+  <!-- Paso 3 del flujo audio → Whisper → LLM → formulario (ver
+       scripts/transcripcion/README.md). Mismo patrón de 2 pasos
+       (seleccionar → previsualizar → confirmar) que "Importar clientes":
+       el archivo se lee en el navegador, no se sube a ningún lado. -->
+  <div class="modal-overlay" id="audio-soip-modal" onclick="handleAudioSoipOverlayClick(event)">
+    <div class="soap-modal-card" style="width:660px;" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <span class="soap-modal-pet-name">Cargar desde audio</span>
+          <span class="soap-modal-pet-meta" id="audio-soip-modal-pet"></span>
+        </div>
+        <button class="soap-modal-close" onclick="closeAudioSoipModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div class="soap-modal-body">
+        <div id="audio-soip-paso-archivo">
+          <div class="input-group">
+            <label class="input-label" for="audio-soip-file">Archivo de consulta (.json)</label>
+            <input type="file" accept=".json,application/json" id="audio-soip-file" class="input-control"
+                   style="padding:8px 12px;" onchange="onAudioSoipArchivo(this)">
+            <div style="margin-top:6px;font-size:11.5px;color:var(--text-2);">
+              Es el archivo que deja <code>extraer_soip.py</code> en la carpeta <strong>Consultas</strong>.
+              Se lee en este equipo — no se envía a ningún servidor.
+            </div>
+          </div>
+          <div id="audio-soip-error"></div>
+        </div>
+        <div id="audio-soip-paso-preview" style="display:none;"></div>
+      </div>
+      <div class="soap-modal-footer">
+        <button class="btn-secondary" onclick="closeAudioSoipModal()">Cancelar</button>
+        <button class="btn-primary" id="audio-soip-aplicar-btn" onclick="aplicarAudioSoip()" style="display:none;">Cargar en el formulario</button>
       </div>
     </div>
   </div>
