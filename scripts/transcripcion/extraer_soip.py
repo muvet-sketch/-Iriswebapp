@@ -29,6 +29,8 @@ from typing import List, Optional
 import anthropic
 from pydantic import BaseModel, Field
 
+from vocabulario_clinico import glosario_para_llm
+
 # --------------------------------------------------------------------------
 # Configuracion
 # --------------------------------------------------------------------------
@@ -128,6 +130,11 @@ class ConsultaExtraida(BaseModel):
                     "Lista vacia si no se menciona ninguno. Los que no esten aqui "
                     "quedan como 'No evaluado' en el formulario."
     )
+    terminos_normalizados: List[str] = Field(
+        default_factory=list,
+        description="Cada correccion hecha con el glosario (regla 8), en formato "
+                    "'lo que se oyo -> termino correcto'. Lista vacia si no hubo."
+    )
     revision_requerida: bool = Field(
         description="true si el audio es confuso, esta incompleto, o algo quedo dudoso."
     )
@@ -175,8 +182,24 @@ REGLAS QUE NO PUEDES ROMPER:
 
 7. Escribe en espanol, en prosa clinica breve. No uses vinetas ni encabezados.
 
+8. La transcripcion suele escribir MAL los nombres de medicamentos, productos y
+   terminos clinicos (ej. "melo si can" por "meloxicam", "trau mil" por
+   "Traumeel"). Al final tienes un GLOSARIO con los nombres correctos. Si una
+   palabra de la transcripcion es foneticamente cercana a un termino del
+   glosario Y el contexto clinico coincide, escribela con el nombre correcto y
+   registra el cambio en terminos_normalizados como "lo que se oyo -> termino
+   correcto". Si hay duda razonable entre dos terminos posibles, NO corrijas:
+   deja lo que se oyo, marca revision_requerida y explicalo en notas_revision.
+   El glosario sirve unicamente para reconocer lo que ya se dijo en el audio —
+   nunca para agregar medicamentos, dosis o diagnosticos que no se
+   mencionaron. Y las citas de los vitales siguen la regla 3: LITERALES,
+   nunca corrijas el texto dentro de 'cita'.
+
 Motivos validos (usa exactamente uno): {', '.join(MOTIVOS)}
-Sistemas validos: {', '.join(SISTEMAS)}"""
+Sistemas validos: {', '.join(SISTEMAS)}
+
+--- GLOSARIO DE VOCABULARIO CLINICO (para la regla 8) ---
+{glosario_para_llm()}"""
 
 
 def construir_prompt(payload: dict) -> str:
@@ -339,6 +362,10 @@ def a_formato_formulario(consulta: ConsultaExtraida, payload: dict, avisos: List
             for campo in ("temp", "fc", "fr", "crt", "pas", "pad", "pam")
             if getattr(v, campo).valor is not None
         },
+        # Correcciones hechas con el glosario de vocabulario_clinico.py
+        # ("lo que se oyo -> termino correcto"), para que el veterinario
+        # pueda auditar cada nombre que el modelo normalizo.
+        "terminos_normalizados": consulta.terminos_normalizados,
         "revision_requerida": consulta.revision_requerida or bool(avisos),
         "notas_revision": consulta.notas_revision,
         "avisos_automaticos": avisos,
@@ -378,6 +405,8 @@ def procesar_archivo(client, ruta: Path, rehacer: bool) -> bool:
     vitales_con_valor = len(salida["evidencia_vitales"])
     print(f"    -> {destino.name}  [motivo: {salida['campos']['motivo']}, "
           f"{vitales_con_valor}/7 vitales, {len(salida['examen_sistemas'])} sistemas]")
+    for t in salida["terminos_normalizados"]:
+        print(f"    ~ Glosario: {t}")
     for a in avisos:
         print(f"    ! {a}")
     if salida["revision_requerida"]:

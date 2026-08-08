@@ -76,16 +76,10 @@ CARPETAS_IGNORADAS = {".tmp.drivedownload", ".tmp.driveupload", "Procesados",
 
 # Whisper decodifica mejor si se le adelanta el vocabulario del dominio.
 # Sin esto confunde terminos clinicos ("meloxicam" -> "melo si can").
-PROMPT_INICIAL = (
-    "Consulta veterinaria en Colombia. Paciente canino o felino. "
-    "Terminos frecuentes: mestizo, esquema de vacunacion, refuerzo, desparasitacion interna y externa, "
-    "quintuple, triple felina, antirrabica, ivermectina, praziquantel, fenbendazol, "
-    "meloxicam, dexametasona, enrofloxacina, cefalexina, amoxicilina, metronidazol, tramadol, "
-    "hemograma, quimica sanguinea, creatinina, ALT, ecografia abdominal, radiografia, "
-    "temperatura rectal, frecuencia cardiaca, frecuencia respiratoria, mucosas, "
-    "tiempo de llenado capilar, deshidratacion, condicion corporal, "
-    "subjetivo, objetivo, interpretacion, plan."
-)
+# El prompt vive en vocabulario_clinico.py (compartido con extraer_soip.py) y
+# esta medido contra el presupuesto real de ~224 tokens del initial_prompt —
+# si se agranda alla, hay que volver a medirlo (ver el comentario del modulo).
+from vocabulario_clinico import PROMPT_WHISPER as PROMPT_INICIAL
 
 # Cadena de filtros de ffmpeg. Los audios reales vienen de un celular sobre la mesa:
 # voz lejana y baja (medido: -34.7 dB de media) con golpes que saturan a 0 dB.

@@ -8,6 +8,8 @@ Flujo **audio → transcripción → LLM → formulario IRIS**.
 - **Paso 2 — `extraer_soip.py`**: lee esos `.json` y produce el SOIP estructurado
   (motivo, S/O/I/P, 7 signos vitales, hallazgos por sistema) listo para el
   formulario.
+- **`vocabulario_clinico.py`**: vocabulario del dominio compartido por los dos
+  pasos (ver sección abajo).
 
 ## Uso
 
@@ -74,6 +76,41 @@ que el CLAUDE.md exige para "no evaluado": no se registra en ninguna parte.
 Todo lo que sale de acá es un **borrador para que el veterinario revise y firme**,
 nunca un registro que se guarde solo. `revision_requerida` y `notas_revision`
 marcan lo que quedó dudoso.
+
+## Vocabulario clínico (`vocabulario_clinico.py`)
+
+La transcripción automática no reconoce nombres de fármacos ni tecnicismos que
+no están en su vocabulario ("meloxicam" → "melo si can", "Traumeel" → "trau
+mil"). El módulo concentra ese vocabulario — ~580 fármacos del índice del
+*Manual Farmacológico Veterinario* (Plumb, ed. español; extraído por OCR y
+**corregido a mano**, no "recorregir" nombres que se vean raros sin verificar
+contra el manual), los homeopáticos Heel que usa la clínica, y los
+diagnósticos/patógenos/términos del informe de enfermedades tropicales de
+Colombia — y lo sirve en dos formatos:
+
+1. **`PROMPT_WHISPER`** (paso 1): Whisper solo usa los **últimos ~224 tokens**
+   del `initial_prompt` — si es más largo descarta el *principio*, por eso es
+   una selección corta con lo más difícil de reconocer (los Heel) al final.
+   Está medido con el tokenizer real del modelo `medium` (216/223 tokens): si
+   se agrega algo, hay que volver a medir.
+2. **`glosario_para_llm()`** (paso 2): el glosario completo va en el prompt de
+   `extraer_soip.py` con la regla 8 — el modelo puede **corregir** una palabra
+   mal transcrita solo si es fonéticamente cercana a un término del glosario y
+   el contexto coincide, y cada corrección queda auditada en
+   `terminos_normalizados` (`"lo que se oyó -> término correcto"`) en el JSON
+   de salida. Con duda entre dos términos no corrige: marca
+   `revision_requerida`. El glosario **nunca** agrega menciones que no están
+   en el audio, y las citas de los vitales siguen siendo literales.
+
+Probado sobre una transcripción sintética con errores reales de Whisper:
+`melo si can → meloxicam`, `doxidiclina → Doxiciclina`, `trau mil → Traumeel`,
+`engistol → Engystol`, y `reliquiosis → Ehrlichiosis` quedó además marcada
+para revisión por ser inferencia de contexto ("por la garrapata").
+
+Para sumar vocabulario nuevo (un producto que la clínica empiece a usar, una
+marca local): agregarlo a la lista que corresponda del módulo; solo si además
+se oye muy seguido en los audios, sumarlo también al final de
+`PROMPT_WHISPER` y volver a medir los tokens.
 
 ## Mediciones en este equipo
 
