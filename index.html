@@ -3174,7 +3174,10 @@
        quedó solo como enganche para ocultar la banda en el modo compacto.
        No la borres del HTML sin quitar también esa regla. */
 
-    .tablero-breed-insight {
+    /* Recuadro "Recomendaciones para la consulta" del panel lateral del
+       Tablero — reemplazó a la nota fija por especie (.tablero-breed-insight)
+       que había en el mismo lugar. Ver recomendacionesConsultaHtml(). */
+    .tablero-reco {
       margin-top: 12px;
       padding-top: 12px;
       border-top: 1px solid var(--border);
@@ -3182,7 +3185,68 @@
       color: var(--text-2);
       line-height: 1.5;
     }
-    .tablero-breed-insight strong { color: var(--text-1); display: flex; align-items: center; gap: 5px; }
+    .tablero-reco-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .tablero-reco-head strong { color: var(--text-1); display: flex; align-items: center; gap: 5px; font-size: 12.5px; }
+    .tablero-reco-count {
+      flex-shrink: 0;
+      font-size: 10.5px; font-weight: 700; line-height: 1;
+      padding: 3px 7px; border-radius: 999px;
+      color: var(--clinic-accent);
+      background-color: rgba(var(--clinic-accent-rgb), 0.12);
+    }
+    /* Los cinco datos que produjeron la lista, visibles: sin esto el
+       recuadro parece decir cosas de la nada. */
+    .tablero-reco-basis {
+      margin-top: 6px;
+      font-size: 11px; line-height: 1.4;
+      color: var(--text-2);
+      display: flex; flex-wrap: wrap; gap: 4px;
+    }
+    .tablero-reco-basis span {
+      padding: 2px 7px; border-radius: 999px;
+      background-color: var(--surface-container-low);
+      white-space: nowrap;
+    }
+    .tablero-reco-basis span.falta { opacity: 0.65; font-style: italic; }
+    .tablero-reco-group { margin-top: 10px; }
+    .tablero-reco-group-title {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-2); opacity: 0.75;
+      margin-bottom: 5px;
+    }
+    .tablero-reco-item {
+      display: flex; gap: 7px;
+      padding: 7px 9px; margin-bottom: 5px;
+      border-radius: var(--radius-sm);
+      background-color: var(--surface-container-low);
+      font-size: 12px; line-height: 1.45; color: var(--text-1);
+    }
+    .tablero-reco-item:last-child { margin-bottom: 0; }
+    .tablero-reco-item::before {
+      content: ''; flex: 0 0 3px; align-self: stretch;
+      border-radius: 2px; background-color: var(--clinic-accent); opacity: 0.55;
+    }
+    /* Qué dato del paciente disparó la sugerencia (Raza · Bulldog, Edad ·
+       Senior…). Va detrás del texto y en una línea propia si no cabe. */
+    .tablero-reco-tag {
+      display: inline-block; margin-left: 6px;
+      font-size: 10px; font-weight: 700; white-space: nowrap;
+      color: var(--clinic-accent);
+    }
+    .tablero-reco-foot {
+      margin-top: 10px;
+      font-size: 10.5px; line-height: 1.4; color: var(--text-2); opacity: 0.85;
+    }
+
+    /* Campo suelto dentro de una tarjeta del riel SOIP (la fecha, que quedó
+       sola en su tarjeta, y el motivo de consulta, que se mudó a la del
+       Subjetivo). Sin el tope de ancho un `datetime-local` o un select de
+       seis opciones se estiran a lo ancho de toda la tarjeta. */
+    .tablero-soip-field { max-width: 320px; }
+    .tablero-card > .tablero-soip-field { margin-bottom: 12px; }
 
     .tablero-problem-item {
       display: flex;
@@ -6443,20 +6507,9 @@
                 <div class="tablero-step-badge"><i data-lucide="calendar-clock" style="width:18px;height:18px;"></i></div>
                 <div class="tablero-card">
                   <div class="soap-meta-row">
-                    <div class="input-group">
+                    <div class="input-group tablero-soip-field">
                       <label class="input-label" for="tablero-soap-fecha">Fecha y hora de consulta</label>
                       <input type="datetime-local" id="tablero-soap-fecha" class="input-control" style="padding-left:12px;">
-                    </div>
-                    <div class="input-group">
-                      <label class="input-label" for="tablero-soap-motivo">Motivo de consulta</label>
-                      <select id="tablero-soap-motivo" class="soap-select-control">
-                        <option value="Consulta general">Consulta general</option>
-                        <option value="Urgencia">Urgencia</option>
-                        <option value="Vacunación">Vacunación</option>
-                        <option value="Control">Control</option>
-                        <option value="Revisión">Revisión</option>
-                        <option value="Otro">Otro</option>
-                      </select>
                     </div>
                   </div>
                 </div>
@@ -6467,6 +6520,26 @@
                 <div class="tablero-card">
                   <div class="tablero-card-head">
                     <span class="tablero-card-title">Subjetivo <span class="soap-required">*</span></span>
+                  </div>
+                  <!-- Motivo de consulta vive DENTRO del Subjetivo: es lo
+                       primero que se pregunta y es lo que enmarca toda la
+                       anamnesis que se escribe debajo (antes estaba arriba,
+                       junto a la fecha, separado del texto que describe).
+                       El id NO cambió — `tablero-soap-motivo` es contrato con
+                       guardarConsulta('tablero-soap-', …) y con
+                       aplicarAudioSoip(). Su onchange repinta el recuadro de
+                       recomendaciones del panel lateral, que cruza el motivo
+                       con especie/raza/edad/sexo. -->
+                  <div class="input-group tablero-soip-field">
+                    <label class="input-label" for="tablero-soap-motivo">Motivo de consulta</label>
+                    <select id="tablero-soap-motivo" class="soap-select-control" onchange="onTableroMotivoChange()">
+                      <option value="Consulta general">Consulta general</option>
+                      <option value="Urgencia">Urgencia</option>
+                      <option value="Vacunación">Vacunación</option>
+                      <option value="Control">Control</option>
+                      <option value="Revisión">Revisión</option>
+                      <option value="Otro">Otro</option>
+                    </select>
                   </div>
                   <textarea class="soap-textarea" id="tablero-soap-s" placeholder="Anamnesis, motivo relatado por el propietario, duración de signos, medicamentos administrados en casa"></textarea>
                 </div>
@@ -12107,6 +12180,9 @@
       // mostrando el peso viejo hasta cerrar la consulta.
       if (selectedPetKey === petKey && document.getElementById('tablero-view').classList.contains('active')) {
         mountTableroHeader(petKey);
+        // La variación entre las dos últimas mediciones es una de las
+        // entradas del recuadro de recomendaciones (ver recoTendenciaPeso).
+        refrescarRecomendacionesConsulta();
       }
       if (kardexContext && kardexContext.petKey === petKey) {
         renderWeightChartSVG('kardex-weight-chart', data.pesoHistorico);
@@ -14421,10 +14497,14 @@
       const c = d.campos || {};
       const omitidos = [];
 
-      // Motivo: solo si es una de las opciones reales del select.
+      // Motivo: solo si es una de las opciones reales del select. Al
+      // fijarlo por código no se dispara su onchange, así que el recuadro de
+      // recomendaciones (que cruza el motivo con especie/raza/edad/sexo) se
+      // repinta a mano.
       const motivoSel = document.getElementById('tablero-soap-motivo');
       if (c.motivo && [...motivoSel.options].some(o => o.value === c.motivo)) {
         motivoSel.value = c.motivo;
+        refrescarRecomendacionesConsulta();
       }
 
       // S/O/I/P. Se dispara 'input' en vez de replicar la lógica del badge:
@@ -14571,23 +14651,435 @@
       tableroActiveModulo = null;
     }
 
-    // Contenido por defecto de "Navegación rápida" al abrir el Tablero, antes
-    // de hacer click en cualquier módulo del nav izquierdo.
-    // Nota genérica por especie (no reclamos clínicos de raza inventados) —
-    // igual de honesta que el resto de este prototipo, que es data mock.
-    const ESPECIE_INSIGHT = {
-      Felino: 'En felinos, vigilar enfermedad renal crónica y problemas dentales — más frecuentes con la edad. Revisar antecedentes familiares.',
-      Canino: 'En caninos, vigilar displasia de cadera y enfermedad periodontal según raza/tamaño. Revisar antecedentes familiares.'
-    };
+    // ── RECOMENDACIONES PARA LA CONSULTA ─────────────────────────────
+    // Recuadro del pie del panel "Navegación rápida" del Tablero. Reemplaza
+    // a la nota fija por especie que vivía en el mismo lugar (constante
+    // ESPECIE_INSIGHT, rotulada "Datos de la especie"): era UN texto para
+    // todos los caninos y otro para todos los felinos, así que después de
+    // leerlo una vez dejaba de aportar. Ahora la lista se arma cruzando los
+    // cinco datos que sí cambian de un paciente a otro y de una consulta a
+    // otra: Especie · Raza · Edad · Sexo/estado reproductivo · Motivo de
+    // consulta (el select que ahora vive dentro de la tarjeta del Subjetivo).
+    //
+    // Criterios del módulo — respetarlos al agregar reglas:
+    //  - Solo predisposiciones veterinarias DOCUMENTADAS y de consenso
+    //    (displasia en razas grandes, CMH en Maine Coon/Ragdoll, MDR1 en
+    //    collies y pastores, ERC e hipertiroidismo en el gato geriátrico…).
+    //    No inventes asociaciones raza→enfermedad para alargar la lista:
+    //    esto se lee durante la consulta y una sugerencia falsa desvía el
+    //    examen físico de verdad.
+    //  - Ninguna regla afirma un diagnóstico ni indica un tratamiento. Todas
+    //    dicen qué PREGUNTAR, qué EXPLORAR, qué CONFIRMAR o qué VERIFICAR
+    //    antes de prescribir. Mismo criterio que el borrador del audio →
+    //    SOIP: la app no cierra una historia clínica, el médico sí.
+    //  - Una regla sin el dato que necesita NO se dispara (sin
+    //    fechaNacimiento no hay etapa de vida, sin género no hay reglas de
+    //    sexo). En vez de adivinar, el recuadro muestra qué dato falta —
+    //    que además es lo que empuja a completar la ficha.
+    //  - `cuando` solo puede leer el `ctx` que arma
+    //    construirContextoRecomendaciones(). Nada de DOM ni de arrays
+    //    globales desde una regla: el recuadro se repinta en cada cambio de
+    //    motivo y en cada click del strip de módulos.
 
-    function especieInsightHtml(data) {
-      const nota = ESPECIE_INSIGHT[data.species] || 'Sin datos de predisposición registrados para esta especie — revisar antecedentes familiares y mantener seguimiento preventivo.';
+    function recoNormalizarTexto(s) {
+      return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+    }
+
+    function recoEspecieClave(species) {
+      const s = recoNormalizarTexto(species);
+      if (!s) return null;
+      if (/felin|gat/.test(s)) return 'felino';
+      if (/canin|perr/.test(s)) return 'canino';
+      return 'otro';
+    }
+
+    // Grupos de raza. `mascotas.raza` es texto libre (viene de importaciones
+    // CSV, de WhatsApp y de lo que digite cada clínica), así que se compara
+    // por inclusión sobre el texto normalizado sin tildes y NO por igualdad
+    // contra un catálogo — "Bulldog Francés", "bulldog frances" y "frances
+    // bulldog" tienen que caer en el mismo grupo. Una raza pertenece a
+    // varios grupos a la vez a propósito (un Bóxer es braquicéfalo, grande
+    // y de tórax profundo): cada grupo aporta su propia regla.
+    const RECO_GRUPOS_RAZA = [
+      // ── Caninos
+      { grupo: 'braquicefalo', especie: 'canino', palabras: ['bulldog', 'buldog', 'pug', 'carlino', 'boxer', 'shih tzu', 'shihtzu', 'pekines', 'boston terrier', 'lhasa', 'bullmastiff', 'chow chow'] },
+      { grupo: 'gigante', especie: 'canino', palabras: ['gran danes', 'san bernardo', 'mastin', 'mastiff', 'terranova', 'leonberger', 'dogo', 'wolfhound'] },
+      { grupo: 'grande', especie: 'canino', palabras: ['labrador', 'golden', 'pastor aleman', 'pastor belga', 'rottweiler', 'doberman', 'weimaraner', 'setter', 'boxer', 'husky', 'malamute', 'akita', 'bullmastiff', 'gran danes', 'san bernardo', 'mastin', 'mastiff', 'terranova', 'dogo'] },
+      { grupo: 'toy', especie: 'canino', palabras: ['chihuahua', 'yorkshire', 'yorky', 'yorki', 'pomerania', 'maltes', 'pinscher', 'bichon', 'papillon', 'toy', 'shih tzu', 'shihtzu', 'pekines'] },
+      { grupo: 'toraxprofundo', especie: 'canino', palabras: ['gran danes', 'pastor aleman', 'doberman', 'weimaraner', 'setter', 'boxer', 'basset', 'san bernardo', 'akita', 'galgo', 'dogo'] },
+      { grupo: 'condrodistrofico', especie: 'canino', palabras: ['dachshund', 'salchicha', 'teckel', 'basset', 'corgi', 'beagle', 'pekines', 'shih tzu', 'shihtzu', 'bulldog frances'] },
+      { grupo: 'mdr1', especie: 'canino', palabras: ['collie', 'pastor australiano', 'australian shepherd', 'shetland', 'bobtail', 'old english sheepdog', 'kelpie'] },
+      { grupo: 'orejacaida', especie: 'canino', palabras: ['cocker', 'basset', 'labrador', 'golden', 'beagle', 'poodle', 'caniche', 'shar pei', 'sabueso', 'braco'] },
+      { grupo: 'rotula', especie: 'canino', palabras: ['chihuahua', 'yorkshire', 'yorky', 'yorki', 'pomerania', 'maltes', 'poodle', 'caniche', 'bichon', 'pinscher', 'boston terrier', 'papillon'] },
+      { grupo: 'valvula-mitral', especie: 'canino', palabras: ['cavalier', 'king charles', 'poodle', 'caniche', 'maltes', 'chihuahua', 'yorkshire', 'yorky', 'yorki', 'dachshund', 'salchicha', 'teckel', 'pinscher'] },
+      { grupo: 'cardiomiopatia-dilatada', especie: 'canino', palabras: ['doberman', 'gran danes', 'boxer', 'cocker', 'wolfhound', 'terranova'] },
+      { grupo: 'pancreatitis', especie: 'canino', palabras: ['schnauzer', 'yorkshire', 'yorky', 'yorki', 'cocker', 'poodle', 'caniche'] },
+      { grupo: 'pliegues', especie: 'canino', palabras: ['bulldog', 'buldog', 'shar pei', 'pug', 'carlino', 'boxer', 'mastin'] },
+      { grupo: 'pelolargo', especie: 'canino', palabras: ['golden', 'collie', 'husky', 'samoyedo', 'maltes', 'yorkshire', 'yorky', 'yorki', 'shih tzu', 'shihtzu', 'pomerania', 'afgano', 'pastor aleman'] },
+      // ── Felinos
+      { grupo: 'braquicefalo', especie: 'felino', palabras: ['persa', 'himalayo', 'exotico', 'exotic'] },
+      { grupo: 'pkd', especie: 'felino', palabras: ['persa', 'himalayo', 'exotico', 'british'] },
+      { grupo: 'cmh', especie: 'felino', palabras: ['maine coon', 'mainecoon', 'ragdoll', 'sphynx', 'esfinge', 'british', 'noruego', 'persa'] },
+      { grupo: 'asma-felino', especie: 'felino', palabras: ['siames', 'oriental', 'balines'] },
+      { grupo: 'pelolargo', especie: 'felino', palabras: ['persa', 'maine coon', 'mainecoon', 'angora', 'ragdoll', 'noruego', 'himalayo', 'siberiano'] }
+    ];
+
+    function recoGruposDeRaza(especie, raza) {
+      const r = recoNormalizarTexto(raza);
+      if (!r) return [];
+      const grupos = new Set();
+      RECO_GRUPOS_RAZA.forEach(g => {
+        if (g.especie && g.especie !== especie) return;
+        if (g.palabras.some(p => r.includes(p))) grupos.add(g.grupo);
+      });
+      return [...grupos];
+    }
+
+    // Edad en meses desde fechaNacimiento — mismo criterio que
+    // edadTextoParaMostrar(): la edad NUNCA sale del texto legado `data.age`,
+    // que puede estar congelado en lo que se escribió al registrar. Sin
+    // fecha de nacimiento devuelve null y las reglas de edad no se disparan.
+    function recoEdadMeses(data) {
+      if (!data || !data.fechaNacimiento) return null;
+      const { years, months } = diffFechaEnYMD(data.fechaNacimiento);
+      return years * 12 + months;
+    }
+
+    // Umbral de "senior" en meses: un Gran Danés es geriátrico años antes
+    // que un Chihuahua, y el gato entra a control geriátrico más tarde que
+    // el perro. Sin edad no hay etapa (null), y las reglas que la piden se
+    // quedan fuera en vez de asumir "adulto".
+    function recoEtapa(ctx) {
+      if (ctx.edadMeses === null) return null;
+      if (ctx.edadMeses < 12) return 'cachorro';
+      let senior;
+      if (ctx.especie === 'felino') senior = 132;                       // ~11 años
+      else if (ctx.grupos.includes('gigante')) senior = 60;             // 5 años
+      else if (ctx.grupos.includes('grande')) senior = 72;              // 6 años
+      else if (ctx.grupos.includes('toy')) senior = 108;                // 9 años
+      else senior = 84;                                                 // 7 años
+      return ctx.edadMeses >= senior ? 'senior' : 'adulto';
+    }
+
+    // true / false / null (sin registrar). "No esterilizado" se prueba
+    // ANTES que "esterilizado" porque la segunda cadena está contenida en la
+    // primera — mismo orden de pruebas que intakeNormalizarEsterilizado().
+    function recoEsterilizado(estadoReproductivo) {
+      const e = recoNormalizarTexto(estadoReproductivo);
+      if (!e || e.includes('desconocid')) return null;
+      if (e.includes('no esteriliz') || e.includes('sin esteriliz') || e.includes('entero') || e.includes('entera')) return false;
+      if (e.includes('esteriliz') || e.includes('castrad') || e.includes('ovariohisterect')) return true;
+      if (e.includes('gestant') || e.includes('prena') || e.includes('lactan')) return false;
+      return null;
+    }
+
+    // Variación de peso entre las dos últimas mediciones de pesoHistorico.
+    // Solo se reporta a partir del 5%: por debajo de eso el ruido de báscula
+    // y la hora del pesaje explican la diferencia y avisar sería falso.
+    function recoTendenciaPeso(data) {
+      const hist = (data && data.pesoHistorico) || [];
+      if (hist.length < 2) return null;
+      const prev = hist[hist.length - 2];
+      const ult = hist[hist.length - 1];
+      const a = parseFloat(prev.peso);
+      const b = parseFloat(ult.peso);
+      if (!isFinite(a) || !isFinite(b) || a <= 0) return null;
+      const pct = ((b - a) / a) * 100;
+      if (Math.abs(pct) < 5) return null;
+      return { pct: Math.round(Math.abs(pct)), sube: pct > 0, desde: prev.fecha || prev.fechaISO || '', hasta: ult.fecha || ult.fechaISO || '' };
+    }
+
+    function construirContextoRecomendaciones(data, motivo) {
+      const especie = recoEspecieClave(data.species);
+      const grupos = recoGruposDeRaza(especie, data.breed);
+      const genero = recoNormalizarTexto(data.genero);
+      const estadoRepr = recoNormalizarTexto(data.estadoReproductivo);
+      const ctx = {
+        especie,
+        especieLabel: data.species || '',
+        raza: data.breed || '',
+        grupos,
+        edadMeses: recoEdadMeses(data),
+        edadTexto: data.fechaNacimiento ? formatearEdadYMD(data.fechaNacimiento) : (data.age || ''),
+        sexo: genero.includes('hembra') ? 'hembra' : (genero.includes('macho') ? 'macho' : null),
+        esterilizado: recoEsterilizado(data.estadoReproductivo),
+        gestante: /gestant|prena|lactan/.test(estadoRepr),
+        motivo: motivo || '',
+        motivoClave: recoNormalizarTexto(motivo),
+        alergias: String(data.alergias || '').trim(),
+        antecedentes: String(data.antecedentes || '').trim(),
+        pesoTendencia: recoTendenciaPeso(data),
+        sinVacunaciones: !((data.vacunaciones || []).length),
+        sinDesparasitaciones: !((data.desparasitaciones || []).length)
+      };
+      ctx.etapa = recoEtapa(ctx);
+      ctx.tiene = grupo => ctx.grupos.includes(grupo);
+      return ctx;
+    }
+
+    // Un corte para que un campo de texto libre largo (alergias,
+    // antecedentes) no convierta una fila del recuadro en un párrafo.
+    function recoRecorte(texto, max = 90) {
+      const t = String(texto || '').replace(/\s+/g, ' ').trim();
+      return t.length > max ? t.slice(0, max - 1) + '…' : t;
+    }
+
+    // `cat` agrupa la sugerencia en el render; `prio` la ordena (1 = primero)
+    // y decide qué queda fuera cuando se supera RECO_MAX_ITEMS; `base` es el
+    // dato del paciente que la disparó, y se muestra al lado del texto para
+    // que se entienda de dónde salió.
+    const RECOMENDACIONES_CONSULTA = [
+      // ── Motivo de consulta
+      { cat: 'examen', prio: 1, base: 'Motivo · Urgencia',
+        cuando: c => c.motivoClave === 'urgencia',
+        texto: 'Triage antes que anamnesis: vía aérea, patrón respiratorio, pulso femoral, TLLC, color de mucosas, nivel de conciencia y dolor. Estabilizar primero, documentar después.' },
+      { cat: 'anamnesis', prio: 2, base: 'Motivo · Urgencia',
+        cuando: c => c.motivoClave === 'urgencia',
+        texto: 'Precisar hora exacta de inicio, acceso a tóxicos, plantas o medicamentos humanos, posible cuerpo extraño y hora de la última ingesta de agua y alimento.' },
+      { cat: 'examen', prio: 1, base: 'Motivo · Vacunación',
+        cuando: c => c.motivoClave === 'vacunacion',
+        texto: 'Antes de vacunar: temperatura, estado general y peso. Un paciente febril, deshidratado, parasitado o inmunodeprimido no se vacuna hoy.' },
+      { cat: 'prevencion', prio: 2, base: 'Motivo · Vacunación',
+        cuando: c => c.motivoClave === 'vacunacion',
+        texto: 'Revisar el carné: refuerzos pendientes e intervalo desde la última dosis. Registrar laboratorio, lote y sitio de aplicación, y advertir al tutor de las reacciones posibles en las siguientes 24-48 h.' },
+      { cat: 'anamnesis', prio: 1, base: 'Motivo · Control',
+        cuando: c => c.motivoClave === 'control',
+        texto: 'Consulta de control: comparar contra la anterior — evolución de los signos, adherencia al tratamiento, dosis realmente administrada y efectos adversos.' },
+      { cat: 'examen', prio: 3, base: 'Motivo · Control',
+        cuando: c => c.motivoClave === 'control',
+        texto: 'Repesar y contrastar con el registro previo antes de reajustar cualquier dosis.' },
+      { cat: 'examen', prio: 4, base: 'Motivo · Rutina',
+        cuando: c => c.motivoClave === 'consulta general' || c.motivoClave === 'revision',
+        texto: 'Examen físico completo por sistemas, peso y condición corporal (escala 1-9). Es la consulta donde conviene actualizar todo el calendario preventivo.' },
+
+      // ── Etapa de vida
+      { cat: 'prevencion', prio: 1, base: 'Edad · Cachorro',
+        cuando: c => c.etapa === 'cachorro',
+        texto: 'Paciente juvenil: completar el esquema de vacunación con refuerzos cada 3-4 semanas hasta pasadas las 16 semanas, y desparasitación interna por peso repitiendo a las 2 semanas.' },
+      { cat: 'examen', prio: 2, base: 'Edad · Cachorro',
+        cuando: c => c.etapa === 'cachorro',
+        texto: 'Revisar dentición decidua persistente, hernia umbilical o inguinal, soplos congénitos y, en machos, descenso testicular completo (criptorquidia).' },
+      { cat: 'anamnesis', prio: 3, base: 'Edad · Cachorro',
+        cuando: c => c.etapa === 'cachorro',
+        texto: 'Preguntar por origen y convivientes, tipo de alimento y número de tomas, consistencia de las heces y avance de la socialización.' },
+      { cat: 'tamizaje', prio: 1, base: 'Edad · Gato senior',
+        cuando: c => c.etapa === 'senior' && c.especie === 'felino',
+        texto: 'Gato geriátrico: perfil renal con densidad urinaria, T4 total y presión arterial. Enfermedad renal crónica e hipertiroidismo avanzan sin signos evidentes para el tutor.' },
+      { cat: 'tamizaje', prio: 1, base: 'Edad · Perro senior',
+        cuando: c => c.etapa === 'senior' && c.especie === 'canino',
+        texto: 'Perro geriátrico: hemograma, bioquímica, uroanálisis y presión arterial de base. Palpar tiroides, cadena mamaria y testículos o próstata según el sexo.' },
+      { cat: 'examen', prio: 2, base: 'Edad · Senior',
+        cuando: c => c.etapa === 'senior',
+        texto: 'Valorar dolor osteoarticular (rango de movimiento y masa muscular), visión y audición, y preguntar por cambios de comportamiento compatibles con disfunción cognitiva.' },
+      { cat: 'prevencion', prio: 5, base: 'Edad · Adulto',
+        cuando: c => c.etapa === 'adulto',
+        texto: 'Adulto: verificar refuerzo anual, desparasitación interna y externa, y estado dental — el sarro y la gingivitis son el hallazgo más subdiagnosticado a esta edad.' },
+
+      // ── Especie (base, siempre aplicable)
+      { cat: 'examen', prio: 6, base: 'Especie · Felino',
+        cuando: c => c.especie === 'felino',
+        texto: 'En felinos, la enfermedad renal crónica y la enfermedad periodontal concentran la casuística con la edad: palpar riñones, evaluar hidratación y revisar cavidad oral.' },
+      { cat: 'examen', prio: 6, base: 'Especie · Canino',
+        cuando: c => c.especie === 'canino',
+        texto: 'En caninos, revisar oídos, piel, cavidad oral y articulaciones: otitis, dermatopatías y enfermedad periodontal son el grueso de la consulta general.' },
+
+      // ── Sexo y estado reproductivo
+      { cat: 'anamnesis', prio: 1, base: 'Sexo · Hembra entera',
+        cuando: c => c.sexo === 'hembra' && c.esterilizado === false && (c.edadMeses === null || c.edadMeses >= 12),
+        texto: 'Hembra entera: registrar la fecha del último celo. Ante poliuria/polidipsia, decaimiento o secreción vulvar en las 8 semanas posteriores, descartar piómetra.' },
+      { cat: 'examen', prio: 2, base: 'Sexo · Hembra entera',
+        cuando: c => c.sexo === 'hembra' && c.esterilizado === false,
+        texto: 'Palpar la cadena mamaria completa (ambos lados) y la región inguinal: el tumor mamario es la neoplasia más frecuente en la hembra entera.' },
+      { cat: 'prevencion', prio: 4, base: 'Sexo · Hembra entera',
+        cuando: c => c.sexo === 'hembra' && c.esterilizado === false && c.edadMeses !== null && c.edadMeses < 48,
+        texto: 'Conversar la esterilización con el tutor: su efecto protector frente a tumores mamarios y piómetra es mayor cuanto antes se realiza.' },
+      { cat: 'examen', prio: 2, base: 'Sexo · Macho entero',
+        cuando: c => c.sexo === 'macho' && c.esterilizado === false && c.especie === 'canino' && c.edadMeses !== null && c.edadMeses >= 60,
+        texto: 'Macho entero adulto: palpar testículos buscando asimetría o aumento de tamaño y valorar próstata — la hiperplasia prostática benigna es habitual a partir de esta edad.' },
+      { cat: 'anamnesis', prio: 5, base: 'Sexo · Macho entero',
+        cuando: c => c.sexo === 'macho' && c.esterilizado === false,
+        texto: 'Preguntar por marcaje, escapes y conductas de monta: motivo real de muchas consultas que no aparece en el listado de síntomas.' },
+      { cat: 'anamnesis', prio: 2, base: 'Sexo · Gato macho',
+        cuando: c => c.especie === 'felino' && c.sexo === 'macho',
+        texto: 'Confirmar que orina con normalidad y en qué cantidad. La obstrucción uretral del gato macho es una urgencia y el tutor suele describirla como estreñimiento.' },
+      { cat: 'prevencion', prio: 6, base: 'Sexo · Esterilizado',
+        cuando: c => c.esterilizado === true,
+        texto: 'Paciente esterilizado: vigilar peso y condición corporal — el requerimiento energético baja tras la esterilización y el sobrepeso es la complicación más frecuente.' },
+      { cat: 'manejo', prio: 1, base: 'Estado · Gestante/lactante',
+        cuando: c => c.gestante,
+        texto: 'Paciente gestante o en lactancia: verificar la seguridad de cada fármaco antes de prescribir y evitar estudios radiográficos no indispensables.' },
+
+      // ── Raza
+      { cat: 'manejo', prio: 1, base: 'Raza · MDR1',
+        cuando: c => c.tiene('mdr1'),
+        texto: 'Raza con posible mutación MDR1 (collies y pastores): ajustar o evitar ivermectina, milbemicina a dosis altas, loperamida y ciertos citostáticos. Confirmar antes de prescribir el antiparasitario.' },
+      { cat: 'examen', prio: 1, base: 'Raza · Braquicéfalo',
+        cuando: c => c.tiene('braquicefalo') && c.especie === 'canino',
+        texto: 'Braquicéfalo: evaluar patrón respiratorio en reposo, ronquido, intolerancia al ejercicio y estenosis de narinas. Extremar precauciones con sedación, estrés y calor.' },
+      { cat: 'examen', prio: 2, base: 'Raza · Braquicéfalo',
+        cuando: c => c.tiene('braquicefalo') && c.especie === 'felino',
+        texto: 'Braquicéfalo felino: revisar epífora, pliegue nasal, oclusión dental y patrón respiratorio.' },
+      { cat: 'examen', prio: 1, base: 'Raza · CMH',
+        cuando: c => c.tiene('cmh'),
+        texto: 'Raza felina predispuesta a cardiomiopatía hipertrófica: auscultar buscando soplo, galope o arritmia. Ante hallazgo, advertir del riesgo de tromboembolismo aórtico.' },
+      { cat: 'tamizaje', prio: 2, base: 'Raza · PKD',
+        cuando: c => c.tiene('pkd'),
+        texto: 'Raza felina predispuesta a enfermedad renal poliquística: palpar riñones y considerar ecografía renal junto con el perfil renal.' },
+      { cat: 'anamnesis', prio: 3, base: 'Raza · Asma felino',
+        cuando: c => c.tiene('asma-felino'),
+        texto: 'Preguntar por tos, respiración con esfuerzo o episodios de disnea: en esta raza el asma felino se confunde con las bolas de pelo.' },
+      { cat: 'examen', prio: 2, base: 'Raza · Talla grande',
+        cuando: c => c.tiene('grande') || c.tiene('gigante'),
+        texto: 'Raza grande: explorar caderas y codos (rango de movimiento, dolor a la extensión, atrofia muscular) — la displasia es la causa más frecuente de cojera crónica.' },
+      { cat: 'anamnesis', prio: 2, base: 'Raza · Tórax profundo',
+        cuando: c => c.tiene('toraxprofundo'),
+        texto: 'Tórax profundo: explicar al tutor los signos de dilatación-vólvulo gástrico (arcadas improductivas, abdomen distendido, inquietud). Es una urgencia de minutos.' },
+      { cat: 'examen', prio: 2, base: 'Raza · Condrodistrófica',
+        cuando: c => c.tiene('condrodistrofico'),
+        texto: 'Raza condrodistrófica: valorar dolor cervical y dorsolumbar, propiocepción y marcha antes de autorizar saltos o ejercicio — enfermedad discal intervertebral.' },
+      { cat: 'examen', prio: 2, base: 'Raza · Valvular',
+        cuando: c => c.tiene('valvula-mitral') && c.edadMeses !== null && c.edadMeses >= 60,
+        texto: 'Auscultar buscando soplo sistólico apical izquierdo: la degeneración mixomatosa de la válvula mitral es frecuente en esta raza a partir de la edad media.' },
+      { cat: 'examen', prio: 2, base: 'Raza · CMD',
+        cuando: c => c.tiene('cardiomiopatia-dilatada'),
+        texto: 'Auscultar ritmo y palpar pulso buscando arritmia, y preguntar por episodios de debilidad o síncope: raza predispuesta a cardiomiopatía dilatada.' },
+      { cat: 'examen', prio: 3, base: 'Raza · Rótula',
+        cuando: c => c.tiene('rotula'),
+        texto: 'Raza pequeña: evaluar luxación de rótula en ambas rodillas aunque el paciente no cojee durante la consulta.' },
+      { cat: 'examen', prio: 3, base: 'Raza · Otitis',
+        cuando: c => c.tiene('orejacaida'),
+        texto: 'Oreja caída o conducto húmedo: otoscopia bilateral y citología ótica ante cualquier signo — la otitis recidivante es la consulta repetida de esta raza.' },
+      { cat: 'anamnesis', prio: 4, base: 'Raza · Pancreatitis',
+        cuando: c => c.tiene('pancreatitis'),
+        texto: 'Preguntar por dieta grasa y episodios previos de vómito o dolor abdominal: raza predispuesta a hiperlipidemia y pancreatitis.' },
+      { cat: 'examen', prio: 4, base: 'Raza · Pliegues',
+        cuando: c => c.tiene('pliegues'),
+        texto: 'Separar y revisar los pliegues faciales y de la cola: la dermatitis de pliegues pasa desapercibida si no se abren y se secan.' },
+      { cat: 'anamnesis', prio: 5, base: 'Raza · Pelo largo',
+        cuando: c => c.tiene('pelolargo'),
+        texto: c => c.especie === 'felino'
+          ? 'Pelo largo: preguntar por frecuencia de cepillado, nudos y vómito de pelo (tricobezoares), y revisar el pelaje de la zona perineal.'
+          : 'Pelo largo: preguntar por frecuencia de cepillado y baño, y revisar nudos, zonas de humedad y presencia de ectoparásitos bajo el manto.' },
+
+      // ── Datos de la ficha del paciente
+      { cat: 'manejo', prio: 1, base: 'Ficha · Alergias',
+        cuando: c => !!c.alergias,
+        texto: c => `Alergias registradas en la ficha: "${recoRecorte(c.alergias)}". Verificarlas antes de prescribir.` },
+      { cat: 'anamnesis', prio: 2, base: 'Ficha · Antecedentes',
+        cuando: c => !!c.antecedentes,
+        texto: c => `Antecedentes en la ficha: "${recoRecorte(c.antecedentes)}". Confirmar evolución y tratamientos en curso.` },
+      { cat: 'examen', prio: 1, base: 'Ficha · Peso',
+        cuando: c => c.pesoTendencia && !c.pesoTendencia.sube,
+        texto: c => `El peso bajó ${c.pesoTendencia.pct}% respecto a la medición del ${c.pesoTendencia.desde}: cuantificar la pérdida y buscar causa antes de atribuirla a la dieta.` },
+      { cat: 'examen', prio: 4, base: 'Ficha · Peso',
+        cuando: c => c.pesoTendencia && c.pesoTendencia.sube,
+        texto: c => `El peso subió ${c.pesoTendencia.pct}% respecto a la medición del ${c.pesoTendencia.desde}: revisar condición corporal, ración real y actividad diaria.` },
+      { cat: 'prevencion', prio: 3, base: 'Ficha · Sin vacunas',
+        cuando: c => c.sinVacunaciones,
+        texto: 'No hay vacunaciones registradas en la ficha: confirmar el carné con el tutor y cargarlo, aunque se haya aplicado en otra clínica.' },
+      { cat: 'prevencion', prio: 4, base: 'Ficha · Sin desparasitar',
+        cuando: c => c.sinDesparasitaciones,
+        texto: 'No hay desparasitaciones registradas en la ficha: confirmar producto y fecha de la última con el tutor.' }
+    ];
+
+    // Tope de lo que se muestra. El recuadro compite por el mismo panel con
+    // la mini-lista de módulos y la lista de problemas: una lista de 20
+    // puntos no se lee en consulta, se ignora entera.
+    const RECO_MAX_ITEMS = 10;
+
+    const RECO_CATEGORIAS = [
+      { key: 'manejo', label: 'Antes de prescribir', icon: 'alert-triangle' },
+      { key: 'anamnesis', label: 'Preguntar (S)', icon: 'help-circle' },
+      { key: 'examen', label: 'Explorar (O)', icon: 'stethoscope' },
+      { key: 'tamizaje', label: 'Tamizaje sugerido', icon: 'test-tube-2' },
+      { key: 'prevencion', label: 'Prevención', icon: 'shield-check' }
+    ];
+
+    function calcularRecomendacionesConsulta(data, motivo) {
+      const ctx = construirContextoRecomendaciones(data, motivo);
+      const items = [];
+      RECOMENDACIONES_CONSULTA.forEach(regla => {
+        let aplica = false;
+        // Una regla con datos inesperados no puede dejar el recuadro (ni el
+        // panel entero) sin pintar: se descarta esa sola y sigue el resto.
+        try { aplica = !!regla.cuando(ctx); } catch (err) { aplica = false; }
+        if (!aplica) return;
+        let texto = '';
+        try { texto = typeof regla.texto === 'function' ? regla.texto(ctx) : regla.texto; } catch (err) { texto = ''; }
+        if (!texto) return;
+        items.push({ cat: regla.cat, prio: regla.prio, base: regla.base, texto });
+      });
+      // Orden estable: por prioridad y, a igualdad, en el orden en que están
+      // declaradas (que agrupa por tema).
+      items.forEach((it, i) => { it._orden = i; });
+      items.sort((a, b) => (a.prio - b.prio) || (a._orden - b._orden));
+      return { ctx, items };
+    }
+
+    // Los cinco datos que produjeron la lista, a la vista. Sin esto el
+    // recuadro parece hablar de la nada; y cuando un dato falta se dice cuál
+    // — es lo que empuja a completarlo en la ficha.
+    function recoBasisHtml(ctx) {
+      const sufijo = ctx.esterilizado === true
+        ? (ctx.sexo === 'hembra' ? ' esterilizada' : ' esterilizado')
+        : (ctx.esterilizado === false ? (ctx.sexo === 'hembra' ? ' entera' : ' entero') : '');
+      const sexoTxt = ctx.sexo ? `${ctx.sexo === 'hembra' ? 'Hembra' : 'Macho'}${sufijo}` : '';
+      const chip = (valor, falta) => valor
+        ? `<span>${escapeHtml(valor)}</span>`
+        : `<span class="falta">${escapeHtml(falta)}</span>`;
+      return [
+        chip(ctx.especieLabel, 'Especie sin registrar'),
+        chip(ctx.raza, 'Raza sin registrar'),
+        chip(ctx.edadTexto, 'Edad sin registrar'),
+        chip(sexoTxt, 'Sexo sin registrar'),
+        chip(ctx.motivo, 'Sin motivo')
+      ].join('');
+    }
+
+    function recomendacionesConsultaHtml(data) {
+      if (!data) return '';
+      // El motivo se lee del select del Subjetivo, que es su único lugar.
+      const motivoEl = document.getElementById('tablero-soap-motivo');
+      const { ctx, items } = calcularRecomendacionesConsulta(data, motivoEl ? motivoEl.value : '');
+      const visibles = items.slice(0, RECO_MAX_ITEMS);
+
+      const gruposHtml = RECO_CATEGORIAS.map(cat => {
+        const delGrupo = visibles.filter(i => i.cat === cat.key);
+        if (!delGrupo.length) return '';
+        return `
+          <div class="tablero-reco-group">
+            <div class="tablero-reco-group-title"><i data-lucide="${cat.icon}" style="width:11px;height:11px;"></i> ${cat.label}</div>
+            ${delGrupo.map(i => `
+              <div class="tablero-reco-item"><div>${escapeHtml(i.texto)}<span class="tablero-reco-tag">${escapeHtml(i.base)}</span></div></div>
+            `).join('')}
+          </div>`;
+      }).join('');
+
       return `
-        <div class="tablero-breed-insight">
-          <strong><i data-lucide="info" style="width:12px;height:12px;vertical-align:-1px;"></i> Datos de la especie</strong>
-          <p style="margin-top:4px;">${nota}</p>
+        <div class="tablero-reco" id="tablero-reco-box">
+          <div class="tablero-reco-head">
+            <strong><i data-lucide="lightbulb" style="width:13px;height:13px;"></i> Recomendaciones para la consulta</strong>
+            ${visibles.length ? `<span class="tablero-reco-count">${visibles.length}${items.length > visibles.length ? '+' : ''}</span>` : ''}
+          </div>
+          <div class="tablero-reco-basis">${recoBasisHtml(ctx)}</div>
+          ${gruposHtml || `<p style="margin-top:10px;">Sin sugerencias con los datos disponibles — completa especie, raza, fecha de nacimiento y sexo en la ficha del paciente.</p>`}
+          <p class="tablero-reco-foot">Sugerencias orientativas construidas con los datos de la ficha y el motivo de consulta. No son un diagnóstico ni reemplazan el criterio clínico.</p>
         </div>
       `;
+    }
+
+    // Repinta SOLO el recuadro (outerHTML sobre su propio id) en vez del
+    // panel completo: cuando está abierta la mini-lista de un módulo del
+    // strip, repintar el panel entero perdería ese módulo seleccionado.
+    function refrescarRecomendacionesConsulta() {
+      const box = document.getElementById('tablero-reco-box');
+      if (!box || !selectedPetKey || !patientData[selectedPetKey]) return;
+      box.outerHTML = recomendacionesConsultaHtml(patientData[selectedPetKey]);
+      lucide.createIcons();
+    }
+
+    function onTableroMotivoChange() {
+      refrescarRecomendacionesConsulta();
     }
 
     function renderNavegacionRapidaDefault() {
@@ -14599,7 +15091,7 @@
           <span class="tablero-quicknav-title"><i data-lucide="zap" style="width:14px;height:14px;color:var(--clinic-accent);"></i> Navegación rápida</span>
         </div>
         <p style="font-size:12px;color:var(--text-2);line-height:1.5;">Selecciona un módulo del strip superior para consultar sus registros o cargar uno nuevo sin salir de la consulta.</p>
-        ${especieInsightHtml(data)}
+        ${recomendacionesConsultaHtml(data)}
       `;
       lucide.createIcons();
     }
@@ -14814,7 +15306,7 @@
           <button class="btn-outline accent-create-btn" style="padding:5px 8px;font-size:11px;" onclick="abrirTableroRegistroNuevo('${key}')"><i data-lucide="plus" style="width:12px;height:12px;"></i> Registrar</button>
         </div>
         ${listHtml}
-        ${especieInsightHtml(data)}
+        ${recomendacionesConsultaHtml(data)}
       `;
       lucide.createIcons();
     }

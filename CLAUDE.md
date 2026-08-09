@@ -504,6 +504,20 @@ cierra el script") en vez del literal `</script>`.
     la maqueta cambió, los ids no. Los inputs de vitales usan
     `.tablero-vital-input` dentro de `.tablero-vital-tile` (ya no
     `.input-control`), pero siguen siendo los mismos ids.
+  - **"Motivo de consulta" (`#tablero-soap-motivo`) vive DENTRO de la
+    tarjeta del Subjetivo**, encima del textarea de anamnesis; la primera
+    tarjeta del riel quedó solo con la fecha. Es lo que enmarca todo lo
+    que se escribe en la S, y además es una de las cinco entradas del
+    recuadro de recomendaciones del panel lateral (ver abajo), de ahí su
+    `onchange="onTableroMotivoChange()"`. El id NO cambió al mudarlo —
+    es contrato con `guardarConsulta()` y con `aplicarAudioSoip()`, que
+    lo fija por código y por eso llama a
+    `refrescarRecomendacionesConsulta()` a mano (fijar `.value` no
+    dispara `onchange`). Las 6 opciones del select tampoco cambiaron: son
+    las mismas del modal clásico (`#soap-motivo`) y las que valida
+    `aplicarAudioSoip()` contra lo que devuelve `extraer_soip.py`. Los dos
+    campos sueltos del riel (fecha y motivo) llevan
+    `.tablero-soip-field`, que solo les pone un tope de ancho.
   - Los 6 vitales numéricos (todos menos TLLC, que es texto libre) tienen
     además un `<input type="range">` bajo el número
     (`.tablero-vital-range`), sincronizado en ambos sentidos con
@@ -1143,6 +1157,57 @@ Fórmulas médicas pasó a ser la lista de medicamentos recetados (que es
 de lo que trata una fórmula) y el diagnóstico bajó a esa línea de
 detalle — antes el diagnóstico era el título y los medicamentos no se
 veían en absoluto.
+
+**Recomendaciones para la consulta (pie del panel "Navegación rápida").**
+Reemplazó a la nota fija por especie que vivía ahí (`ESPECIE_INSIGHT` /
+`especieInsightHtml()`, rotulada "Datos de la especie"): era UN texto para
+todos los caninos y otro para todos los felinos, así que después de leerlo
+una vez dejaba de aportar. Ahora `recomendacionesConsultaHtml()` cruza los
+cinco datos que sí cambian de paciente a paciente y de consulta a consulta
+— **Especie · Raza · Edad · Sexo/estado reproductivo · Motivo de
+consulta** — más tres derivados de la ficha (alergias, antecedentes y la
+variación de peso entre las dos últimas mediciones de `pesoHistorico`).
+Se pinta en los DOS estados del panel (`renderNavegacionRapidaDefault()` y
+`renderTableroModuloDetalle()`), igual que la nota anterior.
+- **La lista es declarativa**: `RECOMENDACIONES_CONSULTA` es un array de
+  reglas `{cat, prio, base, cuando(ctx), texto}` y `ctx` lo arma
+  `construirContextoRecomendaciones()`. Para agregar una sugerencia se
+  agrega una regla; no hay lógica de render que tocar. Una regla que
+  truena se descarta sola (try/catch por regla) para que un dato raro no
+  deje el panel entero sin pintar.
+- **`cuando` solo puede leer `ctx`.** Nada de DOM ni de arrays globales
+  desde una regla: el recuadro se repinta en cada cambio de motivo y en
+  cada click del strip de módulos.
+- **Solo predisposiciones documentadas y de consenso** (displasia en razas
+  grandes, CMH en Maine Coon/Ragdoll, MDR1 en collies y pastores, ERC e
+  hipertiroidismo en el gato geriátrico…). No inventes asociaciones
+  raza→enfermedad para alargar la lista: esto se lee durante la consulta y
+  una sugerencia falsa desvía el examen físico de verdad. Y ninguna regla
+  afirma un diagnóstico ni indica un tratamiento — todas dicen qué
+  PREGUNTAR, EXPLORAR, CONFIRMAR o VERIFICAR antes de prescribir, mismo
+  criterio que el borrador de audio → SOIP.
+- **Sin el dato, la regla no se dispara.** Sin `fechaNacimiento` no hay
+  etapa de vida (la edad se calcula siempre desde ahí, nunca desde el texto
+  legado `data.age`), sin género no hay reglas de sexo. En vez de adivinar,
+  la fila de chips (`recoBasisHtml()`) muestra cuál de los cinco datos
+  falta — que además es lo que empuja a completar la ficha.
+- **Las razas se agrupan, no se enumeran**: `RECO_GRUPOS_RAZA` mapea
+  palabras clave → grupo (`braquicefalo`, `condrodistrofico`, `mdr1`,
+  `cmh`, `toraxprofundo`…) por INCLUSIÓN sobre el texto normalizado sin
+  tildes, porque `mascotas.raza` es texto libre (llega de CSV, de WhatsApp
+  y de lo que digite cada clínica) — mismo criterio que
+  `TEMPERAMENTO_TONOS`. Una raza cae en varios grupos a propósito (un Bóxer
+  es braquicéfalo, grande y de tórax profundo) y cada grupo aporta su
+  regla; no lo conviertas en un catálogo cerrado de razas.
+- **`RECO_MAX_ITEMS` (10) es un tope deliberado**, no una limitación
+  técnica: el recuadro comparte panel con la mini-lista de módulos y la
+  lista de problemas, y una lista de 20 puntos no se lee en consulta, se
+  ignora entera. Por eso cada regla trae `prio`.
+- `refrescarRecomendacionesConsulta()` repinta SOLO el recuadro
+  (`outerHTML` sobre `#tablero-reco-box`), nunca el panel: con la
+  mini-lista de un módulo abierta, repintar el panel entero perdería el
+  módulo seleccionado. Lo llaman el `onchange` del motivo,
+  `aplicarAudioSoip()` y `guardarPesoActualizado()`.
 
 **Cirugías/procedimientos y Tareas Pendientes SÍ persisten en Supabase**
 (tablas `cirugias`/`tareas_pendientes`, ver `supabase/schema.sql`) —
