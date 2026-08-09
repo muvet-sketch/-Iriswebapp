@@ -3218,3 +3218,588 @@ create policy "audios_consultas_delete_own_folder"
     bucket_id = 'audios-consultas'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ══════════════════════════════════════════════════════════════
+-- LINK PÚBLICO DE AUTORREGISTRO (tutor + mascotas)
+-- ══════════════════════════════════════════════════════════════
+-- La clínica genera un enlace de un solo uso, se lo manda al tutor por
+-- WhatsApp, y el tutor llena el formulario desde su celular en
+-- `registro.html`. Al enviarlo, la ficha queda creada en esta clínica y
+-- el médico la encuentra en el buscador del Consultorio.
+--
+-- Un visitante `anon` NO puede insertar en `propietarios`
+-- (propietarios_insert_member exige user_is_member_of) ni en `mascotas`
+-- (que además exige propietario_vinculado). Por eso todo el camino de
+-- escritura pasa por funciones `security definer`, igual que hace toda
+-- la sección RED IRIS — aquí NO se abre ninguna policy nueva a `anon`.
+--
+-- El modelo del token es el de `invites`: el uuid de la fila ES el
+-- token, no hay columna aparte.
+
+-- ── Origen de la ficha ──────────────────────────────────────
+-- null = la registró la clínica (todo lo preexistente).
+-- 'autorregistro' = la llenó el tutor por el link. Es lo único que
+-- alimenta la etiqueta del buscador; no cambia ningún permiso.
+alter table public.propietarios add column if not exists origen text;
+
+-- ── Tabla de enlaces ────────────────────────────────────────
+create table if not exists public.intake_links (
+  id                  uuid primary key default gen_random_uuid(),  -- el token
+  establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
+  nota                text,          -- "Ana, la del gato" — a quién se le mandó
+  -- Se reusa como `created_by` del propietario que salga de este link:
+  -- quien lo envía es `anon` y no tiene auth.uid().
+  created_by          uuid references auth.users (id) on delete set null,
+  expira_at           timestamptz not null default (now() + interval '7 days'),
+  usado_at            timestamptz,
+  propietario_id      uuid references public.propietarios (id) on delete set null,
+  -- Payload crudo tal como lo envió el tutor. Es lo único que queda si
+  -- la ficha no se pudo crear entera (ver el caso red_vinculado=false).
+  datos_recibidos     jsonb,
+  estado              text not null default 'pendiente'
+                        check (estado in ('pendiente', 'completado', 'sin_vincular')),
+  created_at          timestamptz not null default now()
+);
+
+create index if not exists intake_links_establecimiento_idx
+  on public.intake_links (establecimiento_id, created_at desc);
+
+alter table public.intake_links enable row level security;
+
+-- Solo los miembros de la clínica ven y crean sus enlaces. `anon` no
+-- tiene ninguna policy a propósito: entra únicamente por las dos RPC.
+drop policy if exists "intake_links_select_member" on public.intake_links;
+create policy "intake_links_select_member"
+  on public.intake_links for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "intake_links_insert_member" on public.intake_links;
+create policy "intake_links_insert_member"
+  on public.intake_links for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "intake_links_update_member" on public.intake_links;
+create policy "intake_links_update_member"
+  on public.intake_links for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "intake_links_delete_member" on public.intake_links;
+create policy "intake_links_delete_member"
+  on public.intake_links for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── Helpers internos ────────────────────────────────────────
+-- Lee un texto del jsonb con tope de longitud. Sin esto, un envío
+-- público podría meter megabytes en cualquier columna.
+create or replace function public.intake_txt(p_obj jsonb, p_key text, p_max int)
+returns text language sql immutable set search_path = public as $$
+  select nullif(left(btrim(coalesce(p_obj ->> p_key, '')), p_max), '');
+$$;
+
+-- Réplica en SQL de crearMascotaKey() (index.html): minúsculas, sin
+-- tildes, solo [a-z0-9], fallback 'mascota', y sufijo 2,3,… hasta que
+-- no choque. `mascotas` tiene unique (establecimiento_id, pet_key), así
+-- que la deduplicación es por establecimiento, no global.
+create or replace function public.intake_pet_key(p_establecimiento_id uuid, p_nombre text)
+returns text language plpgsql stable set search_path = public as $$
+declare
+  v_base text := coalesce(public.red_norm_txt(p_nombre), 'mascota');
+  v_key  text := v_base;
+  v_i    int  := 2;
+begin
+  while exists (
+    select 1 from public.mascotas m
+     where m.establecimiento_id = p_establecimiento_id and m.pet_key = v_key
+  ) loop
+    v_key := v_base || v_i::text;
+    v_i := v_i + 1;
+  end loop;
+  return v_key;
+end;
+$$;
+
+-- ── RPC 1: qué ve el tutor al abrir el enlace ───────────────
+-- Devuelve SOLO el estado del token y el nombre de la clínica. Cero
+-- PII, cero datos de tutores — mismo criterio que get_invite_preview().
+create or replace function public.intake_link_preview(p_token uuid)
+returns jsonb language plpgsql security definer stable set search_path = public as $$
+declare v_link public.intake_links; v_estab public.establecimientos;
+begin
+  select * into v_link from public.intake_links where id = p_token;
+  if not found then
+    return jsonb_build_object('estado', 'inexistente');
+  end if;
+  if v_link.usado_at is not null then
+    return jsonb_build_object('estado', 'usado');
+  end if;
+  if v_link.expira_at <= now() then
+    return jsonb_build_object('estado', 'expirado');
+  end if;
+
+  select * into v_estab from public.establecimientos where id = v_link.establecimiento_id;
+  return jsonb_build_object(
+    'estado', 'valido',
+    'clinica_nombre', coalesce(v_estab.nombre, 'la clínica'),
+    'clinica_logo_path', v_estab.logo_path
+  );
+end;
+$$;
+
+-- ── RPC 2: el envío del formulario ──────────────────────────
+-- Único camino de escritura desde la página pública.
+create or replace function public.intake_link_enviar(
+  p_token uuid, p_tutor jsonb, p_mascotas jsonb
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_link      public.intake_links;
+  v_mascotas  jsonb := coalesce(p_mascotas, '[]'::jsonb);
+  v_nombre    text;
+  v_doc       text;
+  v_doc_norm  text;
+  v_prop_id   uuid;
+  v_vinculado boolean;
+  v_m         jsonb;
+  v_peso      numeric;
+  v_peso_txt  text;
+  v_creadas   int := 0;
+  v_estado    text;
+begin
+  -- El FOR UPDATE es lo que hace que el token sea de un solo uso aunque
+  -- se envíe el formulario dos veces a la vez.
+  select * into v_link from public.intake_links where id = p_token for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'estado', 'inexistente');
+  end if;
+  if v_link.usado_at is not null then
+    return jsonb_build_object('ok', false, 'estado', 'usado');
+  end if;
+  if v_link.expira_at <= now() then
+    return jsonb_build_object('ok', false, 'estado', 'expirado');
+  end if;
+
+  v_nombre := public.intake_txt(p_tutor, 'nombre', 160);
+  v_doc    := public.intake_txt(p_tutor, 'doc_numero', 40);
+  if v_nombre is null then
+    return jsonb_build_object('ok', false, 'estado', 'sin_nombre');
+  end if;
+  if v_doc is null then
+    return jsonb_build_object('ok', false, 'estado', 'sin_documento');
+  end if;
+  if jsonb_typeof(v_mascotas) <> 'array' or jsonb_array_length(v_mascotas) > 10 then
+    return jsonb_build_object('ok', false, 'estado', 'datos_invalidos');
+  end if;
+
+  v_doc_norm := public.red_norm_doc(v_doc);
+
+  -- ¿Esta clínica ya tenía a este tutor? Entonces no se duplica la
+  -- ficha: se rellenan SOLO las columnas vacías. Lo que la clínica ya
+  -- había escrito nunca se pisa con lo que digitó el tutor.
+  select p.id into v_prop_id
+    from public.propietarios p
+   where p.establecimiento_id = v_link.establecimiento_id
+     and v_doc_norm is not null
+     and public.red_norm_doc(p.doc_numero) = v_doc_norm
+   limit 1;
+
+  if v_prop_id is not null then
+    update public.propietarios p set
+      doc_tipo            = coalesce(nullif(btrim(p.doc_tipo), ''),            public.intake_txt(p_tutor, 'doc_tipo', 20)),
+      movil               = coalesce(nullif(btrim(p.movil), ''),               public.intake_txt(p_tutor, 'movil', 40)),
+      email               = coalesce(nullif(btrim(p.email), ''),               public.intake_txt(p_tutor, 'email', 160)),
+      direccion           = coalesce(nullif(btrim(p.direccion), ''),           public.intake_txt(p_tutor, 'direccion', 200)),
+      ciudad              = coalesce(nullif(btrim(p.ciudad), ''),              public.intake_txt(p_tutor, 'ciudad', 80)),
+      contacto_autorizado = coalesce(nullif(btrim(p.contacto_autorizado), ''), public.intake_txt(p_tutor, 'contacto_autorizado', 160)),
+      telefono_alterno    = coalesce(nullif(btrim(p.telefono_alterno), ''),    public.intake_txt(p_tutor, 'telefono_alterno', 40)),
+      updated_at          = now()
+     where p.id = v_prop_id;
+  else
+    insert into public.propietarios (
+      establecimiento_id, doc_tipo, doc_numero, movil, email, nombre,
+      direccion, ciudad, contacto_autorizado, telefono_alterno,
+      origen, created_by
+    ) values (
+      v_link.establecimiento_id,
+      coalesce(public.intake_txt(p_tutor, 'doc_tipo', 20), 'C.C.'),
+      v_doc,
+      public.intake_txt(p_tutor, 'movil', 40),
+      public.intake_txt(p_tutor, 'email', 160),
+      v_nombre,
+      public.intake_txt(p_tutor, 'direccion', 200),
+      public.intake_txt(p_tutor, 'ciudad', 80),
+      public.intake_txt(p_tutor, 'contacto_autorizado', 160),
+      public.intake_txt(p_tutor, 'telefono_alterno', 40),
+      'autorregistro',
+      v_link.created_by
+    ) returning id into v_prop_id;
+  end if;
+
+  -- Lo fijó el trigger red_trg_publicar_propietario, no esta función.
+  select coalesce(red_vinculado, true) into v_vinculado
+    from public.propietarios where id = v_prop_id;
+
+  -- Si la identidad ya vivía en otra clínica, la ficha nace bloqueada y
+  -- NO se le puede colgar ninguna mascota (lo impide la policy de
+  -- `mascotas`, y saltársela por ser definer rompería el invariante de
+  -- la red). Es además lo correcto de fondo: al verificar la identidad,
+  -- las mascotas llegan de la red. El payload queda en datos_recibidos.
+  if v_vinculado then
+    for v_m in select * from jsonb_array_elements(v_mascotas) loop
+      if public.intake_txt(v_m, 'nombre', 80) is null then
+        continue;
+      end if;
+
+      begin
+        v_peso := nullif(public.intake_txt(v_m, 'peso', 20), '')::numeric;
+      exception when others then
+        v_peso := null;
+      end;
+      if v_peso is not null and (v_peso <= 0 or v_peso > 2000) then
+        v_peso := null;
+      end if;
+      v_peso_txt := case when v_peso is null then null else v_peso::text || ' kg' end;
+
+      insert into public.mascotas (
+        establecimiento_id, propietario_id, pet_key, nombre, chip, especie, raza,
+        fecha_nacimiento, peso, color, genero, talla, estado_reproductivo,
+        alimentacion, temperamento, antecedentes, alergias, peso_historico, created_by
+      ) values (
+        v_link.establecimiento_id,
+        v_prop_id,
+        public.intake_pet_key(v_link.establecimiento_id, public.intake_txt(v_m, 'nombre', 80)),
+        public.intake_txt(v_m, 'nombre', 80),
+        public.intake_txt(v_m, 'chip', 40),
+        public.intake_txt(v_m, 'especie', 40),
+        public.intake_txt(v_m, 'raza', 80),
+        -- Fecha inválida o futura → null, no revienta el envío entero.
+        (case
+           when public.intake_txt(v_m, 'fecha_nacimiento', 10) ~ '^\d{4}-\d{2}-\d{2}$'
+            and (public.intake_txt(v_m, 'fecha_nacimiento', 10))::date <= current_date
+           then (public.intake_txt(v_m, 'fecha_nacimiento', 10))::date
+           else null
+         end),
+        v_peso_txt,
+        public.intake_txt(v_m, 'color', 60),
+        public.intake_txt(v_m, 'genero', 20),
+        public.intake_txt(v_m, 'talla', 20),
+        public.intake_txt(v_m, 'estado_reproductivo', 40),
+        public.intake_txt(v_m, 'alimentacion', 200),
+        public.intake_txt(v_m, 'temperamento', 200),
+        public.intake_txt(v_m, 'antecedentes', 500),
+        public.intake_txt(v_m, 'alergias', 500),
+        -- Mismo formato que guardarMascotaRegistro(): el peso alimenta
+        -- el histórico desde el primer día.
+        (case when v_peso is null then '[]'::jsonb
+              else jsonb_build_array(jsonb_build_object(
+                     'fechaISO', to_char(current_date, 'YYYY-MM-DD'),
+                     'fecha',    to_char(current_date, 'DD/MM/YYYY'),
+                     'peso',     v_peso))
+         end),
+        v_link.created_by
+      );
+      v_creadas := v_creadas + 1;
+    end loop;
+  end if;
+
+  v_estado := case when v_vinculado then 'completado' else 'sin_vincular' end;
+
+  update public.intake_links set
+    usado_at        = now(),
+    estado          = v_estado,
+    propietario_id  = v_prop_id,
+    datos_recibidos = jsonb_build_object('tutor', p_tutor, 'mascotas', v_mascotas)
+   where id = p_token;
+
+  return jsonb_build_object('ok', true, 'estado', v_estado, 'mascotas_creadas', v_creadas);
+end;
+$$;
+
+-- ── Higiene de privilegios ──────────────────────────────────
+-- Hay que nombrar los TRES roles y ninguno sobra: Postgres da EXECUTE a
+-- `public` por default (y anon lo hereda por ahí, así que revocarle solo
+-- a anon/authenticated no cambia nada — se verificó con
+-- has_function_privilege), y Supabase además concede explícitamente a
+-- anon/authenticated, así que revocar solo a `public` tampoco alcanza.
+-- Solo las dos RPC de entrada quedan invocables desde afuera; los
+-- helpers no validan nada y no tienen por qué serlo.
+revoke execute on function public.intake_txt(jsonb, text, int) from public, anon, authenticated;
+revoke execute on function public.intake_pet_key(uuid, text) from public, anon, authenticated;
+
+grant execute on function public.intake_link_preview(uuid) to anon, authenticated;
+grant execute on function public.intake_link_enviar(uuid, jsonb, jsonb) to anon, authenticated;
+
+-- ══════════════════════════════════════════════════════════════
+-- UNIFICAR MASCOTAS DUPLICADAS
+-- ══════════════════════════════════════════════════════════════
+-- Caso real: el mismo animal se registra dos veces porque lo llevó
+-- primero una persona y después otra (distinta cédula, distinto tutor).
+-- No es un error de la app — es cómo funciona una clínica. Al unificar,
+-- uno de los dos tutores queda como RESPONSABLE de la mascota y el otro
+-- como CONTACTO SECUNDARIO, y las dos historias clínicas pasan a ser una.
+--
+-- La fila duplicada se BORRA (decisión explícita del cliente). Por eso:
+--   1. La operación entera es UNA transacción — o se mueve todo o nada.
+--   2. Antes de borrar se guarda la fila completa y el conteo de lo
+--      movido en `mascota_fusiones`, que es un log de auditoría: si
+--      alguien unifica dos perros distintos que se llaman igual, ahí
+--      queda registrado qué había y quién lo hizo.
+--
+-- Por qué `security definer` y no invoker: `mensajes` y `red_solicitudes`
+-- NO tienen policy de UPDATE (un mensaje enviado no se edita, y las
+-- solicitudes de la red solo las mueven sus propias RPC). Con los
+-- permisos del usuario, esos UPDATE afectarían 0 filas EN SILENCIO y los
+-- mensajes se irían por el CASCADE al borrar la ficha duplicada. La
+-- contrapartida es que la función valida la membresía ella misma.
+
+-- ── Contactos secundarios de una mascota ────────────────────
+-- Tabla y no una columna en `mascotas`: una mascota puede terminar con
+-- más de un contacto (dueño anterior, cuidador, familiar), y cada uno es
+-- un `propietarios` real —con su documento, su celular y su propia
+-- facturación— no un texto suelto.
+create table if not exists public.mascota_contactos (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id         uuid not null references public.mascotas (id) on delete cascade,
+  propietario_id     uuid not null references public.propietarios (id) on delete cascade,
+  relacion           text,
+  nota               text,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  unique (mascota_id, propietario_id)
+);
+
+create index if not exists mascota_contactos_mascota_idx on public.mascota_contactos (mascota_id);
+create index if not exists mascota_contactos_establecimiento_idx on public.mascota_contactos (establecimiento_id);
+
+alter table public.mascota_contactos enable row level security;
+
+drop policy if exists "mascota_contactos_select_member" on public.mascota_contactos;
+create policy "mascota_contactos_select_member" on public.mascota_contactos for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascota_contactos_insert_member" on public.mascota_contactos;
+create policy "mascota_contactos_insert_member" on public.mascota_contactos for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascota_contactos_update_member" on public.mascota_contactos;
+create policy "mascota_contactos_update_member" on public.mascota_contactos for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascota_contactos_delete_member" on public.mascota_contactos;
+create policy "mascota_contactos_delete_member" on public.mascota_contactos for delete
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── Auditoría de fusiones ───────────────────────────────────
+-- Es lo único que queda de la ficha borrada. Sin policies de escritura a
+-- propósito: solo la escribe fusionar_mascotas() (definer). Un log que
+-- el usuario pudiera editar no sirve de log.
+create table if not exists public.mascota_fusiones (
+  id                        uuid primary key default gen_random_uuid(),
+  establecimiento_id        uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_principal_id      uuid references public.mascotas (id) on delete set null,
+  mascota_eliminada_id      uuid not null,
+  mascota_eliminada_nombre  text,
+  snapshot                  jsonb not null,   -- la fila completa que se borró
+  propietario_responsable   uuid,
+  propietario_secundario    uuid,
+  registros_movidos         jsonb not null default '{}'::jsonb,
+  ejecutado_por             uuid references auth.users (id) on delete set null,
+  created_at                timestamptz not null default now()
+);
+
+create index if not exists mascota_fusiones_establecimiento_idx
+  on public.mascota_fusiones (establecimiento_id, created_at desc);
+
+alter table public.mascota_fusiones enable row level security;
+
+drop policy if exists "mascota_fusiones_select_member" on public.mascota_fusiones;
+create policy "mascota_fusiones_select_member" on public.mascota_fusiones for select
+  using (public.user_is_member_of(establecimiento_id));
+
+-- ── La fusión ───────────────────────────────────────────────
+-- p_datos trae los valores YA RESUELTOS de la ficha que queda (el front
+-- muestra los dos valores lado a lado y el usuario elige campo por
+-- campo), incluido `propietario_id`: el responsable puede ser el tutor
+-- de cualquiera de las dos fichas.
+create or replace function public.fusionar_mascotas(
+  p_principal_id uuid,
+  p_duplicada_id uuid,
+  p_datos jsonb default '{}'::jsonb,
+  p_relacion_contacto text default null
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  -- Las tablas que cuelgan de `mascotas` por FK. Si se agrega un módulo
+  -- clínico nuevo con mascota_id, SUMARLO ACÁ o su historia se perderá
+  -- en la próxima fusión (la fila duplicada se borra con CASCADE).
+  c_tablas constant text[] := array[
+    'consultas', 'formulas_medicas', 'documentos', 'examenes', 'vacunaciones',
+    'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
+    'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes',
+    'mensajes', 'consultas_audio'
+  ];
+  v_pri        public.mascotas;
+  v_dup        public.mascotas;
+  v_estab      uuid;
+  v_resp       uuid;
+  v_tabla      text;
+  v_n          int;
+  v_mov        jsonb := '{}'::jsonb;
+  v_peso_hist  jsonb;
+  v_snapshot   jsonb;
+  v_fusion_id  uuid;
+begin
+  if p_principal_id is null or p_duplicada_id is null then
+    raise exception 'Faltan las dos fichas a unificar';
+  end if;
+  if p_principal_id = p_duplicada_id then
+    raise exception 'No se puede unificar una ficha consigo misma';
+  end if;
+
+  select * into v_pri from public.mascotas where id = p_principal_id;
+  if not found then raise exception 'La ficha que se conserva ya no existe'; end if;
+  select * into v_dup from public.mascotas where id = p_duplicada_id;
+  if not found then raise exception 'La ficha duplicada ya no existe'; end if;
+
+  v_estab := v_pri.establecimiento_id;
+  if v_dup.establecimiento_id <> v_estab then
+    raise exception 'Las dos fichas tienen que ser de la misma clínica';
+  end if;
+  if not public.user_is_member_of(v_estab) then
+    raise exception 'No tienes acceso a esta clínica';
+  end if;
+
+  -- Responsable final: el tutor de cualquiera de las dos fichas, o el que
+  -- venga explícito en p_datos.
+  v_resp := coalesce(nullif(p_datos ->> 'propietario_id', '')::uuid, v_pri.propietario_id);
+  perform 1 from public.propietarios
+   where id = v_resp and establecimiento_id = v_estab
+     and coalesce(red_vinculado, true);
+  if not found then
+    raise exception 'El tutor responsable elegido no existe en esta clínica o está sin vincular';
+  end if;
+
+  -- El histórico de peso son mediciones reales de las dos fichas: se
+  -- fusionan, no se elige una. Es historia, igual que las consultas.
+  select coalesce(jsonb_agg(e order by e ->> 'fechaISO'), '[]'::jsonb)
+    into v_peso_hist
+    from (
+      select distinct e from jsonb_array_elements(
+        coalesce(v_pri.peso_historico, '[]'::jsonb) || coalesce(v_dup.peso_historico, '[]'::jsonb)
+      ) e
+    ) s;
+
+  -- Campos de la ficha: `p_datos ? 'campo'` distingue "el usuario eligió
+  -- vaciarlo" de "el front no lo mandó", que no es lo mismo.
+  update public.mascotas set
+    propietario_id      = v_resp,
+    nombre              = coalesce(nullif(btrim(p_datos ->> 'nombre'), ''), v_pri.nombre),
+    chip                = case when p_datos ? 'chip'                then nullif(btrim(p_datos ->> 'chip'), '')                else chip                end,
+    especie             = case when p_datos ? 'especie'             then nullif(btrim(p_datos ->> 'especie'), '')             else especie             end,
+    raza                = case when p_datos ? 'raza'                then nullif(btrim(p_datos ->> 'raza'), '')                else raza                end,
+    color               = case when p_datos ? 'color'               then nullif(btrim(p_datos ->> 'color'), '')               else color               end,
+    genero              = case when p_datos ? 'genero'              then nullif(btrim(p_datos ->> 'genero'), '')              else genero              end,
+    talla               = case when p_datos ? 'talla'               then nullif(btrim(p_datos ->> 'talla'), '')               else talla               end,
+    estado_reproductivo = case when p_datos ? 'estado_reproductivo' then nullif(btrim(p_datos ->> 'estado_reproductivo'), '') else estado_reproductivo end,
+    peso                = case when p_datos ? 'peso'                then nullif(btrim(p_datos ->> 'peso'), '')                else peso                end,
+    alimentacion        = case when p_datos ? 'alimentacion'        then nullif(btrim(p_datos ->> 'alimentacion'), '')        else alimentacion        end,
+    frecuencia_bano     = case when p_datos ? 'frecuencia_bano'     then nullif(btrim(p_datos ->> 'frecuencia_bano'), '')     else frecuencia_bano     end,
+    temperamento        = case when p_datos ? 'temperamento'        then nullif(btrim(p_datos ->> 'temperamento'), '')        else temperamento        end,
+    antecedentes        = case when p_datos ? 'antecedentes'        then nullif(btrim(p_datos ->> 'antecedentes'), '')        else antecedentes        end,
+    alergias            = case when p_datos ? 'alergias'            then nullif(btrim(p_datos ->> 'alergias'), '')            else alergias            end,
+    foto_path           = case when p_datos ? 'foto_path'           then nullif(btrim(p_datos ->> 'foto_path'), '')           else foto_path           end,
+    fecha_nacimiento    = case
+                            when p_datos ? 'fecha_nacimiento' then
+                              case when (p_datos ->> 'fecha_nacimiento') ~ '^\d{4}-\d{2}-\d{2}$'
+                                   then (p_datos ->> 'fecha_nacimiento')::date else null end
+                            else fecha_nacimiento
+                          end,
+    animal_servicio     = case when p_datos ? 'animal_servicio' then coalesce((p_datos ->> 'animal_servicio')::boolean, false) else animal_servicio end,
+    fallecido           = case when p_datos ? 'fallecido'       then coalesce((p_datos ->> 'fallecido')::boolean, false)       else fallecido       end,
+    peso_historico      = v_peso_hist,
+    red_mascota_id      = coalesce(red_mascota_id, v_dup.red_mascota_id),
+    updated_at          = now()
+   where id = p_principal_id;
+
+  -- ── Mover la historia clínica ────────────────────────────
+  foreach v_tabla in array c_tablas loop
+    execute format('update public.%I set mascota_id = $1 where mascota_id = $2', v_tabla)
+      using p_principal_id, p_duplicada_id;
+    get diagnostics v_n = row_count;
+    if v_n > 0 then v_mov := v_mov || jsonb_build_object(v_tabla, v_n); end if;
+  end loop;
+
+  update public.red_solicitudes set mascota_solicitante_id = p_principal_id
+   where mascota_solicitante_id = p_duplicada_id;
+  update public.red_solicitudes set mascota_destino_id = p_principal_id
+   where mascota_destino_id = p_duplicada_id;
+
+  -- Agenda y recordatorios NO referencian la mascota por FK sino por
+  -- `pet_key` (texto). Sin esto quedarían apuntando a una key que ya no
+  -- existe y los eventos desaparecerían de la ficha sin ningún error.
+  update public.agenda_eventos set pet_key = v_pri.pet_key
+   where establecimiento_id = v_estab and pet_key = v_dup.pet_key;
+  get diagnostics v_n = row_count;
+  if v_n > 0 then v_mov := v_mov || jsonb_build_object('agenda_eventos', v_n); end if;
+
+  update public.eventos_seguimiento set pet_key = v_pri.pet_key
+   where establecimiento_id = v_estab and pet_key = v_dup.pet_key;
+  get diagnostics v_n = row_count;
+  if v_n > 0 then v_mov := v_mov || jsonb_build_object('eventos_seguimiento', v_n); end if;
+
+  -- Contactos que ya tuviera la ficha duplicada (fusiones encadenadas).
+  update public.mascota_contactos set mascota_id = p_principal_id
+   where mascota_id = p_duplicada_id
+     and propietario_id not in (
+       select propietario_id from public.mascota_contactos where mascota_id = p_principal_id
+     );
+  delete from public.mascota_contactos where mascota_id = p_duplicada_id;
+
+  -- ── Contactos secundarios ────────────────────────────────
+  -- Los dos tutores originales que NO quedaron como responsable pasan a
+  -- ser contacto. Son dos porque el responsable elegido puede ser el de
+  -- la ficha duplicada, y entonces el que se desplaza es el de la principal.
+  insert into public.mascota_contactos (establecimiento_id, mascota_id, propietario_id, relacion, created_by)
+  select v_estab, p_principal_id, prop, nullif(btrim(p_relacion_contacto), ''), auth.uid()
+    from (select unnest(array[v_pri.propietario_id, v_dup.propietario_id]) as prop) s
+   where prop is not null and prop <> v_resp
+  on conflict (mascota_id, propietario_id)
+    do update set relacion = coalesce(excluded.relacion, public.mascota_contactos.relacion);
+
+  -- El responsable no puede figurar además como contacto secundario.
+  delete from public.mascota_contactos
+   where mascota_id = p_principal_id and propietario_id = v_resp;
+
+  -- ── Auditoría y borrado ──────────────────────────────────
+  v_snapshot := to_jsonb(v_dup);
+
+  delete from public.mascotas where id = p_duplicada_id;
+
+  insert into public.mascota_fusiones (
+    establecimiento_id, mascota_principal_id, mascota_eliminada_id, mascota_eliminada_nombre,
+    snapshot, propietario_responsable, propietario_secundario, registros_movidos, ejecutado_por
+  ) values (
+    v_estab, p_principal_id, p_duplicada_id, v_dup.nombre,
+    v_snapshot, v_resp,
+    case when v_dup.propietario_id <> v_resp then v_dup.propietario_id else v_pri.propietario_id end,
+    v_mov, auth.uid()
+  ) returning id into v_fusion_id;
+
+  return jsonb_build_object(
+    'ok', true,
+    'fusion_id', v_fusion_id,
+    'mascota_id', p_principal_id,
+    'pet_key', v_pri.pet_key,
+    'movidos', v_mov,
+    'total_movidos', (select coalesce(sum((value)::int), 0) from jsonb_each_text(v_mov))
+  );
+end;
+$$;
+
+-- ── Higiene de privilegios ──────────────────────────────────
+-- Definer que MUEVE Y BORRA historia clínica: nunca alcanzable sin
+-- sesión. `anon` no tiene ningún motivo para invocarla.
+revoke execute on function public.fusionar_mascotas(uuid, uuid, jsonb, text) from public, anon;
+grant  execute on function public.fusionar_mascotas(uuid, uuid, jsonb, text) to authenticated;

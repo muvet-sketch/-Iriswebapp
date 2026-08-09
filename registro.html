@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Registro de paciente — IRIS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!--
+    PÁGINA PÚBLICA DE AUTORREGISTRO — la abre el TUTOR, no la clínica.
+
+    Es el único archivo de la app fuera de index.html, y es a propósito:
+    quien entra acá no tiene sesión de IRIS, así que no puede reusar el
+    shell (ver la sección correspondiente en CLAUDE.md). Cargar los
+    1,87 MB de index.html desde datos móviles para llenar un formulario
+    no tiene sentido.
+
+    No escribe en ninguna tabla directamente: `anon` no tiene permiso
+    para insertar en `propietarios` ni en `mascotas`. Todo pasa por las
+    dos RPC `security definer` intake_link_preview / intake_link_enviar.
+  -->
+  <style>
+    :root {
+      --clinic-accent: #0F766E;
+      --clinic-accent-rgb: 15, 118, 110;
+      --bg-app: #FAF8FF;
+      --surface: #FFFFFF;
+      --border: rgba(189, 201, 198, 0.55);
+      --text-1: #131B2E;
+      --text-2: #3E4947;
+      --danger: #EF4444;
+      --success: #10B981;
+      --radius-sm: 6px;
+      --radius: 12px;
+      --radius-lg: 18px;
+      --shadow-md: 0px 4px 16px rgba(19, 27, 46, 0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-app);
+      color: var(--text-1);
+      -webkit-font-smoothing: antialiased;
+      padding: 0 0 48px;
+    }
+    input, select, textarea, button { font-family: inherit; font-size: inherit; }
+
+    .wrap { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+
+    .topbar {
+      background: var(--clinic-accent);
+      color: #fff;
+      padding: 22px 16px 26px;
+      margin-bottom: -14px;
+    }
+    .topbar-inner { max-width: 640px; margin: 0 auto; }
+    .topbar h1 { font-size: 19px; font-weight: 700; line-height: 1.3; }
+    .topbar p { font-size: 13px; opacity: .85; margin-top: 5px; line-height: 1.5; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 20px 18px;
+      margin-top: 16px;
+    }
+    .card-title {
+      font-size: 15px; font-weight: 700; margin-bottom: 4px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .card-hint { font-size: 12.5px; color: var(--text-2); line-height: 1.55; margin-bottom: 16px; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid .full { grid-column: 1 / -1; }
+    @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } .grid .full { grid-column: auto; } }
+
+    .fld label {
+      display: block; font-size: 12px; font-weight: 600;
+      color: var(--text-2); margin-bottom: 5px;
+    }
+    .fld label .req { color: var(--danger); }
+    .fld input[type=text], .fld input[type=tel], .fld input[type=email],
+    .fld input[type=number], .fld input[type=date], .fld select, .fld textarea {
+      width: 100%; padding: 11px 12px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: #fff; color: var(--text-1); font-size: 15px; /* 16px-ish evita el zoom de iOS */
+      outline: none; transition: border-color .15s, box-shadow .15s;
+    }
+    .fld textarea { resize: vertical; min-height: 62px; }
+    .fld input:focus, .fld select:focus, .fld textarea:focus {
+      border-color: var(--clinic-accent);
+      box-shadow: 0 0 0 3px rgba(var(--clinic-accent-rgb), .14);
+    }
+    .fld input.err, .fld select.err { border-color: var(--danger); background: #FEF2F2; }
+    .fld .sub { font-size: 11.5px; color: var(--text-2); margin-top: 5px; }
+
+    .tel-row { display: flex; gap: 8px; }
+    .tel-row select { flex: 0 0 118px; }
+    .tel-row input { flex: 1; min-width: 0; }
+
+    .check { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+    .check input { margin-top: 2px; width: 17px; height: 17px; accent-color: var(--clinic-accent); flex: 0 0 auto; }
+
+    .pet-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 14px; margin-bottom: 14px; background: #FCFCFE; }
+    .pet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .pet-head span { font-size: 13.5px; font-weight: 700; }
+    .pet-del {
+      background: none; border: none; color: var(--danger);
+      font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 4px 6px;
+    }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 13px 18px; border-radius: var(--radius-sm);
+      font-size: 14.5px; font-weight: 600; cursor: pointer; border: 1px solid transparent;
+      transition: opacity .15s;
+    }
+    .btn:disabled { opacity: .55; cursor: default; }
+    .btn-primary { background: var(--clinic-accent); color: #fff; width: 100%; padding: 15px; font-size: 15.5px; }
+    .btn-ghost { background: #fff; color: var(--clinic-accent); border-color: var(--clinic-accent); width: 100%; }
+
+    .alert { border-radius: var(--radius-sm); padding: 11px 13px; font-size: 13px; line-height: 1.5; margin-top: 14px; }
+    .alert-err { background: #FEF2F2; color: #B91C1C; }
+
+    .centro { text-align: center; padding: 56px 8px; }
+    .centro .ico { font-size: 44px; line-height: 1; margin-bottom: 14px; }
+    .centro h2 { font-size: 19px; margin-bottom: 8px; }
+    .centro p { font-size: 14px; color: var(--text-2); line-height: 1.6; max-width: 420px; margin: 0 auto; }
+
+    .pie { text-align: center; font-size: 11.5px; color: var(--text-2); margin-top: 22px; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+
+<div id="vista-cargando" class="centro">
+  <div class="ico">⏳</div>
+  <p>Abriendo el formulario…</p>
+</div>
+
+<div id="vista-bloqueada" class="centro" hidden>
+  <div class="ico" id="bloq-ico">🔒</div>
+  <h2 id="bloq-titulo"></h2>
+  <p id="bloq-texto"></p>
+</div>
+
+<div id="vista-listo" class="centro" hidden>
+  <div class="ico">✅</div>
+  <h2>¡Listo, gracias!</h2>
+  <p id="listo-texto"></p>
+</div>
+
+<div id="vista-form" hidden>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <h1 id="titulo-clinica"></h1>
+      <p>Cuéntanos quién eres y quién es tu mascota. Con esto quedas registrado y no tienes que llenar nada al llegar.</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="card-title">Tus datos</div>
+      <div class="card-hint">Los campos con <span style="color:var(--danger)">*</span> son obligatorios.</div>
+      <div class="grid">
+        <div class="fld full">
+          <label>Nombre completo <span class="req">*</span></label>
+          <input type="text" id="t-nombre" autocomplete="name">
+        </div>
+        <div class="fld">
+          <label>Tipo de documento</label>
+          <select id="t-doc-tipo">
+            <option value="C.C.">C.C.</option>
+            <option value="C.E.">C.E.</option>
+            <option value="NIT">NIT</option>
+            <option value="T.I.">T.I.</option>
+            <option value="Pasaporte">Pasaporte</option>
+            <option value="PEP">PEP</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label>Número de documento <span class="req">*</span></label>
+          <input type="text" id="t-doc-numero" inputmode="numeric" autocomplete="off">
+        </div>
+        <div class="fld full">
+          <label>Celular <span class="req">*</span></label>
+          <div class="tel-row">
+            <select id="t-pais"></select>
+            <input type="tel" id="t-movil" inputmode="tel" autocomplete="tel">
+          </div>
+        </div>
+        <div class="fld full">
+          <label>Correo electrónico</label>
+          <input type="email" id="t-email" autocomplete="email">
+          <div class="sub">Lo usamos para enviarte recordatorios y resultados. Puedes dejarlo en blanco.</div>
+        </div>
+        <div class="fld full">
+          <label>Dirección</label>
+          <input type="text" id="t-direccion" autocomplete="street-address">
+        </div>
+        <div class="fld full">
+          <label>Ciudad</label>
+          <input type="text" id="t-ciudad" autocomplete="address-level2">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Tu mascota</div>
+      <div class="card-hint">Solo el nombre es obligatorio — lo demás nos ayuda a atenderla mejor, pero puedes dejarlo en blanco si no lo sabes.</div>
+      <div id="pets"></div>
+      <button type="button" class="btn btn-ghost" id="btn-add-pet" onclick="agregarMascota()">+ Agregar otra mascota</button>
+    </div>
+
+    <div class="card">
+      <label class="check">
+        <input type="checkbox" id="t-terminos">
+        <span>Autorizo el tratamiento de mis datos personales y los de mi mascota para la atención veterinaria, de acuerdo con la política de datos de la clínica. <span class="req" style="color:var(--danger)">*</span></span>
+      </label>
+      <div id="form-error" class="alert alert-err" hidden></div>
+      <button type="button" class="btn btn-primary" id="btn-enviar" style="margin-top:16px;" onclick="enviarFormulario()">Enviar mis datos</button>
+    </div>
+
+    <div class="pie">Tus datos se envían directamente a la clínica. IRIS</div>
+  </div>
+</div>
+
+<script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+  // Mismas credenciales públicas que index.html — la anon key es pública
+  // por diseño; lo que protege los datos son las policies y el hecho de
+  // que esta página solo puede llamar dos RPC.
+  const SUPABASE_URL = 'https://ayyggymsblvxrrzfjhmw.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_JcVhVQEX0Ph57fag7VpkLw_UJV3Z36L';
+  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const TOKEN = new URLSearchParams(location.search).get('t');
+
+  // Lista propia y acotada, no la de index.html: extraer ese `const`
+  // inline del script gigante es más riesgo que valor. [iso2, dial, min, max]
+  const PAISES = [
+    ['CO', '57', 10, 10, '🇨🇴 Colombia'],
+    ['EC', '593', 9, 9, '🇪🇨 Ecuador'],
+    ['PE', '51', 9, 9, '🇵🇪 Perú'],
+    ['VE', '58', 10, 10, '🇻🇪 Venezuela'],
+    ['PA', '507', 7, 8, '🇵🇦 Panamá'],
+    ['MX', '52', 10, 10, '🇲🇽 México'],
+    ['CL', '56', 9, 9, '🇨🇱 Chile'],
+    ['AR', '54', 10, 10, '🇦🇷 Argentina'],
+    ['BR', '55', 10, 11, '🇧🇷 Brasil'],
+    ['ES', '34', 9, 9, '🇪🇸 España'],
+    ['US', '1', 10, 10, '🇺🇸 EE. UU.']
+  ];
+
+  const ESPECIES = ['Canino (perro)|Canino', 'Felino (gato)|Felino', 'Conejo|Conejo', 'Cobayo / Cuy|Cobayo',
+    'Hámster|Hámster', 'Hurón|Hurón', 'Ave doméstica|Ave doméstica', 'Reptil|Reptil', 'Equino (caballo)|Equino',
+    'Bovino (res/vaca)|Bovino', 'Porcino (cerdo)|Porcino', 'Ovino (oveja)|Ovino', 'Caprino (cabra)|Caprino',
+    'Aves de corral|Aves de corral', 'Otro|Otro'];
+
+  const $ = id => document.getElementById(id);
+  const mostrar = id => {
+    ['vista-cargando', 'vista-bloqueada', 'vista-listo', 'vista-form']
+      .forEach(v => { $(v).hidden = (v !== id); });
+  };
+  const bloquear = (ico, titulo, texto) => {
+    $('bloq-ico').textContent = ico;
+    $('bloq-titulo').textContent = titulo;
+    $('bloq-texto').textContent = texto;
+    mostrar('vista-bloqueada');
+  };
+
+  // ── Arranque ───────────────────────────────────────────────
+  // Se DEFINE acá pero se INVOCA al final del módulo, después de que
+  // agregarMascota() y compañía estén asignadas a window.
+  async function init() {
+    if (!TOKEN) {
+      bloquear('🔗', 'Enlace incompleto', 'Este enlace no trae el código de registro. Pídele a la clínica que te lo reenvíe.');
+      return;
+    }
+    let data, error;
+    try {
+      ({ data, error } = await sb.rpc('intake_link_preview', { p_token: TOKEN }));
+    } catch (e) { error = e; }
+
+    if (error) {
+      bloquear('📡', 'No pudimos abrir el formulario', 'Revisa tu conexión e intenta de nuevo en un momento.');
+      return;
+    }
+    const estado = data && data.estado;
+    if (estado === 'valido') {
+      $('titulo-clinica').textContent = `Registro en ${data.clinica_nombre}`;
+      construirSelectPais();
+      agregarMascota();
+      mostrar('vista-form');
+      return;
+    }
+    if (estado === 'usado') {
+      bloquear('✅', 'Este formulario ya fue enviado', 'Tus datos ya llegaron a la clínica. Si necesitas corregir algo, escríbeles directamente.');
+      return;
+    }
+    if (estado === 'expirado') {
+      bloquear('⏰', 'El enlace venció', 'Los enlaces de registro duran 7 días. Pídele a la clínica que te envíe uno nuevo.');
+      return;
+    }
+    bloquear('🔗', 'Enlace no válido', 'No encontramos este enlace de registro. Pídele a la clínica que te lo reenvíe.');
+  }
+
+  function construirSelectPais() {
+    $('t-pais').innerHTML = PAISES
+      .map(([iso, dial, , , label]) => `<option value="${iso}">${label} +${dial}</option>`).join('');
+    $('t-pais').value = 'CO';
+  }
+
+  // ── Mascotas (tarjetas repetibles) ─────────────────────────
+  const MAX_MASCOTAS = 5;
+  let petSeq = 0;
+  const petIds = [];
+
+  window.agregarMascota = function () {
+    if (petIds.length >= MAX_MASCOTAS) return;
+    const i = petSeq++;
+    petIds.push(i);
+    const div = document.createElement('div');
+    div.className = 'pet-card';
+    div.id = `pet-card-${i}`;
+    div.innerHTML = `
+      <div class="pet-head">
+        <span class="pet-titulo">Mascota</span>
+        <button type="button" class="pet-del" onclick="quitarMascota(${i})" hidden>Quitar</button>
+      </div>
+      <div class="grid">
+        <div class="fld full">
+          <label>Nombre <span class="req">*</span></label>
+          <input type="text" id="p${i}-nombre">
+        </div>
+        <div class="fld">
+          <label>Especie</label>
+          <select id="p${i}-especie">${ESPECIES.map(o => {
+            const [label, val] = o.split('|');
+            return `<option value="${val}">${label}</option>`;
+          }).join('')}</select>
+        </div>
+        <div class="fld">
+          <label>Raza</label>
+          <input type="text" id="p${i}-raza">
+        </div>
+        <div class="fld">
+          <label>Sexo</label>
+          <select id="p${i}-genero">
+            <option value="">Sin especificar</option>
+            <option value="Hembra">Hembra</option>
+            <option value="Macho">Macho</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label>Color</label>
+          <input type="text" id="p${i}-color">
+        </div>
+        <div class="fld">
+          <label>Peso aproximado (kg)</label>
+          <input type="number" step="0.1" min="0" id="p${i}-peso" inputmode="decimal">
+        </div>
+        <div class="fld">
+          <label>Tamaño</label>
+          <select id="p${i}-talla">
+            <option value="">Sin especificar</option>
+            <option value="Pequeña">Pequeña</option>
+            <option value="Mediana">Mediana</option>
+            <option value="Grande">Grande</option>
+            <option value="Gigante">Gigante</option>
+          </select>
+        </div>
+        <div class="fld full">
+          <label>Edad</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select id="p${i}-edad-tipo" style="flex:1;min-width:150px;" onchange="onEdadTipo(${i})">
+              <option value="">Prefiero no indicarla</option>
+              <option value="anios">En años</option>
+              <option value="meses">En meses</option>
+              <option value="fecha">Fecha de nacimiento exacta</option>
+            </select>
+            <input type="number" min="0" step="1" id="p${i}-edad-cantidad" style="flex:1;min-width:110px;" hidden>
+            <input type="date" id="p${i}-edad-fecha" style="flex:1;min-width:150px;" hidden>
+          </div>
+        </div>
+        <div class="fld">
+          <label>¿Está esterilizado/a?</label>
+          <select id="p${i}-esterilizado">
+            <option value="Desconocido">No lo sé</option>
+            <option value="Esterilizado">Sí</option>
+            <option value="No esterilizado">No</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label>Microchip</label>
+          <input type="text" id="p${i}-chip" inputmode="numeric">
+        </div>
+        <div class="fld full">
+          <label>Alergias que le conozcas</label>
+          <textarea id="p${i}-alergias" placeholder="Ej.: pollo, alguna droga…"></textarea>
+        </div>
+        <div class="fld full">
+          <label>Enfermedades o cirugías anteriores</label>
+          <textarea id="p${i}-antecedentes"></textarea>
+        </div>
+        <div class="fld full">
+          <label>¿Cómo es su carácter?</label>
+          <input type="text" id="p${i}-temperamento" placeholder="Ej.: tranquilo, nervioso con extraños, muerde…">
+          <div class="sub">Nos ayuda a saber cómo manipularlo con cuidado.</div>
+        </div>
+        <div class="fld full">
+          <label>¿Qué come?</label>
+          <input type="text" id="p${i}-alimentacion" placeholder="Ej.: concentrado marca X, comida casera…">
+        </div>
+      </div>`;
+    $('pets').appendChild(div);
+    renumerarMascotas();
+  };
+
+  window.quitarMascota = function (i) {
+    const pos = petIds.indexOf(i);
+    if (pos === -1) return;
+    petIds.splice(pos, 1);
+    const el = $(`pet-card-${i}`);
+    if (el) el.remove();
+    renumerarMascotas();
+  };
+
+  function renumerarMascotas() {
+    petIds.forEach((id, idx) => {
+      const card = $(`pet-card-${id}`);
+      if (!card) return;
+      card.querySelector('.pet-titulo').textContent =
+        petIds.length === 1 ? 'Mascota' : `Mascota ${idx + 1}`;
+      card.querySelector('.pet-del').hidden = petIds.length === 1;
+    });
+    $('btn-add-pet').hidden = petIds.length >= MAX_MASCOTAS;
+  }
+
+  window.onEdadTipo = function (i) {
+    const tipo = $(`p${i}-edad-tipo`).value;
+    $(`p${i}-edad-cantidad`).hidden = (tipo !== 'anios' && tipo !== 'meses');
+    $(`p${i}-edad-fecha`).hidden = (tipo !== 'fecha');
+    $(`p${i}-edad-cantidad`).placeholder = tipo === 'meses' ? 'Meses' : 'Años';
+  };
+
+  // Réplica de calcularFechaNacimientoDesdeEdadInputs() de index.html:
+  // pase lo que pase se persiste una FECHA, nunca un texto de edad, para
+  // que la edad mostrada siga siendo correcta con el paso del tiempo.
+  function fechaNacimientoDe(i) {
+    const tipo = $(`p${i}-edad-tipo`).value;
+    if (tipo === 'fecha') return $(`p${i}-edad-fecha`).value || null;
+    if (tipo !== 'anios' && tipo !== 'meses') return null;
+    const cant = parseInt($(`p${i}-edad-cantidad`).value, 10);
+    if (isNaN(cant) || cant < 0) return null;
+    const d = new Date();
+    if (tipo === 'anios') d.setFullYear(d.getFullYear() - cant);
+    else d.setMonth(d.getMonth() - cant);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  // ── Envío ──────────────────────────────────────────────────
+  const val = id => ($(id).value || '').trim();
+  const marcar = (id, mal) => $(id).classList.toggle('err', !!mal);
+
+  function mostrarError(msg) {
+    const box = $('form-error');
+    box.textContent = msg;
+    box.hidden = false;
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  window.enviarFormulario = async function () {
+    $('form-error').hidden = true;
+
+    const nombre = val('t-nombre');
+    const doc = val('t-doc-numero');
+    const movil = val('t-movil');
+    const email = val('t-email');
+    const pais = PAISES.find(p => p[0] === $('t-pais').value) || PAISES[0];
+    const digitos = movil.replace(/\D/g, '');
+
+    marcar('t-nombre', !nombre);
+    marcar('t-doc-numero', !doc);
+    const movilMal = !digitos || digitos.length < pais[2] || digitos.length > pais[3];
+    marcar('t-movil', movilMal);
+    const emailMal = !!email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    marcar('t-email', emailMal);
+
+    if (!nombre || !doc) { mostrarError('Necesitamos tu nombre y tu número de documento.'); return; }
+    if (movilMal) {
+      mostrarError(`El celular de ${pais[4].replace(/^\S+\s/, '')} debe tener ${pais[2] === pais[3] ? pais[2] : pais[2] + ' a ' + pais[3]} dígitos.`);
+      return;
+    }
+    if (emailMal) { mostrarError('Revisa el correo electrónico — parece incompleto.'); return; }
+    if (!$('t-terminos').checked) {
+      mostrarError('Para continuar necesitamos tu autorización de tratamiento de datos.');
+      return;
+    }
+
+    const mascotas = [];
+    for (const i of petIds) {
+      const n = val(`p${i}-nombre`);
+      if (!n) {
+        marcar(`p${i}-nombre`, true);
+        mostrarError('Falta el nombre de una de las mascotas.');
+        return;
+      }
+      marcar(`p${i}-nombre`, false);
+      mascotas.push({
+        nombre: n,
+        especie: val(`p${i}-especie`),
+        raza: val(`p${i}-raza`),
+        color: val(`p${i}-color`),
+        genero: val(`p${i}-genero`),
+        talla: val(`p${i}-talla`),
+        peso: val(`p${i}-peso`),
+        fecha_nacimiento: fechaNacimientoDe(i) || '',
+        estado_reproductivo: val(`p${i}-esterilizado`),
+        chip: val(`p${i}-chip`),
+        alergias: val(`p${i}-alergias`),
+        antecedentes: val(`p${i}-antecedentes`),
+        temperamento: val(`p${i}-temperamento`),
+        alimentacion: val(`p${i}-alimentacion`)
+      });
+    }
+
+    const btn = $('btn-enviar');
+    btn.disabled = true;
+    btn.textContent = 'Enviando…';
+
+    let data, error;
+    try {
+      ({ data, error } = await sb.rpc('intake_link_enviar', {
+        p_token: TOKEN,
+        p_tutor: {
+          nombre,
+          doc_tipo: $('t-doc-tipo').value,
+          doc_numero: doc,
+          movil: `+${pais[1]} ${movil}`,
+          email,
+          direccion: val('t-direccion'),
+          ciudad: val('t-ciudad')
+        },
+        p_mascotas: mascotas
+      }));
+    } catch (e) { error = e; }
+
+    btn.disabled = false;
+    btn.textContent = 'Enviar mis datos';
+
+    if (error) {
+      mostrarError('No pudimos enviar tus datos. Revisa tu conexión e intenta de nuevo.');
+      return;
+    }
+    if (!data || !data.ok) {
+      const est = data && data.estado;
+      if (est === 'usado')    { bloquear('✅', 'Este formulario ya fue enviado', 'Tus datos ya llegaron a la clínica.'); return; }
+      if (est === 'expirado') { bloquear('⏰', 'El enlace venció', 'Pídele a la clínica que te envíe uno nuevo.'); return; }
+      mostrarError('No pudimos guardar tus datos. Verifica la información e intenta de nuevo.');
+      return;
+    }
+
+    // 'sin_vincular' significa que la ficha del tutor ya existía en otra
+    // clínica de la red y hay que verificar su identidad en persona. Al
+    // tutor no se le cuenta nada de eso: el mensaje es neutro.
+    $('listo-texto').textContent = data.estado === 'completado' && data.mascotas_creadas > 0
+      ? 'Ya quedaste registrado con tu mascota. Cuando llegues a la clínica solo tienes que dar tu nombre.'
+      : 'Ya recibimos tus datos. En la clínica los revisan y terminan el registro cuando llegues.';
+    mostrar('vista-listo');
+  };
+
+  init();
+</script>
+</body>
+</html>

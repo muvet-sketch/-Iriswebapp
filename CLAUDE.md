@@ -679,6 +679,132 @@ los roles sin `canRegisterOwner` sin tocar nada más.
   `extraer_soip.py`. Necesita `ANTHROPIC_API_KEY` en Vercel; sin ella el parser
   por etiquetas sigue funcionando completo y solo se pierde el respaldo.
 
+## Link público de autorregistro — `registro.html`
+Tercera vía para dar de alta un tutor, y la única en la que **no digita
+nadie de la clínica**: el botón `#btn-link-registro` del buscador de
+Consultorio genera un enlace, se le manda al tutor por WhatsApp, él llena
+sus datos y los de sus mascotas desde el celular, y la ficha queda creada.
+Complementa a "Importar de WhatsApp" (que convierte un mensaje pegado en
+formulario); acá el formulario lo ve el tutor.
+
+- **`registro.html` es el ÚNICO archivo de la app fuera de `index.html`, y
+  es deliberado.** La regla "no crear archivos nuevos por módulo" habla de
+  módulos DENTRO del shell; esta es una pantalla **sin sesión**, para
+  alguien que no es usuario de IRIS. Meterla en `index.html` obligaría al
+  tutor a bajar 1,87 MB desde datos móviles y a montar un tercer shell
+  hermano de `#auth-shell`/`#app-shell` — justo el acoplamiento que ya
+  causó dos veces el bug de temporal dead zone. Es autocontenida: su
+  propio CSS (copia acotada de las variables de paleta), su propia lista
+  de países y su propia copia de la edad de 3 modos. No la conviertas en
+  dependiente de `index.html`; que diverja un poco es el precio correcto.
+- **`anon` no escribe en ninguna tabla.** No puede: `propietarios_insert_member`
+  exige `user_is_member_of` y `mascotas_insert_member` además exige
+  `propietario_vinculado`. Todo pasa por dos RPC `security definer` —
+  `intake_link_preview` (qué ve el tutor al abrir) e `intake_link_enviar`
+  (el envío) — calcadas de `get_invite_preview()`. **No abras una policy
+  de `anon` sobre `propietarios`/`mascotas` "para simplificar"**: eso
+  expondría las dos tablas centrales de la app a internet.
+- **El bloque de `revoke`/`grant` del final de la migración hay que
+  mantenerlo**, igual que el de la sección RED IRIS, y acá hacen falta los
+  TRES roles: Postgres da EXECUTE a `public` por default (y `anon` lo
+  hereda por ahí, así que revocarle solo a `anon`/`authenticated` no
+  cambia nada — se verificó con `has_function_privilege`), y Supabase
+  además concede explícitamente a `anon`/`authenticated`, así que revocar
+  solo a `public` tampoco alcanza. Los helpers `intake_txt`/`intake_pet_key`
+  no validan nada y no tienen por qué ser invocables desde afuera.
+- **El id de la fila de `intake_links` ES el token**, igual que `invites`.
+  Un solo uso (`usado_at`, tomado con `for update` para que dos envíos
+  simultáneos no pasen los dos) y vence a los 7 días. Por eso no hace
+  falta rate limiting propio: la superficie es un envío por token.
+- **Si el documento ya existe en esa clínica, NO se duplica la ficha**: se
+  rellenan solo las columnas vacías (`coalesce(nullif(actual,''), nuevo)`).
+  Lo que la clínica ya había escrito nunca se pisa con lo que digitó el
+  tutor — el tutor puede equivocarse y el operador ya verificó.
+- **Si `red_vinculado` vuelve `false`** (la identidad ya vivía en otra
+  clínica, lo decide el trigger `red_trg_publicar_propietario`), se crea el
+  tutor pero **cero mascotas**, y el link queda en `estado='sin_vincular'`.
+  No es una limitación a rodear: sin vincular no se le cuelga nada, y al
+  verificar la identidad las mascotas llegan de la red. El payload crudo
+  igual queda en `intake_links.datos_recibidos`. Al tutor se le muestra un
+  mensaje neutro — nunca se le cuenta nada de la red.
+- **`programarBusquedaEnServidor()` es lo que hace que el médico lo
+  encuentre.** `cargarDatosClinicaDesdeSupabase()` solo corre al iniciar
+  sesión, así que un tutor creado por la RPC después de eso no está en
+  memoria y el buscador diría "no se encontraron resultados" sobre una
+  ficha que sí existe. Se engancha en el mismo empty-state que
+  `programarBusquedaEnRed()` (primero la clínica propia, después la red),
+  con debounce de 700 ms, y **filtra por el término**, no "todos los
+  propietarios" — así no se topa con el límite de 1000 filas de PostgREST.
+  Un término solo se marca hecho si la consulta respondió.
+- `propietarios.origen = 'autorregistro'` es solo señalización (etiqueta
+  `.owner-origen-tag` en el buscador, con el acento del tema): no cambia
+  ningún permiso. Las fichas registradas por la clínica lo tienen en null.
+- **`intake_links` SÍ está en `RESPALDO_TABLAS`** — a diferencia de
+  `consultas_audio`, que es un buzón efímero, acá la fila guarda el
+  payload original y el estado de cada enlace enviado.
+- El formulario público NO sube foto de mascota: haría falta una policy de
+  `anon` sobre el bucket `fotos-mascotas`. La foto se toma en la clínica.
+- No hay ni hace falta `vercel.json`: el proyecto es zero-config y sirve
+  cualquier `.html` de la raíz tal cual.
+
+## Unificar mascotas duplicadas (menú "+ Nuevo" de la ficha)
+El mismo animal termina con dos fichas cuando lo lleva primero una persona y
+después otra: distinta cédula → distinto tutor → mascota nueva. **No es un bug
+de la app, es cómo funciona una clínica.** Al unificar, uno de los dos tutores
+queda como responsable y el otro como **contacto secundario**.
+
+- **Quien mueve los datos es la RPC `fusionar_mascotas`, nunca el navegador.**
+  Son 17 tablas con FK a `mascotas` más dos `pet_key` de texto: media fusión
+  aplicada sería peor que ninguna, así que va todo en UNA transacción.
+  `ejecutarFusionMascotas()` solo arma `p_datos` y llama.
+- **Es `security definer` por una razón concreta, no por comodidad:**
+  `mensajes` y `red_solicitudes` **no tienen policy de UPDATE** (un mensaje
+  enviado no se edita). Con los permisos del usuario esos UPDATE afectarían
+  0 filas EN SILENCIO y los mensajes se irían por el CASCADE al borrar la
+  ficha duplicada. Por eso la función valida `user_is_member_of` ella misma,
+  que las dos fichas sean del mismo establecimiento, y que el responsable
+  elegido exista en esa clínica y esté vinculado.
+- **`c_tablas` dentro de la función es la lista de tablas con `mascota_id`.**
+  Si agregás un módulo clínico nuevo con esa columna, **sumalo ahí** o su
+  historia se perderá en la próxima fusión — la fila duplicada se borra y el
+  CASCADE se la lleva. Ese es el punto de mantenimiento del módulo.
+- **`agenda_eventos` y `eventos_seguimiento` referencian la mascota por
+  `pet_key` (texto), no por FK.** Se actualizan aparte. Sin eso quedarían
+  apuntando a una key inexistente y los eventos desaparecerían de la ficha
+  sin ningún error visible.
+- **La ficha duplicada se BORRA** (decisión explícita del cliente). Antes de
+  borrar, la fila completa y el conteo de lo movido quedan en
+  `mascota_fusiones`, que es un log de auditoría — sin policies de escritura
+  a propósito: un log que el usuario pueda editar no sirve de log. Es lo
+  único que queda si alguien unificó dos mascotas distintas.
+- **Tres pasos y confirmación escribiendo el nombre, a propósito.** Dos
+  mascotas homónimas de clientes distintos son un caso NORMAL (en producción
+  ya hay "Canela" y "Oreo" así). El paso 1 muestra tutor, microchip, número
+  de registros clínicos y fecha de la última consulta de cada candidata: sin
+  esos datos es imposible distinguirlas. No agregues un atajo que se salte
+  la comparación.
+- **Solo se pide elegir en los campos donde de verdad hay conflicto** (los dos
+  con valor y distintos). Si la ficha que se conserva tiene el chip vacío y la
+  otra lo tiene, se toma el de la otra sin preguntar — la elección por defecto
+  nunca pierde un dato que solo existe en un lado. Por defecto se conserva la
+  ficha con MÁS historia clínica (mover menos registros es menos superficie de
+  error), pero se puede cambiar.
+- **El histórico de peso se combina siempre, no se elige.** Son mediciones
+  reales de las dos fichas, igual que las consultas.
+- El responsable puede ser el tutor de cualquiera de las dos fichas, incluida
+  la que se elimina. Los dos tutores originales conservan su ficha, su
+  documento y su facturación: `ventas_facturas`/`ventas_cotizaciones` apuntan
+  a `cliente_id`, no al propietario ni a la mascota, así que **la fusión no
+  toca facturación**.
+- Después de fusionar se llama a `cargarDatosClinicaDesdeSupabase()` completo
+  en vez de parchear el modelo en memoria. Es una acción rara y deliberada, y
+  cualquier parche parcial dejaría `patientData` mintiendo sobre 17 arrays.
+- `mascota_contactos` se pinta en la fila de meta de la cabecera del paciente
+  (`#pet-header-contactos`, mismo patrón de slot opcional que
+  `#pet-header-temperamento`, por eso el Kardex no se ve afectado). Se puede
+  quitar un contacto desde ahí; eso NO borra la ficha del tutor.
+- Las dos tablas están en `RESPALDO_TABLAS`.
+
 ## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·
 Desparasitaciones · Hospitalizaciones/ambulatorios ·

@@ -718,6 +718,24 @@
     .row-actions-item i { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-2); }
     .row-actions-item.danger { color: var(--danger); }
     .row-actions-item.danger:hover { background-color: #FEF2F2; }
+    .row-actions-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+    /* Contactos secundarios de la mascota (otros tutores que responden por
+       ella, normalmente el resultado de unificar fichas duplicadas). */
+    .pet-contacto-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600; white-space: nowrap;
+      color: var(--text-2); background: var(--surface-container-low);
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 2px 4px 2px 9px; margin-left: 4px;
+    }
+    .pet-contacto-chip .pet-contacto-rel { font-weight: 500; opacity: .75; }
+    .pet-contacto-quitar {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; border-radius: 50%; border: none;
+      background: transparent; color: var(--text-2); cursor: pointer; padding: 0;
+    }
+    .pet-contacto-quitar:hover { background: rgba(239, 68, 68, .12); color: var(--danger); }
     .row-actions-item.danger i { color: var(--danger); }
     .row-fade-out { transition: opacity 0.25s ease; opacity: 0; }
 
@@ -4152,6 +4170,15 @@
       color: #92400E; background: #FEF3C7; border: 1px solid #FDE68A;
       padding: 2px 7px; border-radius: 999px; white-space: nowrap;
     }
+    /* Ficha que llenó el propio tutor por el link público de registro.
+       Usa el acento del tema (nunca un hex nuevo), a diferencia del ámbar
+       de .owner-locked-tag: eso es una advertencia, esto solo es origen. */
+    .owner-origen-tag {
+      font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+      color: var(--clinic-accent); background: rgba(var(--clinic-accent-rgb), .10);
+      border: 1px solid rgba(var(--clinic-accent-rgb), .28);
+      padding: 2px 7px; border-radius: 999px; white-space: nowrap; margin-left: 6px;
+    }
     .owner-locked-icon { color: var(--text-2); display: inline-flex; padding: 4px; }
     .pet-chip-locked { opacity: .6; }
     .btn-vincular-fila {
@@ -5370,6 +5397,9 @@
               <button class="btn-outline" id="btn-importar-whatsapp" data-btn-registrar-propietario onclick="openIntakeWhatsappModal()" title="Pegar la respuesta que el tutor envió por WhatsApp y precargar el registro">
                 <i data-lucide="message-square-text" style="width: 16px; height: 16px;"></i> Importar de WhatsApp
               </button>
+              <button class="btn-outline" id="btn-link-registro" data-btn-registrar-propietario onclick="openRegistroLinkModal()" title="Generar un enlace para que el tutor se registre él mismo desde su celular">
+                <i data-lucide="link-2" style="width: 16px; height: 16px;"></i> Enviar link de registro
+              </button>
               <button class="btn-primary" id="btn-registrar-propietario" data-btn-registrar-propietario onclick="openRegistrarPropietarioModal()">
                 <i data-lucide="plus" style="width: 16px; height: 16px;"></i> Registrar propietario
               </button>
@@ -5617,6 +5647,16 @@
                         </button>
                         <div class="owner-popover" id="pet-owner-popover"></div>
                       </div>
+                      <!-- Contactos secundarios: los otros tutores que también
+                           responden por esta mascota. Aparecen cuando la ficha
+                           salió de una unificación de duplicados (ver
+                           fusionarMascotas*). Slot opcional, mismo criterio que
+                           #pet-header-temperamento: el Kardex no lo declara y
+                           por eso no se ve afectado. -->
+                      <div class="pet-meta-bullet" id="pet-header-contactos-bullet" style="display:none;"></div>
+                      <div class="pet-meta-item" id="pet-header-contactos-wrap" style="display:none;">
+                        <span id="pet-header-contactos"></span>
+                      </div>
                       <div class="pet-meta-bullet"></div>
                       <!-- Temperamento: mismo chip con termómetro del hero
                            del Tablero (temperamentoChipHtml), acá al lado del
@@ -5651,6 +5691,11 @@
                       <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openExamenModal('imagen', 'create', selectedPetKey);"><i data-lucide="image"></i> Imagen diagnóstica</div>
                       <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openDocumentoModal('create', selectedPetKey);"><i data-lucide="folder-open"></i> Documento</div>
                       <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openRemisionModal('create', selectedPetKey);"><i data-lucide="external-link"></i> Remisión</div>
+                      <!-- No es "registrar algo nuevo", pero este menú es la
+                           única acción de la cabecera y es acá donde el médico
+                           se da cuenta de que la ficha está duplicada. -->
+                      <div class="row-actions-divider"></div>
+                      <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRegistrarNuevoMenus(); openFusionMascotasModal(selectedPetKey);"><i data-lucide="git-merge"></i> Unificar con otro registro</div>
                     </div>
                   </div>
                 </div>
@@ -8467,7 +8512,68 @@
       }, 900);
     }
 
+    // ── Repesca desde Supabase cuando el buscador no encuentra nada ──
+    // cargarDatosClinicaDesdeSupabase() solo corre al iniciar sesión, así
+    // que un tutor creado DESPUÉS —el caso normal del link público de
+    // autorregistro, que lo crea una RPC sin pasar por esta pestaña— no
+    // está en memoria y el buscador diría "no se encontraron resultados"
+    // sobre una ficha que sí existe. Esto lo repesca sin recargar.
+    //
+    // La consulta va filtrada POR EL TÉRMINO, no "todos los propietarios":
+    // así el resultado es de unas pocas filas y no se topa con el límite
+    // de 1000 de PostgREST (ver la trampa documentada en CLAUDE.md).
+    let buscadorServidorTimer = null;
+    const buscadorServidorHechos = new Set();  // términos ya consultados
+    let buscadorServidorEnCurso = null;
+
+    function programarBusquedaEnServidor(termino) {
+      clearTimeout(buscadorServidorTimer);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) return;
+      if (!termino || termino.length < 3) return;
+      if (buscadorServidorHechos.has(termino) || buscadorServidorEnCurso === termino) return;
+
+      buscadorServidorTimer = setTimeout(async () => {
+        buscadorServidorEnCurso = termino;
+        renderPropietariosTable();
+        try {
+          const estabId = currentSession.activeMembership.establecimientoId;
+          const patron = `%${termino.replace(/[%,]/g, '')}%`;
+          const { data: props, error } = await window.supabase.from('propietarios')
+            .select('*')
+            .eq('establecimiento_id', estabId)
+            .or(`nombre.ilike.${patron},doc_numero.ilike.${patron},movil.ilike.${patron}`)
+            .limit(20);
+          if (error) throw error;
+
+          const nuevos = (props || []).filter(r => !propietarios.some(p => p.id === r.id));
+          if (nuevos.length) {
+            const { data: pets } = await window.supabase.from('mascotas')
+              .select('*').in('propietario_id', nuevos.map(r => r.id));
+            nuevos.forEach(r => propietarios.unshift(construirPropietarioDesdeFila(r)));
+            (pets || []).forEach(r => {
+              if (patientData[r.pet_key]) return;
+              const dueno = propietarios.find(p => p.id === r.propietario_id);
+              patientData[r.pet_key] = construirMascotaDesdeFila(r, dueno);
+            });
+            renderTutoresTable();
+          }
+          // Se marca hecho SOLO si la consulta respondió: si falló, el
+          // siguiente intento tiene que poder volver a preguntar (mismo
+          // criterio que redBuscadorCache).
+          buscadorServidorHechos.add(termino);
+        } catch (err) {
+          console.error('[IRIS] Error repescando tutores desde Supabase:', err);
+        } finally {
+          buscadorServidorEnCurso = null;
+          renderPropietariosTable();
+        }
+      }, 700);
+    }
+
     function filaBuscadorRedHTML(termino) {
+      if (buscadorServidorEnCurso === termino) {
+        return '<span class="buscador-red-hint-text">Buscando en los registros de la clínica…</span>';
+      }
       if (redBuscadorEnCurso === termino) {
         return '<span class="buscador-red-hint-text">Consultando la red IRIS…</span>';
       }
@@ -8514,6 +8620,9 @@
       if (!propietariosFiltrados.length) {
         tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">${filaBuscadorRedHTML(filtroPropietario)}</td></tr>`;
         lucide.createIcons();
+        // Primero la clínica propia (puede haber un tutor nuevo que esta
+        // pestaña todavía no conoce), después la red.
+        programarBusquedaEnServidor(filtroPropietario);
         programarBusquedaEnRed(filtroPropietario);
         return;
       }
@@ -8539,6 +8648,12 @@
           : '<span class="gestion-detail">Sin mascotas registradas</span>';
         const gestion = getUltimaGestionPropietario(p);
         const initials = p.nombre.split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+        // Los datos de esta ficha los escribió el propio tutor por el link
+        // público, no alguien de la clínica: conviene verificarlos al
+        // atenderlo. No cambia ningún permiso, es solo señalización.
+        const origenTag = p.origen === 'autorregistro'
+          ? '<span class="owner-origen-tag" title="El tutor llenó estos datos desde el link de registro">Autorregistro</span>'
+          : '';
         return `
           <tr${vinculado ? '' : ' class="owner-row-locked"'}>
             <td>
@@ -8550,8 +8665,8 @@
               <div class="owner-cell">
                 <div class="owner-avatar-placeholder">${initials || '—'}</div>
                 ${vinculado
-                  ? `<span class="owner-name" style="cursor:pointer;" onclick="abrirPerfilPropietario('${p.id}')">${p.nombre}</span>`
-                  : `<span class="owner-name owner-name-locked" title="Verifica la identidad del tutor para poder abrir su ficha">${p.nombre}<span class="owner-locked-tag">Sin vincular</span></span>`}
+                  ? `<span class="owner-name" style="cursor:pointer;" onclick="abrirPerfilPropietario('${p.id}')">${p.nombre}${origenTag}</span>`
+                  : `<span class="owner-name owner-name-locked" title="Verifica la identidad del tutor para poder abrir su ficha">${p.nombre}<span class="owner-locked-tag">Sin vincular</span>${origenTag}</span>`}
               </div>
             </td>
             <td>${p.docTipo} ${p.docNumero}${copyIconHTML(p.docNumero)}</td>
@@ -11536,6 +11651,10 @@
       const temperamentoEl = document.getElementById(`${containerId}-temperamento`);
       if (temperamentoEl) temperamentoEl.innerHTML = temperamentoChipHtml(data.temperamento);
 
+      // Contactos secundarios (otros tutores que responden por la mascota).
+      // Mismo criterio opcional: el Kardex no declara el contenedor.
+      if (document.getElementById(`${containerId}-contactos-wrap`)) renderPetContactosSecundarios(petKey);
+
       renderWeightChartSVG(`${containerId}-weight-chart`, data.pesoHistorico || []);
 
       lucide.createIcons();
@@ -12123,7 +12242,9 @@
         timeline: [], consultas: [],
         formulas: [], ordenes: [], documentos: [], resultados: [], vacunaciones: [], desparasitaciones: [], tareasPendientes: [],
         peluquerias: [], guarderias: [], remisiones: [], mensajes: [], seguimientos: [], hospitalizaciones: [], cirugias: [],
-        problemas: [], examenes: []
+        problemas: [], examenes: [],
+        // Otros tutores que responden por la mascota (ver mascota_contactos).
+        contactos: []
       };
     }
 
@@ -22931,7 +23052,11 @@
       'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes', 'mensajes',
       'agenda_eventos', 'eventos_seguimiento', 'productos', 'movimientos', 'arqueos', 'ventas_facturas',
       'ventas_cotizaciones', 'catalogos_custom', 'documento_plantillas',
-      'memberships', 'invites', 'link_requests'
+      'memberships', 'invites', 'link_requests', 'intake_links',
+      // mascota_fusiones es lo ÚNICO que queda de una ficha unificada: la
+      // duplicada se borra y su snapshot vive ahí. Sin esto, el respaldo no
+      // permitiría reconstruir qué se fusionó ni deshacerlo a mano.
+      'mascota_contactos', 'mascota_fusiones'
     ];
 
     function respaldoUltimoKey(establecimientoId) {
@@ -27448,6 +27573,639 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       actualizarEdadPreview('nueva-mascota');
     }
 
+    // ── UNIFICAR MASCOTAS DUPLICADAS ─────────────────────────────
+    // El mismo animal termina con dos fichas cuando lo lleva primero una
+    // persona y después otra (distinta cédula → distinto tutor). No es un
+    // error de la app; es cómo funciona una clínica.
+    //
+    // Quien mueve los datos es la RPC `fusionar_mascotas` (ver
+    // supabase/migrations/20260809_fusionar_mascotas.sql), que hace las
+    // 17 tablas + los pet_key de agenda en UNA transacción. Acá NO se
+    // hacen updates sueltos: media fusión aplicada sería peor que
+    // ninguna. Este bloque solo prepara la decisión y la confirma.
+    //
+    // La ficha duplicada se BORRA. Por eso son tres pasos y el último
+    // pide escribir el nombre: dos mascotas homónimas de clientes
+    // distintos son un caso normal, no una rareza.
+
+    // Campos que se comparan uno a uno. `col` es la columna real de
+    // `mascotas` (contrato con p_datos de la RPC); `get` lee el modelo en
+    // memoria, que usa otros nombres.
+    const FUSION_CAMPOS = [
+      { col: 'nombre',              label: 'Nombre',               get: d => d.name },
+      { col: 'especie',             label: 'Especie',              get: d => d.species },
+      { col: 'raza',                label: 'Raza',                 get: d => d.breed },
+      { col: 'chip',                label: 'Microchip',            get: d => d.chip },
+      { col: 'fecha_nacimiento',    label: 'Fecha de nacimiento',  get: d => d.fechaNacimiento },
+      { col: 'genero',              label: 'Género',               get: d => d.genero },
+      { col: 'color',               label: 'Color',                get: d => d.color },
+      { col: 'talla',               label: 'Talla',                get: d => d.talla },
+      { col: 'estado_reproductivo', label: 'Estado reproductivo',  get: d => d.estadoReproductivo },
+      { col: 'peso',                label: 'Peso',                 get: d => d.weight },
+      { col: 'alimentacion',        label: 'Alimentación',         get: d => d.alimentacion },
+      { col: 'frecuencia_bano',     label: 'Frecuencia de baño',   get: d => d.frecuenciaBano },
+      { col: 'temperamento',        label: 'Temperamento',         get: d => d.temperamento },
+      { col: 'antecedentes',        label: 'Antecedentes',         get: d => d.antecedentes },
+      { col: 'alergias',            label: 'Alergias',             get: d => d.alergias },
+      { col: 'foto_path',           label: 'Foto',                 get: d => d.fotoPath, esFoto: true }
+    ];
+
+    // Arrays clínicos del modelo en memoria, para mostrar cuánto se va a
+    // mover ANTES de confirmar. El conteo real lo devuelve la RPC.
+    // [clave en patientData, singular, plural]
+    const FUSION_CONTEO = [
+      ['consultas', 'consulta', 'consultas'],
+      ['formulas', 'fórmula médica', 'fórmulas médicas'],
+      ['vacunaciones', 'vacunación', 'vacunaciones'],
+      ['desparasitaciones', 'desparasitación', 'desparasitaciones'],
+      ['examenes', 'examen o imagen', 'exámenes e imágenes'],
+      ['documentos', 'documento', 'documentos'],
+      ['hospitalizaciones', 'hospitalización', 'hospitalizaciones'],
+      ['cirugias', 'cirugía', 'cirugías'],
+      ['seguimientos', 'seguimiento', 'seguimientos'],
+      ['remisiones', 'remisión', 'remisiones'],
+      ['peluquerias', 'servicio de peluquería', 'servicios de peluquería'],
+      ['guarderias', 'estancia en guardería', 'estancias en guardería'],
+      ['tareasPendientes', 'tarea pendiente', 'tareas pendientes'],
+      ['mensajes', 'mensaje al propietario', 'mensajes al propietario']
+    ];
+
+    let fusionState = null;
+
+    function fusionContarRegistros(petKey) {
+      const d = patientData[petKey];
+      if (!d) return { total: 0, detalle: [] };
+      const detalle = FUSION_CONTEO
+        .map(([key, sing, plur]) => {
+          const n = (d[key] || []).length;
+          return { n, texto: `${n} ${n === 1 ? sing : plur}` };
+        })
+        .filter(x => x.n > 0);
+      return { total: detalle.reduce((s, x) => s + x.n, 0), detalle };
+    }
+
+    function fusionUltimaConsultaTexto(d) {
+      const c = (d.consultas || [])[0];
+      if (!c || !c.fechaISO) return 'Sin consultas';
+      return `Última: ${formatFechaHoraCorta(c.fechaISO)}`;
+    }
+
+    function openFusionMascotasModal(petKey) {
+      const data = petKey && patientData[petKey];
+      if (!data) return;
+      if (!ROLES[currentSimRole].canRegisterOwner) {
+        showToast('Tu rol no tiene permiso para unificar fichas');
+        return;
+      }
+      if (bloqueadoPorTutorSinVincular(petKey, 'Unificar fichas')) return;
+      // La RPC necesita el id real; una mascota que solo existe en memoria
+      // (mock de demo) no se puede unificar.
+      if (!data.mascotaId) {
+        showToast('Esta ficha no está sincronizada con el servidor — no se puede unificar');
+        return;
+      }
+
+      fusionState = { petKeyA: petKey, petKeyB: null, principal: 'A', responsable: null, campos: {} };
+      document.getElementById('fusion-mascota-actual-nombre').textContent = data.name;
+      document.getElementById('fusion-buscar-input').value = data.name;
+      fusionMostrarPaso('buscar');
+      renderFusionCandidatos();
+      document.getElementById('fusion-mascotas-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeFusionMascotasModal() {
+      document.getElementById('fusion-mascotas-modal').classList.remove('show');
+      fusionState = null;
+    }
+
+    function handleFusionOverlayClick(e) {
+      if (e.target.id === 'fusion-mascotas-modal') closeFusionMascotasModal();
+    }
+
+    function fusionMostrarPaso(paso) {
+      ['buscar', 'comparar', 'confirmar'].forEach(p => {
+        document.getElementById(`fusion-paso-${p}`).style.display = (p === paso) ? '' : 'none';
+      });
+      document.getElementById('fusion-modal-title').textContent = {
+        buscar: 'Unificar con otro registro',
+        comparar: 'Revisar y resolver diferencias',
+        confirmar: 'Confirmar la unificación'
+      }[paso];
+    }
+
+    function renderFusionCandidatos() {
+      const cont = document.getElementById('fusion-candidatos');
+      if (!fusionState) return;
+      const termino = (document.getElementById('fusion-buscar-input').value || '').trim().toLowerCase();
+      const candidatos = Object.entries(patientData).filter(([petKey, d]) => {
+        if (petKey === fusionState.petKeyA) return false;
+        if (!d.mascotaId) return false;                 // solo fichas reales del servidor
+        if (d.compartidoDe) return false;               // llegó de otra clínica por la red
+        if (!termino) return true;
+        const prop = getPropietarioDeMascota(petKey);
+        return (d.name || '').toLowerCase().includes(termino)
+          || (d.owner || '').toLowerCase().includes(termino)
+          || (prop && (prop.nombre || '').toLowerCase().includes(termino));
+      });
+
+      if (!candidatos.length) {
+        cont.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text-2);font-size:13px;">No hay otra ficha que coincida con esa búsqueda.</div>';
+        return;
+      }
+
+      cont.innerHTML = candidatos.map(([petKey, d]) => {
+        const conteo = fusionContarRegistros(petKey);
+        return `
+          <div style="display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;">
+            <div class="pet-photo-circle ${d.avatarClass}" style="width:38px;height:38px;font-size:14px;flex:0 0 auto;">
+              ${d.fotoUrl ? `<img src="${d.fotoUrl}" alt="${escapeHtml(d.name)}">` : escapeHtml(d.avatarText || '?')}
+            </div>
+            <div style="min-width:0;flex:1;">
+              <div style="font-weight:600;font-size:13.5px;">${escapeHtml(d.name)}
+                <span style="font-weight:400;color:var(--text-2);">· ${escapeHtml(d.species || 'Sin especie')}${d.breed ? ' · ' + escapeHtml(d.breed) : ''}</span>
+              </div>
+              <div style="font-size:12px;color:var(--text-2);margin-top:2px;">
+                Tutor: <strong>${escapeHtml(d.owner || '—')}</strong>
+                · Chip: ${d.chip ? escapeHtml(d.chip) : '<span style="opacity:.6;">sin chip</span>'}
+              </div>
+              <div style="font-size:11.5px;color:var(--text-2);margin-top:2px;">
+                ${conteo.total} registro${conteo.total === 1 ? '' : 's'} clínico${conteo.total === 1 ? '' : 's'} · ${fusionUltimaConsultaTexto(d)}
+              </div>
+            </div>
+            <button class="btn-outline" style="padding:6px 12px;font-size:12.5px;flex:0 0 auto;" onclick="fusionElegirCandidato('${petKey}')">Comparar</button>
+          </div>`;
+      }).join('');
+    }
+
+    function fusionElegirCandidato(petKey) {
+      if (!fusionState || !patientData[petKey]) return;
+      fusionState.petKeyB = petKey;
+      // Por defecto se conserva la ficha con más historia clínica: mover
+      // menos registros es menos superficie de error.
+      const nA = fusionContarRegistros(fusionState.petKeyA).total;
+      const nB = fusionContarRegistros(petKey).total;
+      fusionState.principal = (nB > nA) ? 'B' : 'A';
+      const dPri = patientData[fusionState.principal === 'A' ? fusionState.petKeyA : fusionState.petKeyB];
+      fusionState.responsable = dPri.propietarioId;
+      fusionState.campos = {};
+      // Cada campo arranca eligiendo el valor de la ficha principal, salvo
+      // que esté vacío ahí y la otra sí lo tenga.
+      FUSION_CAMPOS.forEach(c => {
+        const vA = c.get(patientData[fusionState.petKeyA]) || '';
+        const vB = c.get(patientData[fusionState.petKeyB]) || '';
+        const pri = fusionState.principal;
+        const vPri = pri === 'A' ? vA : vB;
+        fusionState.campos[c.col] = vPri ? pri : (pri === 'A' ? (vB ? 'B' : 'A') : (vA ? 'A' : 'B'));
+      });
+      fusionMostrarPaso('comparar');
+      renderFusionComparacion();
+    }
+
+    function fusionSetPrincipal(cual) {
+      if (!fusionState) return;
+      fusionState.principal = cual;
+      const dPri = patientData[cual === 'A' ? fusionState.petKeyA : fusionState.petKeyB];
+      fusionState.responsable = dPri.propietarioId;
+      FUSION_CAMPOS.forEach(c => {
+        const vPri = c.get(dPri) || '';
+        const otro = cual === 'A' ? 'B' : 'A';
+        const vOtro = c.get(patientData[otro === 'A' ? fusionState.petKeyA : fusionState.petKeyB]) || '';
+        fusionState.campos[c.col] = vPri ? cual : (vOtro ? otro : cual);
+      });
+      renderFusionComparacion();
+    }
+
+    function fusionSetResponsable(propietarioId) {
+      if (!fusionState) return;
+      fusionState.responsable = propietarioId;
+      renderFusionComparacion();
+    }
+
+    function fusionSetCampo(col, cual) {
+      if (!fusionState) return;
+      fusionState.campos[col] = cual;
+      renderFusionComparacion();
+    }
+
+    // Valor que quedará en la ficha unificada para una columna, según lo
+    // que el usuario eligió en el paso de comparación.
+    function fusionValorElegido(col) {
+      const st = fusionState;
+      const campo = FUSION_CAMPOS.find(c => c.col === col);
+      if (!st || !campo) return '';
+      const origen = st.campos[col] === 'A' ? patientData[st.petKeyA] : patientData[st.petKeyB];
+      const v = campo.get(origen);
+      return (v === undefined || v === null) ? '' : String(v);
+    }
+
+    function fusionValorMostrado(campo, data) {
+      const v = campo.get(data);
+      if (!v) return '<span style="opacity:.5;">Sin dato</span>';
+      if (campo.esFoto) return 'Tiene foto';
+      return escapeHtml(String(v));
+    }
+
+    function renderFusionComparacion() {
+      const st = fusionState;
+      if (!st || !st.petKeyB) return;
+      const dA = patientData[st.petKeyA];
+      const dB = patientData[st.petKeyB];
+      const propA = getPropietarioDeMascota(st.petKeyA);
+      const propB = getPropietarioDeMascota(st.petKeyB);
+      const cA = fusionContarRegistros(st.petKeyA);
+      const cB = fusionContarRegistros(st.petKeyB);
+
+      const tarjeta = (cual, d, prop, conteo) => `
+        <label style="display:block;border:2px solid ${st.principal === cual ? 'var(--clinic-accent)' : 'var(--border)'};
+                      border-radius:var(--radius);padding:12px;cursor:pointer;
+                      background:${st.principal === cual ? 'rgba(var(--clinic-accent-rgb),.05)' : 'var(--surface)'};">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <input type="radio" name="fusion-principal" ${st.principal === cual ? 'checked' : ''}
+                   onchange="fusionSetPrincipal('${cual}')" style="accent-color:var(--clinic-accent);">
+            <strong style="font-size:13px;">${st.principal === cual ? 'Se conserva esta ficha' : 'Se eliminará'}</strong>
+          </div>
+          <div style="font-size:13px;font-weight:600;">${escapeHtml(d.name)}</div>
+          <div style="font-size:12px;color:var(--text-2);margin-top:3px;">Tutor: ${escapeHtml(prop ? prop.nombre : (d.owner || '—'))}</div>
+          <div style="font-size:12px;color:var(--text-2);">${escapeHtml(prop ? `${prop.docTipo} ${prop.docNumero}` : '')}</div>
+          <div style="font-size:11.5px;color:var(--text-2);margin-top:5px;">${conteo.total} registro${conteo.total === 1 ? '' : 's'} clínico${conteo.total === 1 ? '' : 's'}</div>
+        </label>`;
+
+      const filasCampos = FUSION_CAMPOS.map(c => {
+        const vA = c.get(dA) || '';
+        const vB = c.get(dB) || '';
+        // Solo se pide elegir donde de verdad hay conflicto: los dos con
+        // valor y distintos. Igual o vacío se resuelve solo.
+        if (!vA || !vB || String(vA) === String(vB)) return '';
+        const btn = (cual, val) => `
+          <label style="display:flex;align-items:flex-start;gap:7px;cursor:pointer;font-size:12.5px;line-height:1.45;">
+            <input type="radio" name="fusion-campo-${c.col}" ${st.campos[c.col] === cual ? 'checked' : ''}
+                   onchange="fusionSetCampo('${c.col}','${cual}')" style="accent-color:var(--clinic-accent);margin-top:2px;">
+            <span>${val}</span>
+          </label>`;
+        return `
+          <tr>
+            <td style="padding:8px 10px;font-size:12px;font-weight:600;color:var(--text-2);white-space:nowrap;vertical-align:top;">${c.label}</td>
+            <td style="padding:8px 10px;">${btn('A', fusionValorMostrado(c, dA))}</td>
+            <td style="padding:8px 10px;">${btn('B', fusionValorMostrado(c, dB))}</td>
+          </tr>`;
+      }).filter(Boolean).join('');
+
+      const opcionResp = (prop, d) => prop ? `
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:8px 10px;border:1px solid ${st.responsable === prop.id ? 'var(--clinic-accent)' : 'var(--border)'};border-radius:var(--radius-sm);">
+          <input type="radio" name="fusion-responsable" ${st.responsable === prop.id ? 'checked' : ''}
+                 onchange="fusionSetResponsable('${prop.id}')" style="accent-color:var(--clinic-accent);">
+          <span><strong>${escapeHtml(prop.nombre)}</strong><br>
+            <span style="font-size:11.5px;color:var(--text-2);">${escapeHtml(`${prop.docTipo || ''} ${prop.docNumero || ''}`.trim())} · ${escapeHtml(prop.movil || 'sin celular')}</span>
+          </span>
+        </label>` : '';
+
+      const mismoTutor = propA && propB && propA.id === propB.id;
+
+      document.getElementById('fusion-comparacion').innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+          ${tarjeta('A', dA, propA, cA)}
+          ${tarjeta('B', dB, propB, cB)}
+        </div>
+
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;">¿Quién queda como responsable?</div>
+        <p style="font-size:12.5px;color:var(--text-2);line-height:1.55;margin-bottom:10px;">
+          ${mismoTutor
+            ? 'Las dos fichas son del mismo tutor, así que no hay contacto secundario que crear.'
+            : 'El otro queda como <strong>contacto secundario</strong> de la mascota: conserva su ficha, su documento y su facturación, y sigue pudiendo traerla.'}
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;">
+          ${opcionResp(propA, dA)}
+          ${mismoTutor ? '' : opcionResp(propB, dB)}
+        </div>
+
+        ${filasCampos ? `
+          <div style="font-size:13px;font-weight:700;margin-bottom:4px;">Datos que no coinciden</div>
+          <p style="font-size:12.5px;color:var(--text-2);line-height:1.55;margin-bottom:8px;">
+            Elige con cuál se queda la ficha unificada. Los campos que coinciden o están vacíos en una de las dos se resuelven solos.
+          </p>
+          <table style="width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">
+            <thead><tr style="background:var(--surface-container-low);">
+              <th style="padding:8px 10px;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-2);">Campo</th>
+              <th style="padding:8px 10px;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-2);">Ficha de ${escapeHtml(propA ? propA.nombre : 'A')}</th>
+              <th style="padding:8px 10px;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-2);">Ficha de ${escapeHtml(propB ? propB.nombre : 'B')}</th>
+            </tr></thead>
+            <tbody>${filasCampos}</tbody>
+          </table>`
+        : `<div style="padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12.5px;color:var(--text-2);">
+             Las dos fichas no tienen datos contradictorios: se completan entre sí.
+           </div>`}
+
+        <div style="margin-top:14px;font-size:12.5px;color:var(--text-2);line-height:1.55;">
+          El histórico de peso de las dos fichas se combina siempre — son mediciones reales, no un dato a elegir.
+        </div>`;
+    }
+
+    function fusionVolverABuscar() { fusionMostrarPaso('buscar'); renderFusionCandidatos(); }
+    function fusionVolverAComparar() { fusionMostrarPaso('comparar'); renderFusionComparacion(); }
+
+    function fusionIrAConfirmar() {
+      const st = fusionState;
+      if (!st || !st.petKeyB) return;
+      const keyPri = st.principal === 'A' ? st.petKeyA : st.petKeyB;
+      const keyDup = st.principal === 'A' ? st.petKeyB : st.petKeyA;
+      const dPri = patientData[keyPri];
+      const dDup = patientData[keyDup];
+      const conteo = fusionContarRegistros(keyDup);
+      const propResp = propietarios.find(p => p.id === st.responsable);
+      const propDupTutor = getPropietarioDeMascota(keyDup);
+      const propPriTutor = getPropietarioDeMascota(keyPri);
+      const secundarios = [propPriTutor, propDupTutor]
+        .filter(p => p && p.id !== st.responsable)
+        .filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i);
+
+      const nombreFinal = fusionValorElegido('nombre') || dPri.name;
+
+      document.getElementById('fusion-confirmar-nombre').textContent = nombreFinal;
+      document.getElementById('fusion-confirmar-input').value = '';
+      document.getElementById('fusion-resumen').innerHTML = `
+        <div style="padding:12px 14px;border-radius:var(--radius-sm);background:#FEF2F2;border:1px solid #FECACA;margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:700;color:#B91C1C;display:flex;align-items:center;gap:7px;">
+            <i data-lucide="alert-triangle" style="width:15px;height:15px;"></i> Esta acción no se puede deshacer
+          </div>
+          <div style="font-size:12.5px;color:#7F1D1D;line-height:1.55;margin-top:6px;">
+            La ficha de <strong>${escapeHtml(dDup.name)}</strong> (tutor ${escapeHtml(propDupTutor ? propDupTutor.nombre : dDup.owner)})
+            se elimina. Asegúrate de que es <strong>la misma mascota</strong> y no otra con el mismo nombre.
+          </div>
+        </div>
+
+        <div style="font-size:13px;line-height:1.75;">
+          <div>Queda una sola ficha llamada <strong>${escapeHtml(nombreFinal)}</strong>.</div>
+          <div>Responsable: <strong>${escapeHtml(propResp ? propResp.nombre : '—')}</strong>.</div>
+          ${secundarios.length
+            ? `<div>Contacto secundario: <strong>${secundarios.map(p => escapeHtml(p.nombre)).join(', ')}</strong>.</div>`
+            : '<div>No se crea contacto secundario (las dos fichas eran del mismo tutor).</div>'}
+        </div>
+
+        <div style="margin-top:14px;font-size:13px;font-weight:700;">Se traslada a la ficha que queda</div>
+        ${conteo.total
+          ? `<ul style="margin:6px 0 0 18px;font-size:12.5px;color:var(--text-2);line-height:1.7;">
+               ${conteo.detalle.map(x => `<li>${escapeHtml(x.texto)}</li>`).join('')}
+             </ul>
+             <div style="font-size:12px;color:var(--text-2);margin-top:6px;">
+               Más las citas y recordatorios de agenda que estuvieran asociados.
+             </div>`
+          : '<div style="font-size:12.5px;color:var(--text-2);margin-top:4px;">La ficha eliminada no tiene registros clínicos.</div>'}`;
+
+      fusionMostrarPaso('confirmar');
+      actualizarBotonFusion();
+      lucide.createIcons();
+    }
+
+    function actualizarBotonFusion() {
+      const esperado = (document.getElementById('fusion-confirmar-nombre').textContent || '').trim().toLowerCase();
+      const escrito = (document.getElementById('fusion-confirmar-input').value || '').trim().toLowerCase();
+      document.getElementById('fusion-ejecutar-btn').disabled = !esperado || escrito !== esperado;
+    }
+
+    async function ejecutarFusionMascotas() {
+      const st = fusionState;
+      if (!st || !st.petKeyB) return;
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa');
+        return;
+      }
+      const keyPri = st.principal === 'A' ? st.petKeyA : st.petKeyB;
+      const keyDup = st.principal === 'A' ? st.petKeyB : st.petKeyA;
+      const dPri = patientData[keyPri];
+      const dDup = patientData[keyDup];
+
+      // p_datos lleva SOLO los campos resueltos, con los nombres de columna
+      // reales de `mascotas` (contrato con la RPC).
+      const datos = { propietario_id: st.responsable };
+      FUSION_CAMPOS.forEach(c => { datos[c.col] = fusionValorElegido(c.col); });
+
+      const btn = document.getElementById('fusion-ejecutar-btn');
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.textContent = 'Unificando...';
+      try {
+        const { data, error } = await window.supabase.rpc('fusionar_mascotas', {
+          p_principal_id: dPri.mascotaId,
+          p_duplicada_id: dDup.mascotaId,
+          p_datos: datos,
+          p_relacion_contacto: 'Contacto secundario'
+        });
+        if (error) throw error;
+
+        closeFusionMascotasModal();
+        showToast(`Fichas unificadas — ${data && data.total_movidos ? data.total_movidos : 0} registro(s) trasladado(s)`);
+
+        // Recarga completa de la clínica en vez de parchear el modelo a
+        // mano: la fusión toca 17 tablas, dos pet_key y los contactos, y
+        // cualquier parche parcial dejaría la memoria mintiendo. Es una
+        // acción rara y deliberada; el costo de recargar está bien pagado.
+        const estabId = currentSession.activeMembership.establecimientoId;
+        await cargarDatosClinicaDesdeSupabase(estabId, false);
+        renderAllModulesData();
+        const destino = (data && data.pet_key && patientData[data.pet_key]) ? data.pet_key : null;
+        if (destino) selectPet(destino);
+        else deselectPet();
+      } catch (err) {
+        console.error('[IRIS] Error unificando mascotas:', err);
+        showToast(`No se pudo unificar: ${(err && err.message) ? err.message : 'error desconocido'}`);
+        btn.disabled = false;
+        btn.innerHTML = original;
+        lucide.createIcons();
+      }
+    }
+
+    // ── Contactos secundarios en la cabecera del paciente ────────
+    function renderPetContactosSecundarios(petKey) {
+      const wrap = document.getElementById('pet-header-contactos-wrap');
+      const bullet = document.getElementById('pet-header-contactos-bullet');
+      const cont = document.getElementById('pet-header-contactos');
+      if (!wrap || !cont) return;
+      const data = patientData[petKey];
+      const contactos = (data && data.contactos) || [];
+      if (!contactos.length) {
+        wrap.style.display = 'none';
+        if (bullet) bullet.style.display = 'none';
+        return;
+      }
+      const puedeQuitar = ROLES[currentSimRole].canRegisterOwner;
+      cont.innerHTML = 'También responde:' + contactos.map(c => `
+        <span class="pet-contacto-chip" title="${escapeHtml(c.relacion || 'Contacto secundario')}${c.movil ? ' · ' + escapeHtml(c.movil) : ''}">
+          ${escapeHtml(c.nombre)}${c.relacion ? `<span class="pet-contacto-rel">${escapeHtml(c.relacion)}</span>` : ''}
+          ${puedeQuitar ? `<button class="pet-contacto-quitar" title="Quitar como contacto" onclick="quitarContactoSecundario('${c.id}')">
+            <i data-lucide="x" style="width:10px;height:10px;"></i></button>` : ''}
+        </span>`).join('');
+      wrap.style.display = '';
+      if (bullet) bullet.style.display = '';
+      lucide.createIcons();
+    }
+
+    async function quitarContactoSecundario(contactoId) {
+      if (!window.supabase || !selectedPetKey) return;
+      const data = patientData[selectedPetKey];
+      if (!data) return;
+      const contacto = (data.contactos || []).find(c => c.id === contactoId);
+      if (!contacto) return;
+      if (!confirm(`¿Quitar a ${contacto.nombre} como contacto secundario de ${data.name}?\n\nNo se borra su ficha de tutor ni su historial de cuenta.`)) return;
+      try {
+        const { error } = await window.supabase.from('mascota_contactos').delete().eq('id', contactoId);
+        if (error) throw error;
+        data.contactos = (data.contactos || []).filter(c => c.id !== contactoId);
+        renderPetContactosSecundarios(selectedPetKey);
+        showToast('Contacto secundario quitado');
+      } catch (err) {
+        console.error('[IRIS] Error quitando el contacto secundario:', err);
+        showToast('No se pudo quitar el contacto');
+      }
+    }
+
+    // ── LINK PÚBLICO DE AUTORREGISTRO (tutor + mascotas) ─────────
+    // Hermano del bloque de arriba: si "Importar de WhatsApp" convierte
+    // un mensaje pegado en formulario, esto le pasa el formulario al
+    // tutor directamente. La diferencia de fondo es quién escribe en
+    // Supabase — allá sigue siendo guardarPropietario(); acá es la RPC
+    // `intake_link_enviar` (security definer), porque quien envía el
+    // formulario es `anon` y no tiene permiso de insert en
+    // `propietarios`/`mascotas`. La página que ve el tutor es
+    // `registro.html`, el único archivo de la app fuera de index.html
+    // (ver CLAUDE.md).
+    //
+    // El id de la fila de `intake_links` ES el token, calcado de
+    // `invites`/crearInvitacionParaRol().
+
+    function openRegistroLinkModal() {
+      if (!ROLES[currentSimRole].canRegisterOwner) {
+        showToast('Tu rol no tiene permiso para registrar tutores');
+        return;
+      }
+      document.getElementById('registro-link-nota').value = '';
+      document.getElementById('registro-link-input').value = '';
+      document.getElementById('registro-link-resultado').style.display = 'none';
+      document.getElementById('registro-link-modal').classList.add('show');
+      renderRegistroLinksRecientes();
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function closeRegistroLinkModal() {
+      document.getElementById('registro-link-modal').classList.remove('show');
+    }
+
+    function handleRegistroLinkOverlayClick(e) {
+      if (e.target.id === 'registro-link-modal') closeRegistroLinkModal();
+    }
+
+    // La URL apunta a registro.html, hermana de index.html en la raíz —
+    // por eso se recorta el nombre del archivo de location.pathname (que
+    // puede ser "/" o "/index.html" según cómo se sirva).
+    function urlRegistroPublico(token) {
+      const base = location.pathname.replace(/[^/]*$/, '');
+      return `${location.origin}${base}registro.html?t=${token}`;
+    }
+
+    async function generarLinkRegistroPublico() {
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede generar el enlace');
+        return;
+      }
+      const btn = document.getElementById('registro-link-generar-btn');
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.textContent = 'Generando...';
+      try {
+        const { data, error } = await window.supabase.from('intake_links').insert({
+          establecimiento_id: currentSession.activeMembership.establecimientoId,
+          nota: document.getElementById('registro-link-nota').value.trim() || null,
+          created_by: currentSession.user.id
+        }).select().single();
+        if (error) throw error;
+
+        const url = urlRegistroPublico(data.id);
+        document.getElementById('registro-link-input').value = url;
+        document.getElementById('registro-link-resultado').style.display = '';
+        if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+        showToast('Enlace generado y copiado al portapapeles');
+        renderRegistroLinksRecientes();
+      } catch (err) {
+        console.error('[IRIS] Error generando el enlace de registro:', err);
+        showToast('No se pudo generar el enlace — intenta de nuevo');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+
+    function copiarRegistroLink() {
+      const input = document.getElementById('registro-link-input');
+      if (!input.value) return;
+      input.select();
+      if (navigator.clipboard) navigator.clipboard.writeText(input.value).catch(() => {});
+      showToast('Enlace copiado al portapapeles');
+    }
+
+    function abrirWhatsappConRegistroLink() {
+      const url = document.getElementById('registro-link-input').value;
+      if (!url) return;
+      // La membresía guarda el establecimiento anidado (ver bootstrapSession),
+      // no un nombre suelto.
+      const m = currentSession && currentSession.activeMembership;
+      const clinica = (m && m.establecimiento && m.establecimiento.nombre) || 'la clínica';
+      const texto = `¡Hola! Te escribimos de ${clinica}. Para agilizar tu visita, registra tus datos y los de tu mascota en este enlace: ${url}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
+    }
+
+    function estadoRegistroLinkTexto(row) {
+      if (row.estado === 'completado') return { txt: 'Completado', color: 'var(--success)' };
+      if (row.estado === 'sin_vincular') return { txt: 'Recibido · falta vincular', color: 'var(--warning)' };
+      if (row.expira_at && new Date(row.expira_at) <= new Date()) return { txt: 'Vencido', color: 'var(--text-2)' };
+      return { txt: 'Pendiente', color: 'var(--warning)' };
+    }
+
+    async function renderRegistroLinksRecientes() {
+      const cont = document.getElementById('registro-link-lista');
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        cont.textContent = 'No hay una clínica activa.';
+        return;
+      }
+      const { data, error } = await window.supabase.from('intake_links')
+        .select('id, nota, estado, expira_at, usado_at, created_at')
+        .eq('establecimiento_id', currentSession.activeMembership.establecimientoId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (error) {
+        cont.textContent = 'No se pudieron cargar los enlaces.';
+        return;
+      }
+      if (!data.length) {
+        cont.textContent = 'Todavía no has generado ningún enlace.';
+        return;
+      }
+      cont.innerHTML = data.map(row => {
+        const est = estadoRegistroLinkTexto(row);
+        const fecha = new Date(row.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+        const nota = row.nota ? escapeHtml(row.nota) : '<span style="opacity:.6;">Sin nota</span>';
+        // Los completados ya no sirven: no tiene sentido ofrecer copiarlos.
+        const copiar = (row.estado === 'pendiente' && new Date(row.expira_at) > new Date())
+          ? `<button class="btn-secondary" style="padding:4px 9px;font-size:11.5px;" onclick="copiarRegistroLinkDeLista('${row.id}')">Copiar</button>`
+          : '';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+          <div style="min-width:0;">
+            <div style="color:var(--text-1);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nota}</div>
+            <div style="font-size:11.5px;">${fecha} · <span style="color:${est.color};font-weight:600;">${est.txt}</span></div>
+          </div>
+          ${copiar}
+        </div>`;
+      }).join('');
+    }
+
+    function copiarRegistroLinkDeLista(token) {
+      const url = urlRegistroPublico(token);
+      document.getElementById('registro-link-input').value = url;
+      document.getElementById('registro-link-resultado').style.display = '';
+      if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+      showToast('Enlace copiado al portapapeles');
+    }
+
     // ── MÓDULO: VENTAS — CONFIGURACIÓN DE FACTURACIÓN ────────────
     function guardarConfigFacturacion() {
       showToast('Configuración de facturación guardada');
@@ -29345,6 +30103,9 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         contactoAutorizado: r.contacto_autorizado || '', telefonoAlterno: r.telefono_alterno || '',
         telefonoOpcional: r.telefono_opcional || '',
         comoNosEncontro: r.como_nos_encontro || '',
+        // 'autorregistro' = la ficha la llenó el tutor por el link público
+        // (registro.html). null/'' = la registró alguien de la clínica.
+        origen: r.origen || '',
         ultimaGestionTime: r.ultima_gestion_time ? new Date(r.ultima_gestion_time).toLocaleString('es-CO') : 'Recién registrado',
         ultimaGestionDetail: r.ultima_gestion_detail || '',
         pdfPath: r.pdf_path || null,
@@ -29774,7 +30535,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, eventoSegRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes, plantillaRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, eventoSegRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes, plantillaRes, contactoRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -29799,7 +30560,8 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           window.supabase.from('guarderias').select('*').eq('establecimiento_id', establecimientoId).order('fecha_ingreso', { ascending: false }),
           window.supabase.from('mensajes').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('catalogos_custom').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true }),
-          window.supabase.from('documento_plantillas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true })
+          window.supabase.from('documento_plantillas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true }),
+          window.supabase.from('mascota_contactos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true })
         ]);
         if (propRes.error) throw propRes.error;
         if (petRes.error) throw petRes.error;
@@ -29826,6 +30588,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         if (mensajeRes.error) throw mensajeRes.error;
         if (catalogoRes.error) throw catalogoRes.error;
         if (plantillaRes.error) throw plantillaRes.error;
+        if (contactoRes.error) throw contactoRes.error;
         return {
           propRows: propRes.data || [], petRows: petRes.data || [], docRows: docRes.data || [], examRows: examRes.data || [],
           consultaRows: consultaRes.data || [], formulaRows: formulaRes.data || [],
@@ -29838,15 +30601,15 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           seguimientoRows: seguimientoRes.data || [], remisionRows: remisionRes.data || [],
           peluqueriaRows: peluqueriaRes.data || [], guarderiaRows: guarderiaRes.data || [],
           mensajeRows: mensajeRes.data || [], catalogoRows: catalogoRes.data || [],
-          plantillaRows: plantillaRes.data || []
+          plantillaRows: plantillaRes.data || [], contactoRows: contactoRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo());
       }
 
       // Formatos propios de esta clínica (los de fábrica viven en
@@ -29869,6 +30632,21 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       petRows.forEach(r => {
         const propietario = propietarios.find(p => p.id === r.propietario_id);
         patientData[r.pet_key] = construirMascotaDesdeFila(r, propietario);
+      });
+
+      // Contactos secundarios: otros tutores que también responden por la
+      // mascota, normalmente el resultado de unificar fichas duplicadas.
+      // El nombre y el celular se resuelven contra `propietarios` (no se
+      // duplican en la tabla) para que editar al tutor los mantenga al día.
+      contactoRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        const prop = propietarios.find(p => p.id === r.propietario_id);
+        if (!prop) return;
+        pet.contactos.push({
+          id: r.id, propietarioId: r.propietario_id, nombre: prop.nombre,
+          movil: prop.movil || '', relacion: r.relacion || '', nota: r.nota || ''
+        });
       });
 
       docRows.forEach(r => {
@@ -32873,6 +33651,105 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="volverAPegarIntakeWhatsapp()">Volver a pegar</button>
           <button type="button" class="btn-primary" id="intake-wa-continuar-btn" onclick="aplicarIntakeWhatsapp()">Continuar al registro</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Unificar mascotas duplicadas -->
+  <!-- Tres pasos a propósito: la fusión BORRA una ficha, y dos mascotas
+       homónimas de clientes distintos son un caso normal ("Canela", "Oreo").
+       El paso 1 muestra tutor/chip/nº de consultas de cada candidata para
+       poder distinguirlas, y el paso 3 exige escribir el nombre. -->
+  <div class="modal-overlay" id="fusion-mascotas-modal" onclick="handleFusionOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:820px;max-height:90vh;overflow-y:auto;">
+      <div class="modal-header">
+        <span class="modal-title" id="fusion-modal-title">Unificar con otro registro</span>
+        <button class="modal-close" onclick="closeFusionMascotasModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <!-- PASO 1: elegir la otra ficha -->
+      <div id="fusion-paso-buscar">
+        <p style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:14px;">
+          Busca la otra ficha de <strong id="fusion-mascota-actual-nombre"></strong>. Revisa el tutor,
+          el microchip y las consultas de cada una antes de elegir:
+          <strong>puede haber mascotas distintas con el mismo nombre</strong>.
+        </p>
+        <div class="input-group" style="margin-bottom:12px;">
+          <label class="input-label" for="fusion-buscar-input">Buscar por nombre de la mascota o del tutor</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="fusion-buscar-input" oninput="renderFusionCandidatos()" placeholder="Ej.: Canela, o el nombre del tutor...">
+        </div>
+        <div id="fusion-candidatos"></div>
+      </div>
+
+      <!-- PASO 2: comparar y resolver -->
+      <div id="fusion-paso-comparar" style="display:none;">
+        <div id="fusion-comparacion"></div>
+        <div style="display:flex;justify-content:space-between;gap:12px;margin-top:18px;">
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="fusionVolverABuscar()">Volver</button>
+          <button type="button" class="btn-primary" onclick="fusionIrAConfirmar()">Continuar</button>
+        </div>
+      </div>
+
+      <!-- PASO 3: confirmación destructiva -->
+      <div id="fusion-paso-confirmar" style="display:none;">
+        <div id="fusion-resumen"></div>
+        <div class="input-group" style="margin-top:16px;">
+          <label class="input-label" for="fusion-confirmar-input">
+            Para confirmar, escribe el nombre de la mascota: <strong id="fusion-confirmar-nombre"></strong>
+          </label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="fusion-confirmar-input" oninput="actualizarBotonFusion()" autocomplete="off">
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:12px;margin-top:18px;">
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="fusionVolverAComparar()">Volver</button>
+          <button type="button" class="btn-primary" id="fusion-ejecutar-btn" disabled onclick="ejecutarFusionMascotas()">
+            <i data-lucide="git-merge" style="width:14px;height:14px;"></i> Unificar definitivamente
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Enviar link de registro al tutor (autorregistro público) -->
+  <div class="modal-overlay" id="registro-link-modal" onclick="handleRegistroLinkOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:640px;max-height:88vh;overflow-y:auto;">
+      <div class="modal-header">
+        <span class="modal-title">Enviar link de registro</span>
+        <button class="modal-close" onclick="closeRegistroLinkModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <p style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:14px;">
+        Genera un enlace y mándaselo al tutor por WhatsApp. Él llena sus datos y los de su
+        mascota desde el celular, y cuando termine aparece acá en el buscador, ya registrado.
+        Cada enlace sirve <strong>una sola vez</strong> y vence a los 7 días.
+      </p>
+
+      <div class="input-group" style="margin-bottom:14px;">
+        <label class="input-label" for="registro-link-nota">Nota (opcional)</label>
+        <input type="text" class="input-control" style="padding-left:12px;" id="registro-link-nota" placeholder="Ej.: Ana, la del gato — para reconocer el enlace después">
+      </div>
+
+      <div id="registro-link-resultado" style="display:none;margin-bottom:16px;">
+        <label class="input-label">Enlace generado</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+          <input type="text" class="input-control" style="padding-left:12px;flex:1;min-width:240px;" id="registro-link-input" readonly onclick="this.select()">
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="copiarRegistroLink()">
+            <i data-lucide="copy" style="width:14px;height:14px;"></i> Copiar
+          </button>
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="abrirWhatsappConRegistroLink()">
+            <i data-lucide="message-circle" style="width:14px;height:14px;"></i> WhatsApp
+          </button>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
+        <button type="button" class="btn-primary" id="registro-link-generar-btn" onclick="generarLinkRegistroPublico()">
+          <i data-lucide="link-2" style="width:14px;height:14px;"></i> Generar link
+        </button>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:16px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Enlaces recientes</div>
+        <div id="registro-link-lista" style="font-size:12.5px;color:var(--text-2);">Cargando…</div>
       </div>
     </div>
   </div>
