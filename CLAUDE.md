@@ -803,6 +803,25 @@ queda como responsable y el otro como **contacto secundario**.
   (`#pet-header-contactos`, mismo patrón de slot opcional que
   `#pet-header-temperamento`, por eso el Kardex no se ve afectado). Se puede
   quitar un contacto desde ahí; eso NO borra la ficha del tutor.
+- **Buscar al contacto secundario tiene que llevar al Consultorio.** Es la
+  mitad que le faltaba a la unificación: la otra persona sigue llamando y
+  preguntando por el animal, y su fila salía con "Sin mascotas registradas"
+  porque no es responsable de ninguna por FK. Lo resuelve
+  `getMascotasRelacionadasDePropietario(id)` = propias (FK) + aquellas donde
+  figura en `contactos`, cada entrada con un tercer elemento `esContacto`
+  (formato compatible con quien solo desestructura `[petKey, data]`). La usan
+  el buscador, Admin > Tutores, el perfil del tutor, el popover del
+  propietario, el hero del Tablero y `getUltimaGestionPropietario`.
+  **`getMascotasDePropietario` sigue siendo FK pura y NO hay que sustituirla
+  en la guarda de borrado de un tutor** ("tiene mascotas registradas"): ahí lo
+  que importa es de quién SON las mascotas, y un contacto secundario no tiene
+  ninguna propia — su fila de `mascota_contactos` se va sola por CASCADE.
+- Esas mascotas se marcan con `contactoTagHTML()` (pastilla "contacto" +
+  responsable real en el `title`). Sin la marca, la fila del contacto se ve
+  idéntica a la del responsable y se pierde quién responde por el animal. La
+  única excepción es el hero del Tablero, donde el marcador va solo en el
+  `title`: es de una sola línea en modo compacto y una pastilla por chip lo
+  desbordaría.
 - Las dos tablas están en `RESPALDO_TABLAS`.
 
 ## Sidebar de Consultorio (18 módulos, orden fijo)

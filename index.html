@@ -736,6 +736,14 @@
       background: transparent; color: var(--text-2); cursor: pointer; padding: 0;
     }
     .pet-contacto-quitar:hover { background: rgba(239, 68, 68, .12); color: var(--danger); }
+
+    /* Mascota que aparece en la fila de un tutor porque figura como contacto
+       secundario, no porque sea suya. */
+    .pet-chip-contacto-tag {
+      font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--text-2); background: var(--surface-container);
+      border-radius: 999px; padding: 1px 6px; margin-left: 2px; white-space: nowrap;
+    }
     .row-actions-item.danger i { color: var(--danger); }
     .row-fade-out { transition: opacity 0.25s ease; opacity: 0; }
 
@@ -8348,6 +8356,45 @@
       return Object.entries(patientData).filter(([, d]) => d.propietarioId === propietarioId);
     }
 
+    // Mascotas en las que este tutor NO es el responsable pero figura como
+    // CONTACTO SECUNDARIO (ver mascota_contactos / fusionar_mascotas): es la
+    // otra persona que trajo al mismo animal antes de que se unificaran las
+    // fichas duplicadas. Sin esto, buscarla por su nombre o cédula mostraba
+    // su fila con "Sin mascotas registradas" y no había forma de llegar al
+    // Consultorio desde ella, que es justo lo que la unificación tenía que
+    // resolver.
+    function getMascotasDeContacto(propietarioId) {
+      return Object.entries(patientData).filter(([, d]) =>
+        (d.contactos || []).some(c => c.propietarioId === propietarioId));
+    }
+
+    // Las dos cosas juntas, con una marca por entrada (`esContacto`) para
+    // poder pintarlas distinto. Sigue el mismo formato [petKey, data] que
+    // getMascotasDePropietario, así que quien solo desestructura los dos
+    // primeros elementos no necesita cambios.
+    //
+    // OJO: esta NO reemplaza a getMascotasDePropietario en la guarda de
+    // borrado de un tutor ("tiene mascotas registradas"). Ahí lo que importa
+    // es de quién SON las mascotas: un contacto secundario no tiene ninguna
+    // propia y su fila de mascota_contactos se va sola por CASCADE.
+    // Marca "contacto" para las mascotas que salen de getMascotasDeContacto:
+    // sin ella la fila de un contacto secundario se ve idéntica a la del
+    // responsable, y quién responde por el animal deja de estar claro.
+    function contactoTagHTML(data, esContacto) {
+      if (!esContacto) return '';
+      const responsable = data && data.owner ? ` — responsable: ${escapeHtml(data.owner)}` : '';
+      return `<span class="pet-chip-contacto-tag" title="Figura como contacto secundario${responsable}">contacto</span>`;
+    }
+
+    function getMascotasRelacionadasDePropietario(propietarioId) {
+      const propias = getMascotasDePropietario(propietarioId);
+      const claves = new Set(propias.map(([k]) => k));
+      return propias.map(([k, d]) => [k, d, false])
+        .concat(getMascotasDeContacto(propietarioId)
+          .filter(([k]) => !claves.has(k))
+          .map(([k, d]) => [k, d, true]));
+    }
+
     // Resuelve el registro completo del propietario (doc/email/dirección) a
     // partir de una mascota — usa el FK real (propietarioId) cuando existe
     // y cae a coincidencia por nombre para las mascotas semilla que aún no
@@ -8394,7 +8441,7 @@
     // Documentos) también lo agregan explícitamente.
     function getUltimaGestionPropietario(propietario) {
       let masReciente = null;
-      getMascotasDePropietario(propietario.id).forEach(([, data]) => {
+      getMascotasRelacionadasDePropietario(propietario.id).forEach(([, data]) => {
         const item = (data.timeline || [])[0];
         if (!item) return;
         const ms = new Date(item.dateSortKey || item.date).getTime();
@@ -8604,7 +8651,7 @@
       const filtroPropietario = (searchPropietarioEl ? searchPropietarioEl.value : '').trim().toLowerCase();
       const filtroMascota = (searchMascotaEl ? searchMascotaEl.value : '').trim().toLowerCase();
       const propietariosFiltrados = propietarios.filter(p => {
-        const mascotas = getMascotasDePropietario(p.id);
+        const mascotas = getMascotasRelacionadasDePropietario(p.id);
         if (filtroPropietario) {
           const enPropietario = p.nombre.toLowerCase().includes(filtroPropietario)
             || (p.docNumero || '').toLowerCase().includes(filtroPropietario)
@@ -8632,14 +8679,15 @@
         // reclamarla) pero no lleva a ningún lado. Ver
         // propietarioEstaVinculado().
         const vinculado = p.redVinculado !== false;
-        const mascotas = getMascotasDePropietario(p.id);
+        const mascotas = getMascotasRelacionadasDePropietario(p.id);
         const chips = mascotas.length
-          ? mascotas.map(([petKey, d]) => `
+          ? mascotas.map(([petKey, d, esContacto]) => `
               <span class="pet-chip-badge ${d.avatarClass}${vinculado ? '' : ' pet-chip-locked'}">
                 <span class="pet-chip-photo" ${vinculado ? `style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')" title="Ver historia clínica"` : 'title="Requiere vincular al tutor"'}>
                   ${d.fotoUrl ? `<img src="${d.fotoUrl}" alt="${d.name}">` : `<i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width: 11px; height: 11px;"></i>`}
                 </span>
                 <span ${vinculado ? `style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')"` : ''}>${d.name} <span class="chip-number">${d.chip}</span></span>
+                ${contactoTagHTML(d, esContacto)}
                 ${vinculado ? `<button class="row-actions-btn propietarios-consulta-btn pet-chip-consulta-btn" title="Iniciar consulta" onclick="event.stopPropagation(); iniciarConsultaMascotaDesdeBusqueda('${petKey}')">
                   <i data-lucide="clipboard-plus" style="width: 12px; height: 12px;"></i>
                 </button>` : ''}
@@ -8743,12 +8791,12 @@
           ${copyIconHTML(value)}
         </div>` : '';
       // Sección "Mascotas" — mismas mascotas del propietario que ya usa el
-      // chip del buscador (Parte B.1, ver getMascotasDePropietario), para
-      // poder saltar de una mascota a otra sin volver al buscador.
+      // chip del buscador (Parte B.1, ver getMascotasRelacionadasDePropietario),
+      // para poder saltar de una mascota a otra sin volver al buscador.
       const mascotasHTML = p ? (() => {
-        const mascotas = getMascotasDePropietario(p.id);
+        const mascotas = getMascotasRelacionadasDePropietario(p.id);
         if (!mascotas.length) return '';
-        const items = mascotas.map(([petKey, d]) => {
+        const items = mascotas.map(([petKey, d, esContacto]) => {
           const isCurrent = petKey === selectedPetKey;
           const avatar = d.fotoUrl
             ? `<span class="pet-chip-photo"><img src="${d.fotoUrl}" alt="${d.name}"></span>`
@@ -8757,6 +8805,7 @@
             <div class="owner-popover-pet-item${isCurrent ? ' current' : ''}" ${isCurrent ? '' : `onclick="event.stopPropagation(); selectPet('${petKey}')"`}>
               ${avatar}
               <span class="owner-popover-pet-name">${d.name}</span>
+              ${contactoTagHTML(d, esContacto)}
               ${isCurrent ? '<span class="owner-popover-pet-current-tag">Actual</span>' : ''}
             </div>`;
         }).join('');
@@ -10281,10 +10330,10 @@
       const p = propietarios.find(x => x.id === propietarioId);
       if (!p) return;
       const tbody = document.getElementById('perfil-mascotas-tbody');
-      const mascotas = getMascotasDePropietario(p.id);
-      tbody.innerHTML = mascotas.length ? mascotas.map(([petKey, d]) => `
+      const mascotas = getMascotasRelacionadasDePropietario(p.id);
+      tbody.innerHTML = mascotas.length ? mascotas.map(([petKey, d, esContacto]) => `
         <tr>
-          <td>${d.name}</td>
+          <td>${d.name}${contactoTagHTML(d, esContacto)}</td>
           <td>${d.species}</td>
           <td>${d.breed}</td>
           <td>${d.genero || '—'}</td>
@@ -13493,18 +13542,22 @@
       const tel = (p && p.movil) || data.ownerPhone || '';
 
       // Mascotas a cargo del mismo responsable. Por FK real cuando el
-      // propietario está resuelto (getMascotasDePropietario, la fuente de
-      // verdad del vínculo); si la mascota es semilla y no tiene
-      // propietarioId, se cae al nombre de display para no dejar el bloque
-      // vacío — mismo criterio de respaldo que getPropietarioDeMascota().
+      // propietario está resuelto (getMascotasRelacionadasDePropietario, que
+      // suma también aquellas en las que figura como contacto secundario); si
+      // la mascota es semilla y no tiene propietarioId, se cae al nombre de
+      // display para no dejar el bloque vacío — mismo criterio de respaldo
+      // que getPropietarioDeMascota().
       const mascotas = p
-        ? getMascotasDePropietario(p.id)
+        ? getMascotasRelacionadasDePropietario(p.id)
         : Object.entries(patientData).filter(([, d]) => d.owner && d.owner === data.owner);
+      // Acá el marcador de contacto va solo en el title y no como pastilla:
+      // el hero es de una sola línea en modo compacto (ver CLAUDE.md) y una
+      // etiqueta extra por chip lo desbordaría.
       const petsHTML = mascotas.length ? `
         <div class="tablero-hero-owner-pets">
-          ${mascotas.map(([key, d]) => `
+          ${mascotas.map(([key, d, esContacto]) => `
             <span class="tablero-owner-pet-chip ${key === petKey ? 'current' : ''}"
-                  title="${`${d.name} — ${d.species || ''}${d.breed ? ' / ' + d.breed : ''}`.replace(/"/g, '&quot;')}">
+                  title="${`${d.name} — ${d.species || ''}${d.breed ? ' / ' + d.breed : ''}${esContacto ? ' (figura como contacto secundario)' : ''}`.replace(/"/g, '&quot;')}">
               <i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:11px;height:11px;"></i> ${d.name}
             </span>`).join('')}
         </div>` : '';
@@ -23395,14 +23448,14 @@
         || (p.movil || '').toLowerCase().includes(filterText));
       const pageRows = paginarTabla('tutores', rows, 'tutores-table-pagination', () => renderTutoresTable(filterText), 'tutores');
       tbody.innerHTML = pageRows.length ? pageRows.map(p => {
-        const mascotas = getMascotasDePropietario(p.id);
+        const mascotas = getMascotasRelacionadasDePropietario(p.id);
         // Cada mascota: el chip navega a su historia (comportamiento previo)
         // y los botones de al lado disparan el envío de fórmula / la
         // solicitud de información a otra clínica (antes "Solicitar a otra
         // clínica" vivía como botón en la cabecera del paciente) sin salir
         // de acá.
         const chips = mascotas.length
-          ? mascotas.map(([petKey, d]) => `<span class="pet-chip-group"><span class="pet-chip-badge ${d.avatarClass}" style="cursor:pointer;" onclick="document.querySelector('.nav-tabs-bar .tab-btn[data-tab=\\'consultorio\\']').click(); selectPet('${petKey}');"><i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:12px;height:12px;"></i> ${d.name}</span><button class="pet-chip-action" title="Enviar fórmula a ${d.name}" onclick="event.stopPropagation(); iniciarEnvioFormula('${petKey}')"><i data-lucide="send" style="width:12px;height:12px;"></i></button><button class="pet-chip-action" title="Solicitar información clínica de ${d.name} a otra clínica" onclick="event.stopPropagation(); abrirRedSolicitudModal('${petKey}')"><i data-lucide="network" style="width:12px;height:12px;"></i></button></span>`).join(' ')
+          ? mascotas.map(([petKey, d, esContacto]) => `<span class="pet-chip-group"><span class="pet-chip-badge ${d.avatarClass}" style="cursor:pointer;" onclick="document.querySelector('.nav-tabs-bar .tab-btn[data-tab=\\'consultorio\\']').click(); selectPet('${petKey}');"><i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width:12px;height:12px;"></i> ${d.name}</span>${contactoTagHTML(d, esContacto)}<button class="pet-chip-action" title="Enviar fórmula a ${d.name}" onclick="event.stopPropagation(); iniciarEnvioFormula('${petKey}')"><i data-lucide="send" style="width:12px;height:12px;"></i></button><button class="pet-chip-action" title="Solicitar información clínica de ${d.name} a otra clínica" onclick="event.stopPropagation(); abrirRedSolicitudModal('${petKey}')"><i data-lucide="network" style="width:12px;height:12px;"></i></button></span>`).join(' ')
           : '<span class="gestion-detail">Sin mascotas registradas</span>';
         const gestion = getUltimaGestionPropietario(p.nombre);
         return `
