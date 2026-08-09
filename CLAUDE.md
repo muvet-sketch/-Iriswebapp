@@ -615,6 +615,70 @@ del modal, para cuando el equipo de la oficina está apagado.
   todavía no existe. Respaldar la fila sin el audio (que se borra del
   bucket y vive en Drive) no permitiría reconstruir nada.
 
+## Importar tutor + mascotas desde WhatsApp (botón del buscador)
+A los clientes nuevos se les envía por WhatsApp una plantilla pidiendo sus
+datos y los del "chiquitín". Este flujo convierte esa respuesta en campos y
+evita transcribir a mano 11 + 18 campos. Entrada:
+`#btn-importar-whatsapp` en `.header-actions-col` del buscador de Consultorio
+→ `#intake-whatsapp-modal` (2 pasos: pegar → previsualizar/editar → continuar,
+clon estructural de `#importar-clientes-modal`). El botón lleva
+`data-btn-registrar-propietario`, así que `applySimRole()` ya lo oculta para
+los roles sin `canRegisterOwner` sin tocar nada más.
+
+- **Este flujo NO escribe en Supabase — solo PRECARGA los dos formularios de
+  siempre.** Es la decisión que gobierna todo el resto: quien guarda sigue
+  siendo `guardarPropietario()`/`guardarMascotaRegistro()`, así que la
+  detección de Red IRIS, la validación de celular por país, los T&C, el PDF de
+  intake y el encadenamiento tutor → mascota siguen funcionando sin duplicar
+  una línea de lógica de guardado. Mismo criterio que el audio → SOIP: un
+  LLM no cierra un registro. Si algún día se agrega un camino que inserte
+  directo, se pierde todo eso de golpe.
+- **Dos parsers, y el determinista manda.** `parsearIntakeWhatsapp()` lee por
+  etiquetas (instantáneo, sin costo) y cubre a quien responde sobre la
+  plantilla — que es el caso normal, justamente porque la plantilla se la
+  enviamos nosotros. Solo si reconoció poco (< 4 campos, o sin nombre de tutor,
+  o sin mascota) se llama a `/api/parsear-intake`, y su resultado **rellena
+  huecos, nunca pisa** lo que el parser local sí reconoció (`intakeFusionar`).
+  Si el endpoint falla, se muestra lo parcial con un aviso: la interpretación
+  asistida es un respaldo, no un requisito.
+- **Un solo lugar convierte texto libre a valores de `<select>`**: los
+  `intakeNormalizar*` (especie/genero/esterilizado/peso/fecha/edad/chip/movil/
+  docTipo). Por eso `api/parsear-intake.js` devuelve el texto **crudo** del
+  cliente y no normaliza nada — si normalizara, las dos vías podrían divergir.
+  Dos criterios que no son cosméticos: una especie desconocida cae en `Otro`,
+  nunca en `Canino`; y en `intakeNormalizarEsterilizado()` el orden de las tres
+  pruebas importa — "no sé" se mira antes que "no", porque guardar "No
+  esterilizado" es una afirmación clínica que nadie hizo.
+- **Guard anti-alucinación** (`intakeVerificarContraTexto` /
+  `intakeDigitosPresentes`): cédula, celular, peso y fecha que el modelo
+  devuelva se descartan si sus dígitos no están en el mensaje pegado. Mismo
+  criterio que `depurar_vitales()` en `extraer_soip.py`; son los cuatro campos
+  donde un dígito inventado hace daño real (dos son identidad).
+- **La precarga de la mascota va DENTRO de `openRegistrarMascotaModal()`, al
+  final.** Esa función limpia los 12 campos al abrir, así que hacerlo desde el
+  llamador lo borraría. Ubicada ahí cubre todas las vías de apertura, incluida
+  la reapertura para la segunda mascota de la misma cola.
+- **`intakeMascotasPendientes` se declara junto a `postRegistroMascotaAccion`**
+  (~línea 8580), no junto a su propio bloque: `openRegistrarMascotaModal()` la
+  lee y vive mucho más arriba en el mismo script, y un `let` de nivel superior
+  no está hoisted (ver la trampa de temporal dead zone en "Qué es esto").
+- **La cola se vacía en los tres puntos de abandono**, y los tres hacen falta:
+  `closeRegistrarMascotaModal()`, `closeRegistrarPropietarioModal()` y el
+  `return` de tutor sin vincular de `guardarPropietario()`. Sin esto, unas
+  mascotas huérfanas se precargarían en el siguiente registro manual, que sería
+  de otro tutor — el error más caro de este flujo. Como cerrar el modal de
+  tutor significa cancelar, `guardarPropietario()` **captura la cola antes de
+  cerrar y la restaura justo antes de abrir el modal de mascota**, exactamente
+  el mismo patrón que ya usa con `agendaRegistroPropietarioPendiente`.
+  `redConfirmarVinculacion()` también cierra ese modal, y ahí vaciar es lo
+  correcto: las mascotas ya llegaron de la red.
+- **Los T&C no se marcan por código** ni se inventa `prop-como-encontro`. El
+  consentimiento del tutor no es algo que la app pueda dar por él.
+- El endpoint usa `claude-sonnet-5` (override: `IRIS_MODELO_INTAKE`) con **tool
+  use forzado** — el equivalente sin SDK de `messages.parse()` de
+  `extraer_soip.py`. Necesita `ANTHROPIC_API_KEY` en Vercel; sin ella el parser
+  por etiquetas sigue funcionando completo y solo se pierde el respaldo.
+
 ## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·
 Desparasitaciones · Hospitalizaciones/ambulatorios ·

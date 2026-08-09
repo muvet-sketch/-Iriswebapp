@@ -5367,6 +5367,9 @@
               <button class="btn-outline" id="btn-vincular-red" data-btn-registrar-propietario onclick="abrirRedVincularModalManual()" title="Traer un tutor que ya existe en otro establecimiento de la red IRIS">
                 <i data-lucide="link" style="width: 16px; height: 16px;"></i> Vincular de la red
               </button>
+              <button class="btn-outline" id="btn-importar-whatsapp" data-btn-registrar-propietario onclick="openIntakeWhatsappModal()" title="Pegar la respuesta que el tutor envió por WhatsApp y precargar el registro">
+                <i data-lucide="message-square-text" style="width: 16px; height: 16px;"></i> Importar de WhatsApp
+              </button>
               <button class="btn-primary" id="btn-registrar-propietario" data-btn-registrar-propietario onclick="openRegistrarPropietarioModal()">
                 <i data-lucide="plus" style="width: 16px; height: 16px;"></i> Registrar propietario
               </button>
@@ -8580,6 +8583,13 @@
     // "Registrar mascota" (ej. desde el Perfil de propietario).
     let postRegistroMascotaAccion = null;
 
+    // Cola de mascotas pendientes de una importación de WhatsApp (ver el
+    // bloque "IMPORTAR TUTOR + MASCOTAS DESDE WHATSAPP"). Se declara acá, y no
+    // junto a ese bloque, porque openRegistrarMascotaModal() la lee y vive
+    // mucho más arriba en este mismo script: un `let` de nivel superior no
+    // está hoisted como sí lo están las `function`.
+    let intakeMascotasPendientes = [];
+
     // Inicia consulta para UNA mascota puntual — cada chip del buscador de
     // propietarios (Parte B.1) trae su propio botón "Iniciar consulta" que
     // llama esto con su propio petKey, así funciona igual sin importar
@@ -9882,6 +9892,10 @@
       // redConfirmarVinculacion) capturan la bandera ANTES de cerrar —
       // mismo criterio que postRegistroMascotaAccion.
       agendaRegistroPropietarioPendiente = false;
+      // Misma lógica para la cola de una importación de WhatsApp: cerrar es
+      // cancelar. El único llamador que sigue la cadena (guardarPropietario)
+      // la captura antes de cerrar y la restaura al abrir el modal de mascota.
+      intakeMascotasPendientes = [];
       setAgendaRegistroSobrepuesto(false);
     }
 
@@ -10052,6 +10066,10 @@
         // Se captura ANTES de cerrar: closeRegistrarPropietarioModal() la
         // limpia asumiendo una cancelación (ver openRegistrarPropietarioDesdeAgenda).
         const veniaDeAgenda = agendaRegistroPropietarioPendiente;
+        // Misma captura para la cola de la importación de WhatsApp: cerrar el
+        // modal la vacía porque asume cancelación, y este es el único camino
+        // que sí debe conservarla.
+        const intakePendiente = intakeMascotasPendientes;
         closeRegistrarPropietarioModal();
 
         if (!nuevoPropietario.redVinculado) {
@@ -10062,6 +10080,10 @@
           renderPropietariosTable();
           showToast('Tutor registrado SIN vincular — verifica su identidad para poder abrir su perfil');
           if (veniaDeAgenda) aplicarPropietarioNuevoEnAgenda(nombre, null);
+          // La cola queda vacía a propósito (la vació el close de arriba y
+          // acá NO se restaura): sin vincular no se le puede colgar ninguna
+          // mascota, y unas mascotas huérfanas en cola se precargarían en el
+          // siguiente registro, que sería de otro tutor.
           return;
         }
 
@@ -10074,6 +10096,9 @@
         // al final de la cadena): registrar la mascota es opcional y
         // cancelar ese modal no puede perder al tutor recién creado.
         if (veniaDeAgenda) aplicarPropietarioNuevoEnAgenda(nombre, null);
+        // Se restaura ANTES de abrir: openRegistrarMascotaModal() lee la cola
+        // al final de su propio cuerpo para precargar la primera mascota.
+        intakeMascotasPendientes = intakePendiente;
         openRegistrarMascotaModal(nuevoPropietario.id);
         if (veniaDeAgenda) {
           // Después de abrir, no antes: openRegistrarMascotaModal() limpia
@@ -12128,6 +12153,12 @@
       nuevaMascotaFotoFile = null;
       document.getElementById('nueva-mascota-foto-preview').innerHTML = '<i data-lucide="camera" style="width:18px;height:18px;"></i>';
 
+      // La precarga de una importación de WhatsApp va acá, al FINAL y dentro
+      // de esta función: todo lo de arriba limpia los campos, así que hacerla
+      // desde quien llama la borraría. Acá cubre todas las vías de apertura,
+      // incluida la reapertura para la segunda mascota de la misma cola.
+      if (intakeMascotasPendientes.length) aplicarIntakeMascotaEnModal(intakeMascotasPendientes[0]);
+
       document.getElementById('registrar-mascota-modal').classList.add('show');
       lucide.createIcons();
     }
@@ -12136,6 +12167,10 @@
       document.getElementById('registrar-mascota-modal').classList.remove('show');
       registrandoMascotaPropietarioId = null;
       postRegistroMascotaAccion = null; // cancelado sin guardar — no continuar con la acción pendiente
+      // Cerrar sin guardar abandona la importación completa: dejar la cola
+      // viva haría que las mascotas sobrantes se precargaran en el siguiente
+      // registro manual, que no tiene nada que ver con este tutor.
+      intakeMascotasPendientes = [];
       nuevaMascotaFotoFile = null;
       // Segundo (y último) eslabón de la cadena que arranca en el modal de
       // Agenda — ver openRegistrarPropietarioDesdeAgenda.
@@ -12252,9 +12287,21 @@
         // Captura la continuación ANTES de cerrar el modal — closeRegistrarMascotaModal()
         // la limpia asumiendo un cierre sin guardar (ver nota junto a postRegistroMascotaAccion).
         const continuarCon = postRegistroMascotaAccion;
+        // Esta mascota ya quedó registrada: sale de la cola de importación
+        // antes de cerrar (closeRegistrarMascotaModal la vacía entera).
+        const colaIntake = intakeMascotasPendientes.slice(1);
         closeRegistrarMascotaModal();
         showToast('Mascota registrada');
-        if (continuarCon) continuarCon(petKey);
+        if (continuarCon) {
+          // La cadena de Agenda y la importación de WhatsApp son flujos
+          // disjuntos (nunca hay cola pendiente viniendo de Agenda), pero si
+          // ambas coincidieran, la continuación explícita manda.
+          continuarCon(petKey);
+        } else if (colaIntake.length) {
+          intakeMascotasPendientes = colaIntake;
+          openRegistrarMascotaModal(p.id);
+          showToast(`Falta${colaIntake.length === 1 ? '' : 'n'} ${colaIntake.length} mascota${colaIntake.length === 1 ? '' : 's'} — sigue ${colaIntake[0].nombre || 'la siguiente'}`);
+        }
       } catch (err) {
         console.error('[IRIS] Error guardando mascota en Supabase:', err);
         showToast('No se pudo guardar la mascota — intenta de nuevo');
@@ -26650,6 +26697,757 @@
       }
     }
 
+    // ══ IMPORTAR TUTOR + MASCOTAS DESDE WHATSAPP ═══════════════════
+    //
+    // El cliente recibe por WhatsApp la plantilla de INTAKE_PLANTILLA_WHATSAPP
+    // y responde con sus datos y los de su mascota. Este bloque convierte esa
+    // respuesta en campos y PRECARGA los formularios de registro que ya
+    // existen — nunca escribe en `propietarios` ni en `mascotas` por su
+    // cuenta. Quien guarda sigue siendo guardarPropietario()/
+    // guardarMascotaRegistro(), con su validación, su detección de Red IRIS y
+    // sus términos y condiciones intactos. Ver CLAUDE.md.
+    //
+    // Dos caminos, en este orden:
+    //   1. parsearIntakeWhatsapp() — determinista, por etiquetas. Instantáneo
+    //      y sin costo. Cubre a quien responde sobre la plantilla, que es el
+    //      caso normal justamente porque la plantilla se la enviamos nosotros.
+    //   2. /api/parsear-intake — solo si (1) no reconoció lo suficiente.
+    //      Ver api/parsear-intake.js.
+
+    const INTAKE_PLANTILLA_WHATSAPP = `Ya casi terminamos de agendar tu servicio,  solo necesitamos saber un poco mas de ti y tu peludito!
+
+Si es la primera vez que nos contactas, por fa compártenos esta info:
+
+*TU INFORMACION*
+
+Nombre completo:
+Cédula:
+Teléfono:
+Dirección:
+Correo electrónico:
+
+*DATOS DE TU CHIQUITIN*
+
+Nombre:
+Especie:
+Raza:
+Color:
+Peso aproximado:
+Fecha de nacimiento:
+Edad:
+Sexo:
+Esta esterilizado: Si/No
+Tiene microchip: Si/No
+
+
+Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
+¡Gracias por confiar en nosotros!`;
+
+    // Normalizador de VALORES (conserva los espacios, a diferencia de
+    // normalizarHeaderCSV, que los quita porque compara encabezados pegados).
+    // Se usa para clasificar texto libre: "Perro pequeño" → "perro pequeno".
+    function intakeNormalizarTexto(s) {
+      return (s || '').toString().trim().toLowerCase()
+        .replace(/[áéíóúñü]/g, ch => ACENTOS_CSV_MAP[ch] || ch)
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    // Sinónimos de etiqueta → campo. La clave se compara con
+    // normalizarHeaderCSV (sin espacios ni acentos), por eso van pegadas.
+    const INTAKE_CAMPOS_TUTOR = {
+      nombrecompleto: 'nombre', nombreyapellido: 'nombre', nombreyapellidos: 'nombre',
+      nombre: 'nombre', nombres: 'nombre', nombredeltutor: 'nombre', tunombre: 'nombre',
+      cedula: 'docNumero', documento: 'docNumero', numerodedocumento: 'docNumero',
+      numerodecedula: 'docNumero', identificacion: 'docNumero', cc: 'docNumero',
+      nit: 'docNumero', ndocumento: 'docNumero',
+      telefono: 'movil', celular: 'movil', movil: 'movil', whatsapp: 'movil',
+      numerodecelular: 'movil', telefonocelular: 'movil', numero: 'movil',
+      direccion: 'direccion', direccionderesidencia: 'direccion',
+      correoelectronico: 'email', correo: 'email', email: 'email', mail: 'email',
+      ciudad: 'ciudad', municipio: 'ciudad', ciudadomunicipio: 'ciudad'
+    };
+    const INTAKE_CAMPOS_MASCOTA = {
+      nombre: 'nombre', nombredelamascota: 'nombre', nombredetumascota: 'nombre',
+      nombredelpeludito: 'nombre', comosellama: 'nombre',
+      especie: 'especie', tipodemascota: 'especie', tipo: 'especie', animal: 'especie',
+      raza: 'raza', color: 'color', colordelpelaje: 'color',
+      pesoaproximado: 'peso', peso: 'peso', pesoaprox: 'peso', pesokg: 'peso',
+      fechadenacimiento: 'fechaNacimiento', fechanacimiento: 'fechaNacimiento',
+      nacimiento: 'fechaNacimiento', fechadenac: 'fechaNacimiento',
+      edad: 'edad', edadaproximada: 'edad',
+      sexo: 'genero', genero: 'genero',
+      estaesterilizado: 'esterilizado', esterilizado: 'esterilizado',
+      castrado: 'esterilizado', estacastrado: 'esterilizado', esterilizada: 'esterilizado',
+      tienemicrochip: 'chip', microchip: 'chip', chip: 'chip', nmicrochip: 'chip',
+      alergias: 'alergias', tienealergias: 'alergias',
+      antecedentes: 'antecedentes', antecedentesmedicos: 'antecedentes',
+      enfermedades: 'antecedentes'
+    };
+
+    // ── Normalizadores de valor ──────────────────────────────────────
+    // Son el ÚNICO lugar donde el texto del cliente se convierte a los valores
+    // exactos que aceptan los <select> del formulario. Los usan tanto el
+    // parser por etiquetas como la respuesta del endpoint, para que las dos
+    // vías no puedan divergir (por eso api/parsear-intake.js devuelve el texto
+    // crudo del cliente y no intenta normalizar nada).
+
+    // Cada entrada apunta a un value real de #nueva-mascota-especie. El orden
+    // importa: gana la primera coincidencia, así que lo específico va antes.
+    const INTAKE_ESPECIES = [
+      ['Felino', ['gato', 'gata', 'gatito', 'gatita', 'felino', 'michi', 'minino']],
+      ['Canino', ['perro', 'perra', 'perrito', 'perrita', 'canino', 'can', 'cachorro', 'cachorra', 'peludito', 'lomito']],
+      ['Conejo', ['conejo', 'conejita', 'conejita', 'coneja']],
+      ['Cobayo', ['cobayo', 'cuy', 'cobaya', 'conejillo de indias']],
+      ['Hámster', ['hamster', 'jerbo']],
+      ['Hurón', ['huron']],
+      ['Aves de corral', ['gallina', 'pollo', 'gallo', 'pollito']],
+      ['Ave doméstica', ['ave', 'pajaro', 'loro', 'periquito', 'canario', 'cotorra', 'guacamaya', 'agaporni', 'ninfa']],
+      ['Reptil', ['reptil', 'iguana', 'tortuga', 'serpiente', 'gecko', 'lagarto', 'camaleon']],
+      ['Equino', ['caballo', 'equino', 'yegua', 'potro']],
+      ['Bovino', ['vaca', 'bovino', 'res', 'ternero', 'toro']],
+      ['Porcino', ['cerdo', 'porcino', 'marrano', 'cochino', 'lechon']],
+      ['Ovino', ['oveja', 'ovino', 'cordero', 'borrego']],
+      ['Caprino', ['cabra', 'caprino', 'chivo']]
+    ];
+    // Sin coincidencia devuelve 'Otro', nunca 'Canino': inventar la especie de
+    // un paciente es peor que dejar el campo en "Otro" y que alguien lo corrija.
+    function intakeNormalizarEspecie(v) {
+      const n = intakeNormalizarTexto(v);
+      if (!n) return null;
+      for (const [especie, claves] of INTAKE_ESPECIES) {
+        if (claves.some(k => n.includes(k))) return especie;
+      }
+      return 'Otro';
+    }
+
+    // Devuelve null cuando no hay dato, para que el modal conserve su propio
+    // default en vez de que la importación afirme un sexo que nadie escribió.
+    function intakeNormalizarGenero(v) {
+      const n = intakeNormalizarTexto(v);
+      if (!n) return null;
+      if (/\b(hembra|femenino|female|hembrita|nina|niña)\b/.test(n) || n === 'h' || n === 'f') return 'Hembra';
+      if (/\b(macho|masculino|male|machito|nino|niño)\b/.test(n) || n === 'm') return 'Macho';
+      return null;
+    }
+
+    function intakeNormalizarEsterilizado(v) {
+      const n = intakeNormalizarTexto(v);
+      if (!n) return null;
+      // El orden de las tres pruebas es el que hace que esto sea correcto:
+      // "no se" empieza por "no" y "no esterilizado" contiene "esterilizado",
+      // así que la duda se mira antes que la negación y la negación antes que
+      // la afirmación. Un "no sé" que se guarde como "No esterilizado" es una
+      // afirmación clínica que nadie hizo.
+      if (/\b(no se|no lo se|no sabe|no sabemos|ni idea|desconocido|no estoy segur\w*|creo que|tal vez|quizas)\b/.test(n)) return 'Desconocido';
+      if (/\b(no|aun no|todavia no|negativo|nop|nunca)\b/.test(n)) return 'No esterilizado';
+      if (/\b(si|sii|claro|esterilizad[oa]|castrad[oa]|operad[oa]|positivo|yes)\b/.test(n)) return 'Esterilizado';
+      return 'Desconocido';
+    }
+
+    // Acepta "8", "8,5 kg", "aprox 8.5 kilos", "unos 12kg". Devuelve número.
+    function intakeNormalizarPeso(v) {
+      const s = (v || '').toString().replace(',', '.');
+      const m = s.match(/\d+(?:\.\d+)?/);
+      if (!m) return null;
+      const num = parseFloat(m[0]);
+      if (isNaN(num) || num <= 0 || num > 2000) return null;
+      return num;
+    }
+
+    const INTAKE_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                          'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    // Devuelve 'YYYY-MM-DD' — el formato que espera el <input type="date"> del
+    // modal y la columna `mascotas.fecha_nacimiento` (date). Descarta fechas
+    // futuras o absurdas en vez de guardarlas: una fecha mal leída envejece
+    // mal, porque la edad se recalcula a partir de ella para siempre.
+    function intakeNormalizarFechaNacimiento(v) {
+      const s = (v || '').toString().trim();
+      if (!s) return null;
+      let y = null, mo = null, d = null;
+      let m = s.match(/(\d{4})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{1,2})/);
+      if (m) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+      if (y === null) {
+        m = s.match(/(\d{1,2})\s*[-/.]\s*(\d{1,2})\s*[-/.]\s*(\d{2,4})/);
+        if (m) { d = +m[1]; mo = +m[2]; y = +m[3]; if (y < 100) y += y > 50 ? 1900 : 2000; }
+      }
+      if (y === null) {
+        const n = intakeNormalizarTexto(s);
+        m = n.match(/(\d{1,2})\s*(?:de\s+)?([a-z]+)\s*(?:de(?:l)?\s+)?(\d{4})/);
+        if (m) {
+          const idx = INTAKE_MESES.findIndex(mes => mes.startsWith(m[2].slice(0, 3)));
+          if (idx > -1) { d = +m[1]; mo = idx + 1; y = +m[3]; }
+        }
+      }
+      if (y === null || !mo || !d) return null;
+      if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+      const pad = n2 => String(n2).padStart(2, '0');
+      const iso = `${y}-${pad(mo)}-${pad(d)}`;
+      const fecha = new Date(`${iso}T00:00:00`);
+      if (isNaN(fecha.getTime())) return null;
+      if (fecha > new Date()) return null;
+      if (y < 1980) return null;
+      return iso;
+    }
+
+    // "3 años" → {tipo:'anios', cantidad:3}; "8 meses" → meses;
+    // "1 año y medio" → 18 meses. Alimenta #nueva-mascota-edad-tipo.
+    function intakeNormalizarEdad(v) {
+      const n = intakeNormalizarTexto(v);
+      if (!n) return null;
+      const num = n.match(/\d+/);
+      if (!num) return null;
+      const cantidad = parseInt(num[0], 10);
+      if (isNaN(cantidad) || cantidad < 0 || cantidad > 600) return null;
+      const esMeses = /\bmes(es)?\b/.test(n);
+      const yMedio = /\by\s+medio\b/.test(n);
+      if (esMeses) return { tipo: 'meses', cantidad };
+      if (yMedio) return { tipo: 'meses', cantidad: cantidad * 12 + 6 };
+      return { tipo: 'anios', cantidad };
+    }
+
+    // El campo del modal es el NÚMERO de microchip, no un sí/no: un "Sí" a
+    // secas no es un número y se descarta con aviso en vez de guardarse.
+    function intakeNormalizarChip(v) {
+      const digitos = soloDigitos(v);
+      if (digitos.length >= 8) return { numero: digitos, aviso: null };
+      const n = intakeNormalizarTexto(v);
+      if (/\b(si|sii|claro|tiene|yes)\b/.test(n)) {
+        return { numero: null, aviso: 'Dijo que tiene microchip pero no dio el número' };
+      }
+      return { numero: null, aviso: null };
+    }
+
+    // Devuelve lo que espera el par selector-de-país + input del formulario:
+    // el indicativo aparte y los dígitos nacionales solos.
+    function intakeNormalizarMovil(v) {
+      let d = soloDigitos(v);
+      if (!d) return null;
+      if (d.length === 12 && d.startsWith('57')) d = d.slice(2);
+      else if (d.length === 13 && d.startsWith('057')) d = d.slice(3);
+      if (d.length < 7 || d.length > 14) return null;
+      return { iso2: 'CO', numero: d };
+    }
+
+    function intakeNormalizarDocTipo(v) {
+      const n = normalizarHeaderCSV(v);
+      if (!n) return 'C.C.';
+      if (n.includes('nit')) return 'NIT';
+      if (n.includes('extranjer') || n === 'ce') return 'C.E.';
+      if (n.includes('pasaporte') || n === 'p') return 'Pasaporte';
+      if (n.includes('pep')) return 'PEP';
+      if (n.includes('tarjeta') || n === 'ti') return 'T.I.';
+      return 'C.C.';
+    }
+
+    // ── Parser por etiquetas ─────────────────────────────────────────
+    function intakeMascotaVacia() {
+      return { nombre: '', especie: null, raza: '', color: '', peso: null,
+               fechaNacimiento: null, edad: null, genero: null, esterilizado: null,
+               chip: '', alergias: '', antecedentes: '' };
+    }
+    function intakeMascotaTieneAlgo(m) {
+      return !!(m.nombre || m.especie || m.raza || m.color || m.peso ||
+                m.fechaNacimiento || m.edad || m.genero || m.chip);
+    }
+
+    function parsearIntakeWhatsapp(texto) {
+      const tutor = { nombre: '', docTipo: 'C.C.', docNumero: '', movil: null,
+                      email: '', direccion: '', ciudad: '' };
+      const mascotas = [];
+      const avisos = [];
+      let reconocidos = 0;
+      let seccion = 'tutor';
+      let actual = null;
+
+      // Los asteriscos son el negrita de WhatsApp, no parte del dato.
+      const lineas = (texto || '').replace(/\*/g, '').split(/\r?\n/);
+
+      const abrirMascota = () => { actual = intakeMascotaVacia(); mascotas.push(actual); return actual; };
+
+      for (const linea of lineas) {
+        const cruda = linea.trim();
+        if (!cruda) continue;
+
+        const enc = normalizarHeaderCSV(cruda);
+        // Encabezados de sección de la plantilla (van solos, sin ":").
+        if (!cruda.includes(':')) {
+          if (enc.includes('tuinformacion') || enc.includes('tusdatos') || enc.includes('datosdeltutor') || enc.includes('informaciondeltutor')) {
+            seccion = 'tutor'; continue;
+          }
+          if (enc.includes('chiquitin') || enc.includes('tumascota') || enc.includes('datosdelamascota') ||
+              enc.includes('datosdetupeludito') || enc.includes('tupeludito') || enc.includes('datosdelpaciente')) {
+            seccion = 'mascota'; abrirMascota(); continue;
+          }
+          continue;
+        }
+
+        const corte = cruda.indexOf(':');
+        const etiqueta = normalizarHeaderCSV(cruda.slice(0, corte));
+        const valor = cruda.slice(corte + 1).trim();
+        // La plantilla reenviada en blanco no aporta nada: se ignora en vez de
+        // pisar con "" un dato que otra línea sí traía.
+        if (!etiqueta || !valor) continue;
+
+        if (seccion === 'mascota') {
+          const campo = INTAKE_CAMPOS_MASCOTA[etiqueta];
+          if (!campo) continue;
+          if (!actual) abrirMascota();
+          // Un segundo "Nombre:" dentro de la sección de mascotas es el
+          // segundo peludito: el cliente rara vez repite el encabezado.
+          if (campo === 'nombre' && actual.nombre) abrirMascota();
+          reconocidos++;
+          if (campo === 'nombre') actual.nombre = valor;
+          else if (campo === 'especie') actual.especie = intakeNormalizarEspecie(valor);
+          else if (campo === 'raza') actual.raza = valor;
+          else if (campo === 'color') actual.color = valor;
+          else if (campo === 'peso') actual.peso = intakeNormalizarPeso(valor);
+          else if (campo === 'fechaNacimiento') actual.fechaNacimiento = intakeNormalizarFechaNacimiento(valor);
+          else if (campo === 'edad') actual.edad = intakeNormalizarEdad(valor);
+          else if (campo === 'genero') actual.genero = intakeNormalizarGenero(valor);
+          else if (campo === 'esterilizado') actual.esterilizado = intakeNormalizarEsterilizado(valor);
+          else if (campo === 'chip') {
+            const chip = intakeNormalizarChip(valor);
+            actual.chip = chip.numero || '';
+            if (chip.aviso) avisos.push(`${actual.nombre || 'La mascota'}: ${chip.aviso}`);
+          }
+          else if (campo === 'alergias') actual.alergias = valor;
+          else if (campo === 'antecedentes') actual.antecedentes = valor;
+          continue;
+        }
+
+        const campo = INTAKE_CAMPOS_TUTOR[etiqueta];
+        if (!campo) continue;
+        reconocidos++;
+        if (campo === 'movil') tutor.movil = intakeNormalizarMovil(valor);
+        else if (campo === 'docNumero') tutor.docNumero = soloDigitos(valor) || valor;
+        else tutor[campo] = valor;
+      }
+
+      // Una mascota abierta por su encabezado pero sin un solo dato no se
+      // muestra: sería una tarjeta vacía que el operador tendría que borrar.
+      const limpias = mascotas.filter(intakeMascotaTieneAlgo);
+      return { tutor, mascotas: limpias, camposReconocidos: reconocidos, avisos };
+    }
+
+    // ── Respaldo con LLM ─────────────────────────────────────────────
+    // Mismo criterio que depurar_vitales() en extraer_soip.py: un valor que el
+    // modelo devolvió pero cuyos dígitos no están en el mensaje original se
+    // descarta. Aplica a los cuatro campos donde un dígito inventado hace daño
+    // real — cédula y celular son identidad, peso y fecha son clínicos.
+    function intakeDigitosPresentes(valor, digitosTexto) {
+      const d = soloDigitos(valor);
+      if (!d) return false;
+      return digitosTexto.includes(d);
+    }
+
+    function intakeNormalizarRespuestaLLM(datos, textoOriginal) {
+      const digitosTexto = soloDigitos(textoOriginal);
+      const t = datos.tutor || {};
+      const tutor = {
+        nombre: (t.nombre || '').toString().trim(),
+        docTipo: intakeNormalizarDocTipo(t.doc_tipo),
+        docNumero: '',
+        movil: null,
+        email: (t.email || '').toString().trim(),
+        direccion: (t.direccion || '').toString().trim(),
+        ciudad: (t.ciudad || '').toString().trim()
+      };
+      const avisos = [];
+      if (t.doc_numero) {
+        if (intakeDigitosPresentes(t.doc_numero, digitosTexto)) tutor.docNumero = soloDigitos(t.doc_numero);
+        else avisos.push('Se descartó una cédula que no aparece en el mensaje');
+      }
+      if (t.movil) {
+        if (intakeDigitosPresentes(t.movil, digitosTexto)) tutor.movil = intakeNormalizarMovil(t.movil);
+        else avisos.push('Se descartó un celular que no aparece en el mensaje');
+      }
+
+      const mascotas = (datos.mascotas || []).map(m => {
+        const out = intakeMascotaVacia();
+        out.nombre = (m.nombre || '').toString().trim();
+        out.especie = intakeNormalizarEspecie(m.especie);
+        out.raza = (m.raza || '').toString().trim();
+        out.color = (m.color || '').toString().trim();
+        out.genero = intakeNormalizarGenero(m.sexo);
+        out.esterilizado = intakeNormalizarEsterilizado(m.esterilizado);
+        out.alergias = (m.alergias || '').toString().trim();
+        out.antecedentes = (m.antecedentes || '').toString().trim();
+        if (m.peso_kg && intakeDigitosPresentes(m.peso_kg, digitosTexto)) out.peso = intakeNormalizarPeso(m.peso_kg);
+        if (m.fecha_nacimiento && intakeDigitosPresentes(m.fecha_nacimiento, digitosTexto)) {
+          out.fechaNacimiento = intakeNormalizarFechaNacimiento(m.fecha_nacimiento);
+        }
+        if (m.edad_texto && intakeDigitosPresentes(m.edad_texto, digitosTexto)) out.edad = intakeNormalizarEdad(m.edad_texto);
+        const chip = intakeNormalizarChip(m.microchip);
+        out.chip = chip.numero || '';
+        if (chip.aviso) avisos.push(`${out.nombre || 'La mascota'}: ${chip.aviso}`);
+        return out;
+      }).filter(intakeMascotaTieneAlgo);
+
+      return { tutor, mascotas, avisos };
+    }
+
+    // Lo determinista manda: el LLM solo rellena huecos. Donde el parser por
+    // etiquetas acertó, es más confiable que cualquier interpretación.
+    function intakeFusionar(local, remoto) {
+      const tutor = { ...local.tutor };
+      ['nombre', 'docNumero', 'email', 'direccion', 'ciudad'].forEach(k => {
+        if (!tutor[k] && remoto.tutor[k]) tutor[k] = remoto.tutor[k];
+      });
+      if (!tutor.movil && remoto.tutor.movil) tutor.movil = remoto.tutor.movil;
+      if (tutor.docTipo === 'C.C.' && remoto.tutor.docTipo) tutor.docTipo = remoto.tutor.docTipo;
+
+      let mascotas;
+      if (!local.mascotas.length) {
+        mascotas = remoto.mascotas;
+      } else {
+        mascotas = local.mascotas.map((m, i) => {
+          const r = remoto.mascotas[i];
+          if (!r) return m;
+          const out = { ...m };
+          Object.keys(out).forEach(k => {
+            const vacio = out[k] === '' || out[k] === null || out[k] === undefined;
+            if (vacio && r[k] !== '' && r[k] !== null && r[k] !== undefined) out[k] = r[k];
+          });
+          return out;
+        });
+        // Mascotas extra que solo vio el LLM (ej. la segunda va en prosa).
+        remoto.mascotas.slice(local.mascotas.length).forEach(r => mascotas.push(r));
+      }
+      return { tutor, mascotas, avisos: local.avisos.concat(remoto.avisos) };
+    }
+
+    // ── Modal de importación ─────────────────────────────────────────
+    // La cola `intakeMascotasPendientes` que consume openRegistrarMascotaModal()
+    // se declara junto a postRegistroMascotaAccion, mucho más arriba — ver la
+    // nota ahí sobre por qué no puede vivir en este bloque.
+    let intakeWhatsappEstado = null;
+
+    function openIntakeWhatsappModal() {
+      if (!ROLES[currentSimRole].canRegisterOwner) return;
+      intakeWhatsappEstado = null;
+      document.getElementById('intake-wa-texto').value = '';
+      document.getElementById('intake-wa-error').style.display = 'none';
+      document.getElementById('intake-wa-step-paste').style.display = '';
+      document.getElementById('intake-wa-step-preview').style.display = 'none';
+      document.getElementById('intake-whatsapp-modal').classList.add('show');
+      lucide.createIcons();
+    }
+    function closeIntakeWhatsappModal() {
+      document.getElementById('intake-whatsapp-modal').classList.remove('show');
+      intakeWhatsappEstado = null;
+    }
+    function handleIntakeWhatsappOverlayClick(e) {
+      if (e.target === document.getElementById('intake-whatsapp-modal')) closeIntakeWhatsappModal();
+    }
+    function volverAPegarIntakeWhatsapp() {
+      intakeWhatsappEstado = null;
+      document.getElementById('intake-wa-step-paste').style.display = '';
+      document.getElementById('intake-wa-step-preview').style.display = 'none';
+      document.getElementById('intake-wa-error').style.display = 'none';
+    }
+    function copiarPlantillaIntakeWhatsapp() {
+      navigator.clipboard.writeText(INTAKE_PLANTILLA_WHATSAPP)
+        .then(() => showToast('Plantilla copiada — pégala en WhatsApp'))
+        .catch(() => showToast('No se pudo copiar la plantilla'));
+    }
+
+    function mostrarErrorIntakeWhatsapp(msg) {
+      const el = document.getElementById('intake-wa-error');
+      el.textContent = msg;
+      el.style.display = '';
+    }
+
+    async function interpretarIntakeWhatsapp() {
+      const texto = document.getElementById('intake-wa-texto').value.trim();
+      const errorEl = document.getElementById('intake-wa-error');
+      errorEl.style.display = 'none';
+      if (!texto) {
+        mostrarErrorIntakeWhatsapp('Pega primero la respuesta del tutor.');
+        return;
+      }
+
+      const local = parsearIntakeWhatsapp(texto);
+      // Umbral: con nombre de tutor, al menos una mascota y 4 campos
+      // reconocidos, la plantilla se respetó y no hace falta gastar una
+      // llamada a la API.
+      const suficiente = local.camposReconocidos >= 4 && !!local.tutor.nombre && local.mascotas.length > 0;
+      if (suficiente) {
+        intakeWhatsappEstado = { ...local, origen: 'etiquetas', textoOriginal: texto };
+        renderIntakeWhatsappPreview();
+        return;
+      }
+
+      const btn = document.getElementById('intake-wa-interpretar-btn');
+      const btnHtml = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Interpretando…'; }
+      try {
+        const res = await fetch('/api/parsear-intake', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ texto })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error((data && data.error) || 'no se pudo interpretar');
+        const remoto = intakeNormalizarRespuestaLLM(data.datos, texto);
+        intakeWhatsappEstado = { ...intakeFusionar(local, remoto), origen: 'ia', textoOriginal: texto };
+      } catch (err) {
+        // La interpretación asistida es un respaldo, no un requisito: si no
+        // está disponible se muestra lo que sacó el parser por etiquetas y el
+        // operador completa a mano. Nunca se bloquea el registro por esto.
+        console.error('[IRIS] No se pudo usar la interpretación asistida:', err);
+        intakeWhatsappEstado = {
+          ...local, origen: 'parcial', textoOriginal: texto,
+          avisos: local.avisos.concat(['No se pudo usar la interpretación asistida — revisa y completa los campos a mano.'])
+        };
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
+      }
+
+      if (!intakeWhatsappEstado.tutor.nombre && !intakeWhatsappEstado.mascotas.length) {
+        mostrarErrorIntakeWhatsapp('No se reconoció ningún dato en ese texto. Revisa que sea la respuesta del tutor y no otra parte de la conversación.');
+        intakeWhatsappEstado = null;
+        return;
+      }
+      renderIntakeWhatsappPreview();
+    }
+
+    // ── Previsualización editable ────────────────────────────────────
+    // Todos los campos son editables a propósito: es la única barrera entre
+    // una interpretación equivocada y una ficha mal creada.
+    function intakeCampoHTML(id, label, valor, tipo, extra) {
+      return `<div class="input-group">
+        <label class="input-label" for="${id}">${escapeHtml(label)}</label>
+        <input type="${tipo || 'text'}" class="input-control" style="padding-left:12px;" id="${id}" value="${escapeHtml(valor == null ? '' : valor)}"${extra || ''}>
+      </div>`;
+    }
+    function intakeSelectHTML(id, label, opciones, seleccionado) {
+      const opts = opciones.map(o => {
+        const val = Array.isArray(o) ? o[0] : o;
+        const txt = Array.isArray(o) ? o[1] : o;
+        return `<option value="${escapeHtml(val)}"${val === (seleccionado || '') ? ' selected' : ''}>${escapeHtml(txt)}</option>`;
+      }).join('');
+      return `<div class="input-group">
+        <label class="input-label" for="${id}">${escapeHtml(label)}</label>
+        <select class="soap-select-control" id="${id}">${opts}</select>
+      </div>`;
+    }
+    const INTAKE_OPCIONES_ESPECIE = ['Canino', 'Felino', 'Conejo', 'Cobayo', 'Hámster', 'Hurón',
+      'Ave doméstica', 'Reptil', 'Equino', 'Bovino', 'Porcino', 'Ovino', 'Caprino', 'Aves de corral', 'Otro'];
+    const INTAKE_OPCIONES_DOCTIPO = ['C.C.', 'C.E.', 'NIT', 'T.I.', 'Pasaporte', 'PEP'];
+
+    function renderIntakeWhatsappPreview() {
+      const est = intakeWhatsappEstado;
+      if (!est) return;
+
+      const badge = est.origen === 'etiquetas'
+        ? { texto: 'Interpretado por etiquetas', color: 'var(--success)' }
+        : est.origen === 'ia'
+          ? { texto: 'Interpretado con IA — revisa los datos', color: 'var(--warning)' }
+          : { texto: 'Interpretación parcial — completa a mano', color: 'var(--warning)' };
+
+      const t = est.tutor;
+      const tutorHTML = `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;">
+          <div style="font-size:13px;font-weight:600;color:var(--text-1);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+            <i data-lucide="user" style="width:14px;height:14px;"></i> Tutor
+          </div>
+          <div class="med-block-grid">
+            ${intakeCampoHTML('intake-wa-tutor-nombre', 'Nombre completo', t.nombre)}
+            ${intakeSelectHTML('intake-wa-tutor-doctipo', 'Tipo de documento', INTAKE_OPCIONES_DOCTIPO, t.docTipo)}
+            ${intakeCampoHTML('intake-wa-tutor-docnumero', 'Número de documento', t.docNumero)}
+            ${intakeCampoHTML('intake-wa-tutor-movil', 'Celular (sin indicativo)', t.movil ? t.movil.numero : '')}
+            ${intakeCampoHTML('intake-wa-tutor-email', 'Correo electrónico', t.email, 'email')}
+            ${intakeCampoHTML('intake-wa-tutor-ciudad', 'Ciudad o municipio', t.ciudad)}
+          </div>
+          ${intakeCampoHTML('intake-wa-tutor-direccion', 'Dirección', t.direccion)}
+        </div>`;
+
+      const mascotasHTML = est.mascotas.map((m, i) => {
+        const edadTipo = m.fechaNacimiento ? 'fecha' : (m.edad ? m.edad.tipo : 'anios');
+        const edadCantidad = m.edad && !m.fechaNacimiento ? m.edad.cantidad : '';
+        return `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px;" id="intake-wa-pet-card-${i}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <div style="font-size:13px;font-weight:600;color:var(--text-1);display:flex;align-items:center;gap:6px;">
+              <i data-lucide="paw-print" style="width:14px;height:14px;"></i> Mascota ${i + 1}
+            </div>
+            <button type="button" class="btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="quitarMascotaIntake(${i})">Quitar</button>
+          </div>
+          <div class="med-block-grid">
+            ${intakeCampoHTML(`intake-wa-pet-${i}-nombre`, 'Nombre', m.nombre)}
+            ${intakeSelectHTML(`intake-wa-pet-${i}-especie`, 'Especie', INTAKE_OPCIONES_ESPECIE, m.especie || 'Otro')}
+            ${intakeCampoHTML(`intake-wa-pet-${i}-raza`, 'Raza', m.raza)}
+            ${intakeCampoHTML(`intake-wa-pet-${i}-color`, 'Color', m.color)}
+            ${intakeCampoHTML(`intake-wa-pet-${i}-peso`, 'Peso (kg)', m.peso == null ? '' : m.peso, 'number', ' step="0.1"')}
+            ${intakeSelectHTML(`intake-wa-pet-${i}-genero`, 'Sexo', [['', '— sin dato —'], 'Hembra', 'Macho'], m.genero || '')}
+            ${intakeSelectHTML(`intake-wa-pet-${i}-esterilizado`, 'Estado reproductivo', ['Desconocido', 'Esterilizado', 'No esterilizado'], m.esterilizado || 'Desconocido')}
+            ${intakeCampoHTML(`intake-wa-pet-${i}-chip`, 'N° Microchip', m.chip)}
+            <div class="input-group" style="grid-column:span 2;">
+              <label class="input-label">Edad</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <select class="soap-select-control" id="intake-wa-pet-${i}-edad-tipo" style="flex:1;min-width:130px;" onchange="onChangeIntakeEdadTipo(${i})">
+                  <option value="anios"${edadTipo === 'anios' ? ' selected' : ''}>En años</option>
+                  <option value="meses"${edadTipo === 'meses' ? ' selected' : ''}>En meses</option>
+                  <option value="fecha"${edadTipo === 'fecha' ? ' selected' : ''}>Fecha de nacimiento exacta</option>
+                </select>
+                <input type="number" min="0" step="1" class="input-control" style="padding-left:12px;flex:1;min-width:90px;${edadTipo === 'fecha' ? 'display:none;' : ''}" id="intake-wa-pet-${i}-edad-cantidad" value="${edadCantidad}">
+                <input type="date" class="input-control" style="padding-left:12px;flex:1;min-width:130px;${edadTipo === 'fecha' ? '' : 'display:none;'}" id="intake-wa-pet-${i}-edad-fecha" value="${m.fechaNacimiento || ''}">
+              </div>
+            </div>
+          </div>
+          ${intakeCampoHTML(`intake-wa-pet-${i}-alergias`, 'Alergias', m.alergias)}
+          ${intakeCampoHTML(`intake-wa-pet-${i}-antecedentes`, 'Antecedentes', m.antecedentes)}
+        </div>`;
+      }).join('');
+
+      const avisosHTML = est.avisos && est.avisos.length
+        ? `<div style="margin-bottom:14px;padding:10px 12px;border-radius:8px;background:rgba(var(--clinic-accent-rgb),0.08);font-size:12px;color:var(--text-2);line-height:1.6;">
+             ${est.avisos.map(a => `• ${escapeHtml(a)}`).join('<br>')}
+           </div>`
+        : '';
+
+      const sinMascotas = est.mascotas.length
+        ? ''
+        : `<div style="margin-bottom:14px;font-size:13px;color:var(--text-2);">No se detectó ninguna mascota — se registrará solo al tutor.</div>`;
+
+      document.getElementById('intake-wa-preview-body').innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${badge.color};"></span>
+          <span style="font-size:12px;color:var(--text-2);">${escapeHtml(badge.texto)}</span>
+        </div>
+        ${avisosHTML}
+        ${tutorHTML}
+        ${sinMascotas}
+        ${mascotasHTML}`;
+
+      document.getElementById('intake-wa-step-paste').style.display = 'none';
+      document.getElementById('intake-wa-step-preview').style.display = '';
+      lucide.createIcons();
+    }
+
+    function onChangeIntakeEdadTipo(i) {
+      const tipo = document.getElementById(`intake-wa-pet-${i}-edad-tipo`).value;
+      document.getElementById(`intake-wa-pet-${i}-edad-cantidad`).style.display = tipo === 'fecha' ? 'none' : '';
+      document.getElementById(`intake-wa-pet-${i}-edad-fecha`).style.display = tipo === 'fecha' ? '' : 'none';
+    }
+
+    function quitarMascotaIntake(i) {
+      if (!intakeWhatsappEstado) return;
+      // Se relee la previsualización antes de quitar para no perder lo que el
+      // operador ya corrigió a mano en las otras tarjetas.
+      leerIntakeWhatsappPreview();
+      intakeWhatsappEstado.mascotas.splice(i, 1);
+      renderIntakeWhatsappPreview();
+    }
+
+    // Vuelca los inputs de la previsualización sobre intakeWhatsappEstado.
+    function leerIntakeWhatsappPreview() {
+      const est = intakeWhatsappEstado;
+      if (!est) return;
+      const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+
+      est.tutor.nombre = val('intake-wa-tutor-nombre');
+      est.tutor.docTipo = val('intake-wa-tutor-doctipo') || 'C.C.';
+      est.tutor.docNumero = val('intake-wa-tutor-docnumero');
+      est.tutor.email = val('intake-wa-tutor-email');
+      est.tutor.direccion = val('intake-wa-tutor-direccion');
+      est.tutor.ciudad = val('intake-wa-tutor-ciudad');
+      const movilDigitos = soloDigitos(val('intake-wa-tutor-movil'));
+      est.tutor.movil = movilDigitos ? { iso2: 'CO', numero: movilDigitos } : null;
+
+      est.mascotas = est.mascotas.map((m, i) => {
+        const tipo = val(`intake-wa-pet-${i}-edad-tipo`);
+        const cantidad = parseInt(val(`intake-wa-pet-${i}-edad-cantidad`), 10);
+        const fecha = val(`intake-wa-pet-${i}-edad-fecha`);
+        const peso = parseFloat(val(`intake-wa-pet-${i}-peso`));
+        return {
+          nombre: val(`intake-wa-pet-${i}-nombre`),
+          especie: val(`intake-wa-pet-${i}-especie`),
+          raza: val(`intake-wa-pet-${i}-raza`),
+          color: val(`intake-wa-pet-${i}-color`),
+          peso: isNaN(peso) ? null : peso,
+          fechaNacimiento: tipo === 'fecha' ? (fecha || null) : null,
+          edad: tipo !== 'fecha' && !isNaN(cantidad) ? { tipo, cantidad } : null,
+          genero: val(`intake-wa-pet-${i}-genero`) || null,
+          esterilizado: val(`intake-wa-pet-${i}-esterilizado`) || 'Desconocido',
+          chip: val(`intake-wa-pet-${i}-chip`),
+          alergias: val(`intake-wa-pet-${i}-alergias`),
+          antecedentes: val(`intake-wa-pet-${i}-antecedentes`)
+        };
+      });
+    }
+
+    // ── Aplicar al formulario de registro ────────────────────────────
+    // No guarda nada: precarga #registrar-propietario-modal y deja las
+    // mascotas en cola. Quien escribe en Supabase sigue siendo
+    // guardarPropietario(), con su detección de Red IRIS y sus T&C intactos.
+    function aplicarIntakeWhatsapp() {
+      leerIntakeWhatsappPreview();
+      const est = intakeWhatsappEstado;
+      if (!est) return;
+      if (!est.tutor.nombre) {
+        mostrarErrorIntakeWhatsapp('Falta el nombre del tutor.');
+        document.getElementById('intake-wa-error').style.display = '';
+        showToast('El nombre del tutor es obligatorio');
+        return;
+      }
+
+      const tutor = est.tutor;
+      const mascotas = est.mascotas.filter(m => m.nombre);
+      const descartadas = est.mascotas.length - mascotas.length;
+
+      closeIntakeWhatsappModal();
+      openRegistrarPropietarioModal();
+      intakeMascotasPendientes = mascotas;
+
+      document.getElementById('prop-nombre').value = tutor.nombre;
+      document.getElementById('prop-doc-tipo').value = tutor.docTipo || 'C.C.';
+      document.getElementById('prop-doc-numero').value = tutor.docNumero || '';
+      document.getElementById('prop-email').value = tutor.email || '';
+      document.getElementById('prop-direccion').value = tutor.direccion || '';
+      document.getElementById('prop-ciudad').value = tutor.ciudad || '';
+      if (tutor.movil) {
+        aplicarPaisTelefono('prop-movil', tutor.movil.iso2);
+        document.getElementById('prop-movil').value = tutor.movil.numero;
+      }
+      // Los términos y condiciones NO se marcan por código: el consentimiento
+      // del tutor no es algo que la app pueda dar por él. Tampoco se inventa
+      // "cómo nos encontró" — el canal de este mensaje no lo dice.
+
+      const detalle = mascotas.length
+        ? ` · ${mascotas.length} mascota${mascotas.length === 1 ? '' : 's'} en cola`
+        : '';
+      showToast(`Datos cargados — revisa, acepta los términos y registra${detalle}`);
+      if (descartadas) showToast(`${descartadas} mascota${descartadas === 1 ? '' : 's'} sin nombre no se ${descartadas === 1 ? 'incluyó' : 'incluyeron'}`);
+    }
+
+    // Precarga una mascota de la cola en #registrar-mascota-modal. La llama
+    // openRegistrarMascotaModal() al final, DESPUÉS de limpiar los campos.
+    function aplicarIntakeMascotaEnModal(m) {
+      if (!m) return;
+      document.getElementById('nueva-mascota-nombre').value = m.nombre || '';
+      document.getElementById('nueva-mascota-chip').value = m.chip || '';
+      if (m.especie) document.getElementById('nueva-mascota-especie').value = m.especie;
+      document.getElementById('nueva-mascota-raza').value = m.raza || '';
+      document.getElementById('nueva-mascota-color').value = m.color || '';
+      document.getElementById('nueva-mascota-peso').value = m.peso == null ? '' : m.peso;
+      if (m.genero) document.getElementById('nueva-mascota-genero').value = m.genero;
+      if (m.esterilizado) document.getElementById('nueva-mascota-estado-reproductivo').value = m.esterilizado;
+      document.getElementById('nueva-mascota-alergias').value = m.alergias || '';
+      document.getElementById('nueva-mascota-antecedentes').value = m.antecedentes || '';
+
+      // onChangeEdadTipo() reordena los inputs y repinta el preview, así que
+      // los valores se fijan DESPUÉS de cambiar el tipo.
+      const tipo = m.fechaNacimiento ? 'fecha' : (m.edad ? m.edad.tipo : 'anios');
+      document.getElementById('nueva-mascota-edad-tipo').value = tipo;
+      onChangeEdadTipo('nueva-mascota');
+      if (tipo === 'fecha') document.getElementById('nueva-mascota-edad-fecha').value = m.fechaNacimiento || '';
+      else document.getElementById('nueva-mascota-edad-cantidad').value = m.edad ? m.edad.cantidad : '';
+      actualizarEdadPreview('nueva-mascota');
+    }
+
     // ── MÓDULO: VENTAS — CONFIGURACIÓN DE FACTURACIÓN ────────────
     function guardarConfigFacturacion() {
       showToast('Configuración de facturación guardada');
@@ -32031,6 +32829,49 @@
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="cancelarImportacionClientes()">Elegir otro archivo</button>
           <button type="button" class="btn-primary" id="importar-clientes-confirm-btn" onclick="confirmarImportacionClientes()">Importar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Importar tutor + mascotas desde WhatsApp (2 pasos: pegar →
+       previsualizar/editar → continuar al registro). Mismo patrón de dos
+       bloques hermanos con display:none que #importar-clientes-modal. Este
+       modal NO guarda nada: precarga #registrar-propietario-modal. -->
+  <div class="modal-overlay" id="intake-whatsapp-modal" onclick="handleIntakeWhatsappOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:760px;max-height:88vh;overflow-y:auto;">
+      <div class="modal-header">
+        <span class="modal-title">Importar desde WhatsApp</span>
+        <button class="modal-close" onclick="closeIntakeWhatsappModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+
+      <div id="intake-wa-step-paste">
+        <p style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:12px;">
+          Pega aquí la respuesta que el tutor envió por WhatsApp con sus datos y los de su
+          mascota. Se interpretan los campos y se precarga el formulario de registro — nada
+          se guarda hasta que lo revises y confirmes.
+        </p>
+        <textarea id="intake-wa-texto" class="input-control" rows="14" placeholder="Pega aquí el mensaje del tutor..." style="padding:12px;resize:vertical;line-height:1.6;"></textarea>
+        <div id="intake-wa-error" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;background:#FEF2F2;color:var(--danger);font-size:13px;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:12px;flex-wrap:wrap;">
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="copiarPlantillaIntakeWhatsapp()">
+            <i data-lucide="copy" style="width:14px;height:14px;"></i> Copiar plantilla para enviar
+          </button>
+          <button type="button" class="btn-primary" id="intake-wa-interpretar-btn" onclick="interpretarIntakeWhatsapp()">
+            <i data-lucide="wand-sparkles" style="width:14px;height:14px;"></i> Interpretar mensaje
+          </button>
+        </div>
+      </div>
+
+      <div id="intake-wa-step-preview" style="display:none;">
+        <p style="font-size:13px;color:var(--text-2);line-height:1.6;margin-bottom:14px;">
+          Revisa y corrige lo que haga falta. Al continuar se abre el registro del tutor con
+          estos datos; las mascotas se registran una tras otra al terminar.
+        </p>
+        <div id="intake-wa-preview-body"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="volverAPegarIntakeWhatsapp()">Volver a pegar</button>
+          <button type="button" class="btn-primary" id="intake-wa-continuar-btn" onclick="aplicarIntakeWhatsapp()">Continuar al registro</button>
         </div>
       </div>
     </div>
