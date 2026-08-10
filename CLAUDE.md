@@ -592,12 +592,52 @@ del modal, para cuando el equipo de la oficina está apagado.
   transcribir una consulta larga tarda minutos y nadie se queda quieto
   mirando. Caduca a las 8 h — si el PC de la oficina estuvo apagado toda la
   noche, arrastrar ese borrador solo confunde.
+- **El borrador vive en `consultas_audio`, no en `audioSoipPendiente`.** Ese
+  pendiente de `localStorage` es UN solo hueco y caduca a las 8 h, así que
+  por sí solo dejaba el `.json` inalcanzable en tres situaciones normales
+  (las tres se dieron en producción): venció el TTL —consulta grabada de
+  noche y revisada al otro día—, se grabó otro audio encima, o se abrió IRIS
+  desde otro equipo. En los tres el borrador seguía completo en la tabla y
+  no había ninguna pantalla que lo mostrara. Por eso
+  `audioSoipBuscarBorradorServidor(petKey)` consulta la tabla **por
+  `mascota_id`** al abrir el Tablero (para que el botón lo diga sin entrar
+  al modal) y otra vez al abrir el modal. Detalles que hay que respetar:
+  - Nunca pisa la pantalla: `audioSoipPantallaLibre()` exige que no haya
+    grabación en curso, audio sin enviar ni otro payload ya cargado. Y solo
+    actúa si `petKey === selectedPetKey` — el usuario pudo cambiar de
+    paciente mientras la consulta iba en camino.
+  - Una fila en vuelo (`subido`/`transcribiendo`) que este navegador no está
+    siguiendo se **adopta** como pendiente para que el poller la retome,
+    pero solo si el hueco está libre: un pendiente vivo manda.
+  - `cerrado_at`/`cerrado_motivo` (columnas nuevas, migración
+    `20260810_consultas_audio_cerrado.sql`) son lo que impide que el mismo
+    borrador se vuelva a ofrecer en cada consulta de ese paciente. Se marcan
+    al **cargarlo** (`aplicado`) y al **descartarlo** (`descartado`), nunca
+    se borra la fila. No se usó `estado` para esto: lo escribe
+    `puente_iris.py` y su check no admite valores nuevos. Por lo mismo,
+    `aplicarAudioSoip()` cierra la fila venga el payload del pendiente local
+    o del servidor — `audioSoipBorradorRowId` se fija en los dos caminos.
 - **Un pendiente de OTRO paciente no se abre en la ficha actual.** Cargar
   el SOIP de una mascota en la historia de otra es el error más caro de
   todo este flujo; `openAudioSoipModal()` compara `petKey` y, si no
   coincide, muestra el grabador con un aviso. El guard por nombre que ya
   tenía `renderAudioSoipPreview()` (el audio menciona a otra mascota) sigue
-  igual y es independiente de este.
+  igual y es independiente de este. Lo que ese aviso **sí** hace ahora es
+  llevar: `irAlTableroDelPendienteAudioSoip()` cierra el Tablero actual,
+  hace `selectPet()` del otro paciente y le abre el suyo con el borrador ya
+  en pantalla (antes decía "ábrelo desde su Tablero" y ahí terminaba). Pide
+  confirmación si hay S/O/I/P escrito sin finalizar —cambiar de paciente
+  reinicia el Tablero— y aborta si `selectPet()` no llegó a entrar (tutor
+  sin vincular). Por la misma razón el botón del Tablero solo prende el
+  punto verde para el paciente abierto: con el borrador de otra mascota
+  dice "Borrador de \<nombre\>", no "Borrador listo".
+- **Una grabación sin enviar también está atada a su paciente**
+  (`audioSoipBlobPetKey`). El blob sobrevive al cierre del Tablero a
+  propósito —se puede grabar y mandar después—, así que sin esa marca el
+  audio de un paciente se subía con el `mascota_id` del que estuviera
+  abierto: el mismo error que el guard de `petKey` del pendiente evita un
+  paso más arriba. `enviarAudioSoip()` corta antes de tocar el bucket y el
+  grabador esconde "Enviar" (deja Descartar / Guardar copia).
 - Lo que este bloque **no** hace no cambió: solo PRECARGA los campos. No
   guarda, no finaliza y no toca `consultas`. Un LLM no cierra una historia
   clínica.

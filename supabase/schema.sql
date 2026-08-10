@@ -3147,6 +3147,15 @@ create table if not exists public.consultas_audio (
   -- el <input file> del modal (campos/evidencia_vitales/examen_sistemas/…).
   resultado           jsonb,
   error_mensaje       text,
+  -- Cuándo el navegador dejó de ofrecer este borrador (se cargó en el
+  -- formulario o se descartó a mano) y por qué. El modal del Tablero
+  -- busca los borradores de la mascota en ESTA tabla — no en el
+  -- localStorage del navegador que grabó —, así que necesita saber
+  -- cuáles ya se resolvieron o volvería a ofrecer el mismo texto en cada
+  -- consulta. No se usa `estado` para esto: lo escribe el puente del PC
+  -- de la oficina y su check no admite valores nuevos.
+  cerrado_at          timestamptz,
+  cerrado_motivo      text check (cerrado_motivo is null or cerrado_motivo in ('aplicado', 'descartado')),
   created_by          uuid references auth.users (id) on delete set null,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
@@ -3156,6 +3165,12 @@ create index if not exists consultas_audio_establecimiento_id_idx on public.cons
 create index if not exists consultas_audio_mascota_id_idx on public.consultas_audio (mascota_id);
 -- El puente pregunta por estado en cada vuelta del ciclo.
 create index if not exists consultas_audio_estado_idx on public.consultas_audio (estado);
+-- Los borradores vivos de UNA mascota, del más nuevo al más viejo: es la
+-- consulta que hace el modal al abrir el Tablero. Parcial porque lo
+-- cerrado no se vuelve a mirar nunca.
+create index if not exists consultas_audio_vivos_por_mascota_idx
+  on public.consultas_audio (mascota_id, created_at desc)
+  where cerrado_at is null;
 
 alter table public.consultas_audio enable row level security;
 

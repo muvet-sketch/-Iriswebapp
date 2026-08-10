@@ -13700,6 +13700,20 @@
     let audioSoipPendiente = null;    // {id, petKey, petName, enviadoEn, estado, resultado}
     let audioSoipPoller = null;
     let audioSoipSubiendo = false;
+    // Borrador ya transcrito que se encontró EN SUPABASE para el paciente
+    // abierto, sin depender de `audioSoipPendiente`. Ver
+    // audioSoipBuscarBorradorServidor(): {id, petKey, petName, resultado, creadoEn}.
+    let audioSoipBorradorServidor = null;
+    // De qué fila de `consultas_audio` salió el payload que se está
+    // previsualizando, para poder marcarla como resuelta al cargarla o
+    // descartarla. null cuando el payload vino del .json manual.
+    let audioSoipBorradorRowId = null;
+    // De qué paciente es `audioSoipBlob`. Una grabación sin enviar sobrevive
+    // al cierre del Tablero (a propósito: se puede grabar y mandar después),
+    // así que sin esta marca el audio de un paciente se podía subir con el
+    // mascota_id de otro — el mismo error que ya evita el guard de petKey
+    // del pendiente, un paso más arriba en el flujo.
+    let audioSoipBlobPetKey = null;
 
     const AUDIO_SOIP_PENDIENTE_KEY = 'iris_audio_soip_pendiente';
     const AUDIO_SOIP_POLL_MS = 15000;
@@ -13762,12 +13776,174 @@
       document.getElementById('audio-soip-modal-title').textContent = titulos[paso];
     }
 
+    // ── Borradores que viven en Supabase ────────────────────────────────
+    // `audioSoipPendiente` (localStorage) alcanza mientras la misma pestaña
+    // que grabó siga abierta, pero es UN solo hueco y caduca a las 8 h. Tres
+    // situaciones normales dejaban el borrador inalcanzable aunque el .json
+    // estuviera completo en `consultas_audio`: se venció el TTL (consulta
+    // grabada de noche y revisada al otro día), se grabó otro audio encima
+    // (el hueco es uno solo), o se abrió IRIS desde otro equipo. Por eso el
+    // borrador se busca donde de verdad vive: en la tabla, por mascota.
+    //
+    // Se llama al abrir el Tablero (para que el botón lo diga sin que haya
+    // que entrar al modal) y al abrir el modal. Es asíncrona y no bloquea
+    // nada: si la consulta tarda, el grabador ya está en pantalla.
+    async function audioSoipBuscarBorradorServidor(petKey) {
+      const data = patientData[petKey];
+      if (!data || !data.mascotaId) return;
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) return;
+
+      let filas;
+      try {
+        const { data: rows, error } = await window.supabase.from('consultas_audio')
+          .select('id, estado, resultado, duracion_seg, created_at')
+          .eq('mascota_id', data.mascotaId)
+          .is('cerrado_at', null)
+          .in('estado', ['subido', 'transcribiendo', 'listo'])
+          .order('created_at', { ascending: false })
+          .limit(5);
+        if (error) throw error;
+        filas = rows || [];
+      } catch (err) {
+        // Sin conexión el flujo de siempre sigue funcionando (grabar y
+        // esperar); esto solo agrega el rescate de lo ya transcrito.
+        console.error('[IRIS] audioSoipBuscarBorradorServidor', err);
+        return;
+      }
+
+      // El usuario pudo cambiar de paciente o cerrar el Tablero mientras la
+      // consulta iba en camino.
+      if (petKey !== selectedPetKey) return;
+
+      const listo = filas.find(f => f.estado === 'listo' && f.resultado && f.resultado.campos);
+      if (listo) {
+        audioSoipBorradorServidor = {
+          id: listo.id, petKey, petName: data.name,
+          resultado: listo.resultado, creadoEn: listo.created_at
+        };
+        actualizarBotonAudioSoip();
+        // Si el modal está abierto y no hay nada más ocupando la pantalla,
+        // se muestra el borrador directamente: es a lo que el veterinario
+        // vino. Nunca encima de una grabación en curso o de otro payload.
+        if (audioSoipModalAbierto() && audioSoipPantallaLibre()) {
+          audioSoipPayload = listo.resultado;
+          audioSoipBorradorRowId = listo.id;
+          renderAudioSoipPreview();
+        }
+        return;
+      }
+
+      audioSoipBorradorServidor = null;
+      actualizarBotonAudioSoip();
+
+      // Audio en vuelo que este navegador no está siguiendo (se recargó la
+      // página tarde, o lo mandó otro equipo): se adopta como pendiente para
+      // que el poller lo retome. Solo si el hueco está libre — un pendiente
+      // vivo manda sobre esto.
+      const enVuelo = filas[0];
+      if (!enVuelo || audioSoipPendiente) return;
+      audioSoipPendiente = {
+        id: enVuelo.id, petKey, petName: data.name,
+        enviadoEn: new Date(enVuelo.created_at).getTime(),
+        duracionSeg: enVuelo.duracion_seg || 0,
+        estado: enVuelo.estado, resultado: null
+      };
+      audioSoipGuardarPendiente();
+      arrancarPollAudioSoip();
+      actualizarBotonAudioSoip();
+      if (audioSoipModalAbierto() && audioSoipPantallaLibre()) {
+        audioSoipMostrarPaso('espera');
+        renderAudioSoipEspera();
+      }
+    }
+
+    function audioSoipModalAbierto() {
+      return document.getElementById('audio-soip-modal').classList.contains('show');
+    }
+
+    // "No hay nada que pisar": ni grabación, ni audio sin enviar, ni otro
+    // borrador ya en pantalla.
+    function audioSoipPantallaLibre() {
+      return !audioSoipGrabando() && !audioSoipBlob && !audioSoipSubiendo && !audioSoipPayload;
+    }
+
+    // Marca la fila para que el modal no vuelva a ofrecer el mismo borrador
+    // en cada consulta de ese paciente. No borra nada: queda el rastro de
+    // qué se cargó y desde qué audio.
+    async function audioSoipCerrarFilaServidor(rowId, motivo) {
+      if (!rowId || !window.supabase) return;
+      try {
+        const { error } = await window.supabase.from('consultas_audio')
+          .update({ cerrado_at: new Date().toISOString(), cerrado_motivo: motivo, updated_at: new Date().toISOString() })
+          .eq('id', rowId);
+        if (error) throw error;
+      } catch (err) {
+        // No se relanza: el formulario ya quedó precargado y ese es el
+        // resultado que importa. Lo peor que pasa es que el borrador se
+        // vuelva a ofrecer una vez más.
+        console.error('[IRIS] audioSoipCerrarFilaServidor', err);
+      }
+    }
+
+    function descartarBorradorServidorAudioSoip() {
+      if (!confirm('¿Descartar este borrador?\n\nEl formulario queda como está y no se te vuelve a ofrecer. El audio ya transcrito sigue en la carpeta de la clínica.')) return;
+      audioSoipCerrarFilaServidor(audioSoipBorradorRowId, 'descartado');
+      // El pendiente local apunta a la misma fila cuando el borrador acaba
+      // de volver: si no se olvida, el botón seguiría diciendo "Borrador
+      // listo" y el modal lo volvería a mostrar al reabrirlo.
+      if (audioSoipPendiente && audioSoipPendiente.id === audioSoipBorradorRowId) audioSoipOlvidarPendiente();
+      audioSoipBorradorServidor = null;
+      audioSoipBorradorRowId = null;
+      audioSoipPayload = null;
+      actualizarBotonAudioSoip();
+      audioSoipMostrarPaso('grabar');
+      renderAudioSoipGrabador();
+      lucide.createIcons();
+    }
+
+    // El aviso "el borrador es de otro paciente" decía "ábrelo desde su
+    // Tablero" sin ninguna forma de llegar: había que salir, buscar la
+    // mascota a mano y volver a abrir la consulta. Esto hace ese camino.
+    function irAlTableroDelPendienteAudioSoip(petKey) {
+      const destino = petKey || (audioSoipPendiente && audioSoipPendiente.petKey);
+      const data = destino && patientData[destino];
+      if (!data) {
+        showToast('Esa mascota ya no está cargada en esta clínica');
+        return;
+      }
+      if (destino === selectedPetKey) { closeAudioSoipModal(); return; }
+
+      // Cambiar de paciente reinicia el Tablero: lo escrito a mano en la
+      // consulta abierta se pierde, y eso hay que preguntarlo.
+      const enTablero = document.getElementById('tablero-view').classList.contains('active');
+      const hayTexto = enTablero && ['s', 'o', 'i', 'p']
+        .some(k => (document.getElementById('tablero-soap-' + k).value || '').trim() !== '');
+      if (hayTexto && !confirm(
+        `Vas a dejar la consulta de ${patientData[selectedPetKey].name} para abrir la de ${data.name}.\n\n` +
+        'Lo que escribiste acá y todavía no finalizaste se pierde. ¿Continuar?')) return;
+
+      closeAudioSoipModal();
+      if (enTablero) cerrarTableroAConsultorio();
+      selectPet(destino);
+      // selectPet aborta sin avisar acá si el tutor no está vinculado (ya
+      // mostró su propio modal): sin esto se abriría el Tablero del paciente
+      // anterior.
+      if (selectedPetKey !== destino) return;
+      abrirTableroTrabajo();
+      if (!document.getElementById('tablero-view').classList.contains('active')) {
+        showToast('Tu rol no permite abrir una consulta nueva');
+        return;
+      }
+      openAudioSoipModal();
+    }
+
     function openAudioSoipModal() {
       if (!selectedPetKey || !patientData[selectedPetKey]) {
         showToast('Abre primero la consulta de un paciente');
         return;
       }
       audioSoipPayload = null;
+      audioSoipBorradorRowId = null;
       document.getElementById('audio-soip-error').innerHTML = '';
       document.getElementById('audio-soip-espera-error').innerHTML = '';
       document.getElementById('audio-soip-paso-preview').innerHTML = '';
@@ -13778,8 +13954,21 @@
       // mascota en la ficha de otra es el error que más caro sale de todo
       // este flujo. Se avisa y se deja grabar normalmente.
       const propio = audioSoipPendiente && audioSoipPendiente.petKey === selectedPetKey;
+      const enServidor = audioSoipBorradorServidor && audioSoipBorradorServidor.petKey === selectedPetKey
+        ? audioSoipBorradorServidor : null;
       if (propio && audioSoipPendiente.resultado) {
         audioSoipPayload = audioSoipPendiente.resultado;
+        // También se guarda de qué fila salió: al cargarlo hay que marcarla
+        // cerrada o la búsqueda en Supabase lo volvería a ofrecer en la
+        // consulta siguiente de este mismo paciente.
+        audioSoipBorradorRowId = audioSoipPendiente.id;
+        renderAudioSoipPreview();
+      } else if (enServidor) {
+        // Borrador que ya estaba transcrito en Supabase (lo encontró
+        // audioSoipBuscarBorradorServidor al abrir el Tablero). Puede venir
+        // de otro día o de otro equipo — el pendiente local no lo cubre.
+        audioSoipPayload = enServidor.resultado;
+        audioSoipBorradorRowId = enServidor.id;
         renderAudioSoipPreview();
       } else if (propio && audioSoipPendiente.estado !== 'error') {
         audioSoipMostrarPaso('espera');
@@ -13791,6 +13980,10 @@
         renderAudioSoipGrabador();
       }
       lucide.createIcons();
+      // Segunda pasada contra Supabase: el Tablero ya preguntó al abrirse,
+      // pero el borrador puede haber llegado en el medio. No pisa nada
+      // (ver audioSoipPantallaLibre).
+      audioSoipBuscarBorradorServidor(selectedPetKey);
     }
 
     // Cerrar el modal NO detiene la grabación ni cancela la transcripción:
@@ -13800,6 +13993,10 @@
     function closeAudioSoipModal() {
       document.getElementById('audio-soip-modal').classList.remove('show');
       audioSoipPayload = null;
+      // El borrador del servidor NO se olvida acá (sigue en
+      // audioSoipBorradorServidor): cerrar el modal no es descartarlo, y al
+      // volver a abrirlo tiene que seguir estando.
+      audioSoipBorradorRowId = null;
     }
 
     function handleAudioSoipOverlayClick(e) {
@@ -13831,9 +14028,16 @@
       if (audioSoipPendiente && audioSoipPendiente.estado === 'error' && audioSoipPendiente.petKey === selectedPetKey) {
         nota = `<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span>El audio anterior de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> no se pudo transcribir. Quedó en la carpeta del equipo de la clínica para revisarlo a mano; acá puedes grabar de nuevo.</span></div>`;
       } else if (audioSoipPendiente && audioSoipPendiente.petKey !== selectedPetKey) {
+        const otro = escapeHtml(audioSoipPendiente.petName);
+        // El aviso decía "ábrelo desde su Tablero" y ahí terminaba: había que
+        // salir, buscar la mascota y volver a abrir la consulta a mano. Si la
+        // mascota sigue cargada, el aviso lleva.
+        const irBtn = patientData[audioSoipPendiente.petKey]
+          ? `<br><button class="btn-secondary" style="margin-top:8px;" onclick="irAlTableroDelPendienteAudioSoip()"><i data-lucide="arrow-right" style="width:14px;height:14px;"></i> Abrir la consulta de ${otro}</button>`
+          : '';
         nota = audioSoipPendiente.resultado
-          ? `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>El borrador de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> ya está listo. Ábrelo desde su Tablero.</span></div>`
-          : `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>Hay un audio de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> transcribiéndose. Si envías este, ese borrador se pierde de vista.</span></div>`;
+          ? `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>El borrador de <strong>${otro}</strong> ya está listo, pero es de otro paciente y no se carga en esta ficha.${irBtn}</span></div>`
+          : `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>Hay un audio de <strong>${otro}</strong> transcribiéndose. Si envías este, ese borrador se pierde de vista.${irBtn}</span></div>`;
       }
       document.getElementById('audio-soip-error').innerHTML = nota;
 
@@ -13848,11 +14052,17 @@
         acciones.innerHTML = `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()"><i data-lucide="play" style="width:14px;height:14px;"></i> Reanudar</button>`;
       } else if (audioSoipBlob) {
         const mb = (audioSoipBlob.size / (1024 * 1024)).toFixed(1);
-        estado.innerHTML = `Grabación de <strong>${audioSoipFormatTiempo(audioSoipMsAcumulados)}</strong> (${mb} MB) lista para enviar.`;
+        // La grabación puede ser de otro paciente (sobrevive al cierre del
+        // Tablero): ahí no se ofrece "Enviar", solo descartarla o guardarla.
+        const ajena = audioSoipBlobPetKey && audioSoipBlobPetKey !== selectedPetKey;
+        const duenoBlob = ajena ? patientData[audioSoipBlobPetKey] : null;
+        estado.innerHTML = ajena
+          ? `Grabación de <strong>${audioSoipFormatTiempo(audioSoipMsAcumulados)}</strong> (${mb} MB) sin enviar, hecha en la consulta de <strong>${escapeHtml(duenoBlob ? duenoBlob.name : 'otro paciente')}</strong>. No se puede enviar desde esta ficha.`
+          : `Grabación de <strong>${audioSoipFormatTiempo(audioSoipMsAcumulados)}</strong> (${mb} MB) lista para enviar.`;
         acciones.innerHTML = `
           <button class="btn-secondary" onclick="descartarGrabacionAudioSoip()"><i data-lucide="trash-2" style="width:14px;height:14px;"></i> Descartar</button>
-          <a class="btn-secondary" href="${URL.createObjectURL(audioSoipBlob)}" download="${escapeHtml(audioSoipNombreArchivo('local'))}" style="text-decoration:none;"><i data-lucide="download" style="width:14px;height:14px;"></i> Guardar copia</a>`;
-        enviar.style.display = '';
+          <a class="btn-secondary" href="${URL.createObjectURL(audioSoipBlob)}" download="${escapeHtml(audioSoipNombreArchivo('local', audioSoipBlobPetKey))}" style="text-decoration:none;"><i data-lucide="download" style="width:14px;height:14px;"></i> Guardar copia</a>`;
+        if (!ajena) enviar.style.display = '';
       } else {
         estado.textContent = 'Pulsa para grabar la consulta. Deja el micrófono a 30–50 cm de quien habla.';
         acciones.innerHTML = '';
@@ -13895,6 +14105,7 @@
 
       audioSoipChunks = [];
       audioSoipBlob = null;
+      audioSoipBlobPetKey = selectedPetKey;
       audioSoipMsAcumulados = 0;
       try {
         audioSoipRec = new MediaRecorder(audioSoipStream, {
@@ -13954,6 +14165,7 @@
 
     function descartarGrabacionAudioSoip() {
       audioSoipBlob = null;
+      audioSoipBlobPetKey = null;
       audioSoipMsAcumulados = 0;
       renderAudioSoipGrabador();
       actualizarBotonAudioSoip();
@@ -14029,8 +14241,11 @@
       pintar();
     }
 
-    function audioSoipNombreArchivo(id) {
-      const data = patientData[selectedPetKey] || {};
+    // `petKey` explícito para el botón "Guardar copia": la grabación sin
+    // enviar puede ser de otro paciente y el nombre del archivo tiene que
+    // decir de quién es.
+    function audioSoipNombreArchivo(id, petKey) {
+      const data = patientData[petKey || selectedPetKey] || {};
       const hoy = new Date();
       const fecha = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
       const nombre = audioSoipNormalizarNombre(data.name).replace(/\s+/g, '-') || 'paciente';
@@ -14042,6 +14257,15 @@
     async function enviarAudioSoip() {
       if (!audioSoipBlob || audioSoipSubiendo) return;
       const petKey = selectedPetKey;
+      // Una grabación sin enviar sobrevive al cierre del Tablero, así que
+      // puede haberse hecho con OTRO paciente abierto. Subirla acá le
+      // pondría el mascota_id equivocado y el SOIP volvería a la ficha de
+      // quien no es. Se corta antes de tocar el bucket.
+      if (audioSoipBlobPetKey && audioSoipBlobPetKey !== petKey) {
+        const dueno = patientData[audioSoipBlobPetKey];
+        audioSoipError(`Esta grabación es de <strong>${escapeHtml(dueno ? dueno.name : 'otro paciente')}</strong>, no de esta ficha. Ábrela en su consulta para enviarla, o descártala y graba de nuevo acá.`);
+        return;
+      }
       const data = patientData[petKey];
       if (!window.supabase || !currentSession || !currentSession.activeMembership || !data || !data.mascotaId) {
         audioSoipError('No hay una clínica activa — no se puede enviar el audio.');
@@ -14103,6 +14327,7 @@
         };
         audioSoipGuardarPendiente();
         audioSoipBlob = null;
+        audioSoipBlobPetKey = null;
         audioSoipMsAcumulados = 0;
         audioSoipSubiendo = false;
         arrancarPollAudioSoip();
@@ -14219,6 +14444,7 @@
         actualizarBotonAudioSoip();
         if (abiertoEnEstePaciente) {
           audioSoipPayload = data.resultado;
+          audioSoipBorradorRowId = audioSoipPendiente.id;   // ver openAudioSoipModal
           renderAudioSoipPreview();
         } else {
           showToast('Borrador desde el audio listo para ' + audioSoipPendiente.petName);
@@ -14237,16 +14463,30 @@
       const btn = document.getElementById('tablero-audio-btn');
       const label = document.getElementById('tablero-audio-btn-label');
       if (!btn || !label) return;
+      const TITULO_BASE = 'Grabar la consulta y precargar el SOIP desde el audio';
       const grabando = audioSoipGrabando();
-      const listo = !!(audioSoipPendiente && audioSoipPendiente.resultado);
+      // Dos orígenes distintos para "hay un borrador": el pendiente de esta
+      // pestaña y el que se encontró en Supabase (ver
+      // audioSoipBuscarBorradorServidor). El punto verde solo se prende para
+      // el paciente abierto — decir "listo" sobre el borrador de otra
+      // mascota es justo lo que confundía antes.
+      const pendienteListo = !!(audioSoipPendiente && audioSoipPendiente.resultado);
+      const pendientePropio = pendienteListo && audioSoipPendiente.petKey === selectedPetKey;
+      const servidorPropio = !!(audioSoipBorradorServidor && audioSoipBorradorServidor.petKey === selectedPetKey);
+      const listoPropio = pendientePropio || servidorPropio;
       btn.classList.toggle('audio-grabando', grabando);
-      btn.classList.toggle('audio-listo', listo && !grabando);
+      btn.classList.toggle('audio-listo', listoPropio && !grabando);
+      btn.title = TITULO_BASE;
       if (grabando) {
         label.textContent = (audioSoipRec.state === 'paused' ? 'Pausa ' : '● ') + audioSoipFormatTiempo(audioSoipMsGrabados());
       } else if (audioSoipBlob) {
         label.textContent = 'Audio sin enviar';
-      } else if (listo) {
+      } else if (listoPropio) {
         label.textContent = 'Borrador listo';
+        btn.title = 'El SOIP del audio ya volvió — ábrelo para revisarlo y cargarlo';
+      } else if (pendienteListo) {
+        label.textContent = 'Borrador de ' + audioSoipPendiente.petName;
+        btn.title = `El borrador listo es de ${audioSoipPendiente.petName}, no de este paciente`;
       } else if (audioSoipPendiente && audioSoipPendiente.estado === 'error') {
         label.textContent = 'Grabar audio';
       } else if (audioSoipPendiente) {
@@ -14267,6 +14507,7 @@
 
     function onAudioSoipArchivo(input) {
       document.getElementById('audio-soip-error').innerHTML = '';
+      audioSoipBorradorRowId = null;   // este payload no sale de ninguna fila
       const file = input.files && input.files[0];
       if (!file) return;
       const reader = new FileReader();
@@ -14307,6 +14548,18 @@
       const c = d.campos || {};
       const data = patientData[selectedPetKey];
       const avisos = [];
+
+      // Borrador rescatado de Supabase (no del pendiente de esta pestaña):
+      // puede ser de otro día o de otro equipo, así que se dice de cuándo es
+      // — cargar sin mirar el SOIP de una consulta de la semana pasada sería
+      // el mismo tipo de error que cargar el de otro paciente.
+      if (audioSoipBorradorRowId && audioSoipBorradorServidor
+          && audioSoipBorradorServidor.id === audioSoipBorradorRowId) {
+        avisos.push({
+          tono: 'info',
+          texto: `Borrador guardado en el servidor, del audio grabado el <strong>${formatFechaHoraCorta(audioSoipBorradorServidor.creadoEn)}</strong>. Verifica que sea la consulta que estás atendiendo.`
+        });
+      }
 
       // Guard más importante de todo el flujo: cargar el audio de un
       // paciente en la ficha de otro escribiría una historia clínica
@@ -14404,6 +14657,16 @@
           <i data-lucide="pen-line"></i>
           <span>Esto solo rellena el formulario. Revisa y corrige lo que haga falta: la consulta se guarda cuando <strong>tú</strong> pulses "Finalizar consulta".</span>
         </div>
+
+        ${audioSoipBorradorRowId ? `
+          <!-- Salida del borrador rescatado: sin esto, un borrador viejo que
+               no corresponde a esta consulta se volvería a ofrecer cada vez
+               que se abre el Tablero de este paciente. -->
+          <div style="margin-top:12px; text-align:right;">
+            <button class="btn-secondary" onclick="descartarBorradorServidorAudioSoip()">
+              <i data-lucide="trash-2" style="width:14px;height:14px;"></i> Descartar borrador y grabar otro
+            </button>
+          </div>` : ''}
       `;
 
       const cont = document.getElementById('audio-soip-paso-preview');
@@ -14482,6 +14745,17 @@
       // función y se olvida (si no, el botón seguiría diciendo "Borrador
       // listo" y volvería a ofrecer el mismo texto en la consulta siguiente).
       if (audioSoipPendiente && audioSoipPendiente.resultado === d) audioSoipOlvidarPendiente();
+      // Lo mismo del lado del servidor, que es de donde se vuelve a leer al
+      // abrir el Tablero: sin marcar la fila, el mismo borrador reaparecería
+      // en la próxima consulta de este paciente.
+      if (audioSoipBorradorRowId) {
+        audioSoipCerrarFilaServidor(audioSoipBorradorRowId, 'aplicado');
+        if (audioSoipBorradorServidor && audioSoipBorradorServidor.id === audioSoipBorradorRowId) {
+          audioSoipBorradorServidor = null;
+        }
+        audioSoipBorradorRowId = null;
+      }
+      actualizarBotonAudioSoip();
 
       closeAudioSoipModal();
       let msg = 'Formulario precargado desde el audio — revísalo antes de finalizar';
@@ -14556,12 +14830,21 @@
       // El botón de audio arrastra estado entre consultas (un borrador que
       // volvió, una grabación sin enviar): que su rótulo lo diga desde el
       // primer momento, no recién al abrir el modal.
+      audioSoipBorradorServidor = null;   // es por paciente; el anterior no aplica
       actualizarBotonAudioSoip();
+      // Y si el borrador de este paciente quedó esperando en Supabase (se
+      // grabó ayer, o desde otro equipo), que el botón lo diga sin que haya
+      // que entrar al modal a buscarlo. Asíncrono: no retrasa la pantalla.
+      audioSoipBuscarBorradorServidor(selectedPetKey);
       lucide.createIcons();
     }
 
     function cerrarTableroAConsultorio() {
       detenerGrabacionAudioSoipAlSalir();
+      // El borrador encontrado en Supabase es del paciente de ESTA consulta:
+      // se suelta al salir para que no se arrastre al siguiente Tablero (que
+      // vuelve a preguntar por el suyo).
+      audioSoipBorradorServidor = null;
       document.getElementById('tablero-view').classList.remove('active');
       restaurarVistaPacienteConsultorio();
       // Si se finalizó una consulta acá dentro, "Motivo última consulta"
