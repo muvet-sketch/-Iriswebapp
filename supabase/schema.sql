@@ -1674,6 +1674,60 @@ create policy "cirugias_delete_member"
   on public.cirugias for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── TABLA: anestesia_mediciones ────────────────────────────────────
+-- Seguimiento de anestesia por cirugía (fecha de la toma + los signos
+-- vitales de ese momento). Ver 20260809_seguimiento_anestesia.sql: se
+-- backfilleó a este archivo tras detectar que ya estaba en producción sin
+-- estar reflejada acá (ver nota en 20260810_problemas_y_plan_consulta.sql
+-- sobre el riesgo de re-emitir fusionar_mascotas sin esta tabla).
+create table if not exists public.anestesia_mediciones (
+  id                     uuid primary key default gen_random_uuid(),
+  establecimiento_id     uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id             uuid not null references public.mascotas (id) on delete cascade,
+  cirugia_id             uuid not null references public.cirugias (id) on delete cascade,
+  fecha                  timestamp not null,
+  fc                     integer,
+  fr                     integer,
+  pas                    integer,
+  pad                    integer,
+  pam                    integer,
+  spo2                   numeric,
+  tc                     numeric,
+  etco2                  integer,
+  observaciones          text,
+  registrado_por         integer,
+  registrado_por_nombre  text,
+  created_by             uuid references auth.users (id) on delete set null,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
+);
+
+create index if not exists anestesia_mediciones_establecimiento_id_idx
+  on public.anestesia_mediciones (establecimiento_id);
+create index if not exists anestesia_mediciones_mascota_id_idx
+  on public.anestesia_mediciones (mascota_id);
+create index if not exists anestesia_mediciones_cirugia_id_idx
+  on public.anestesia_mediciones (cirugia_id, fecha);
+
+alter table public.anestesia_mediciones enable row level security;
+
+drop policy if exists "anestesia_mediciones_select_member" on public.anestesia_mediciones;
+create policy "anestesia_mediciones_select_member" on public.anestesia_mediciones for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "anestesia_mediciones_insert_member" on public.anestesia_mediciones;
+create policy "anestesia_mediciones_insert_member" on public.anestesia_mediciones for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "anestesia_mediciones_update_member" on public.anestesia_mediciones;
+create policy "anestesia_mediciones_update_member" on public.anestesia_mediciones for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "anestesia_mediciones_delete_member" on public.anestesia_mediciones;
+create policy "anestesia_mediciones_delete_member" on public.anestesia_mediciones for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── TABLA: tareas_pendientes ──────────────────────────────────────
 -- Antes vivía solo en memoria (patientData[petKey].tareasPendientes,
 -- mock) y se perdía al refrescar. responsable_id es el id LOCAL
@@ -3154,6 +3208,12 @@ create table if not exists public.consultas_audio (
   -- el <input file> del modal (campos/evidencia_vitales/examen_sistemas/…).
   resultado           jsonb,
   error_mensaje       text,
+  -- Cuándo y por qué se dio por cerrado el pendiente sin llegar a
+  -- aplicarlo (ver 20260810_consultas_audio_cerrado.sql, backfill de un
+  -- estado que ya existía en producción y no estaba reflejado acá).
+  cerrado_at          timestamptz,
+  cerrado_motivo      text
+                      check (cerrado_motivo is null or cerrado_motivo = any (array['aplicado', 'descartado'])),
   created_by          uuid references auth.users (id) on delete set null,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
@@ -3691,8 +3751,8 @@ declare
   -- en la próxima fusión (la fila duplicada se borra con CASCADE).
   c_tablas constant text[] := array[
     'consultas', 'formulas_medicas', 'documentos', 'examenes', 'vacunaciones',
-    'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
-    'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes',
+    'desparasitaciones', 'cirugias', 'anestesia_mediciones', 'hospitalizaciones',
+    'seguimientos', 'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes',
     'mensajes', 'consultas_audio', 'mascota_problemas'
   ];
   v_pri        public.mascotas;

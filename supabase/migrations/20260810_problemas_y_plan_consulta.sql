@@ -81,10 +81,21 @@ alter table public.consultas
 -- lista de problemas de la ficha duplicada se pierde con el CASCADE en
 -- la próxima unificación, sin ningún error visible.
 --
--- Copia VERBATIM de 20260809_fusionar_mascotas.sql (generada por
--- sustitución sobre el original y diffeada línea a línea). Los únicos
--- cambios son: 'mascota_problemas' en c_tablas, y los dos pasos de
--- renumeración de `orden` marcados con comentario propio abajo.
+-- OJO: la base de esta re-emisión NO es 20260809_fusionar_mascotas.sql
+-- (ese archivo local está desactualizado). En producción ya se habían
+-- aplicado, sin que quedara reflejado en este repo, dos migraciones
+-- posteriores: `seguimiento_anestesia` (crea `anestesia_mediciones`,
+-- ver 20260809_seguimiento_anestesia.sql, agregada junto con esta) y
+-- `fusionar_mascotas_incluye_anestesia` (suma esa tabla a `c_tablas`).
+-- Re-emitir desde el archivo local viejo habría BORRADO
+-- 'anestesia_mediciones' de `c_tablas` en silencio — la próxima fusión
+-- de fichas habría dejado las mediciones de anestesia de la ficha
+-- duplicada huérfanas. Esta versión sale de
+-- `pg_get_functiondef('fusionar_mascotas'::regproc)` leído en vivo del
+-- proyecto de producción, diffeada línea a línea contra esa salida:
+-- los únicos cambios sobre lo que ya corre en producción son
+-- 'mascota_problemas' en `c_tablas` y los dos pasos de renumeración de
+-- `orden` marcados con comentario propio abajo.
 
 create or replace function public.fusionar_mascotas(
   p_principal_id uuid,
@@ -94,13 +105,10 @@ create or replace function public.fusionar_mascotas(
 ) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  -- Las tablas que cuelgan de `mascotas` por FK. Si se agrega un módulo
-  -- clínico nuevo con mascota_id, SUMARLO ACÁ o su historia se perderá
-  -- en la próxima fusión (la fila duplicada se borra con CASCADE).
   c_tablas constant text[] := array[
     'consultas', 'formulas_medicas', 'documentos', 'examenes', 'vacunaciones',
-    'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
-    'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes',
+    'desparasitaciones', 'cirugias', 'anestesia_mediciones', 'hospitalizaciones',
+    'seguimientos', 'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes',
     'mensajes', 'consultas_audio', 'mascota_problemas'
   ];
   v_pri        public.mascotas;
@@ -128,24 +136,20 @@ begin
 
   v_estab := v_pri.establecimiento_id;
   if v_dup.establecimiento_id <> v_estab then
-    raise exception 'Las dos fichas tienen que ser de la misma clínica';
+    raise exception 'Las dos fichas tienen que ser de la misma clinica';
   end if;
   if not public.user_is_member_of(v_estab) then
-    raise exception 'No tienes acceso a esta clínica';
+    raise exception 'No tienes acceso a esta clinica';
   end if;
 
-  -- Responsable final: el tutor de cualquiera de las dos fichas, o el que
-  -- venga explícito en p_datos.
   v_resp := coalesce(nullif(p_datos ->> 'propietario_id', '')::uuid, v_pri.propietario_id);
   perform 1 from public.propietarios
    where id = v_resp and establecimiento_id = v_estab
      and coalesce(red_vinculado, true);
   if not found then
-    raise exception 'El tutor responsable elegido no existe en esta clínica o está sin vincular';
+    raise exception 'El tutor responsable elegido no existe en esta clinica o esta sin vincular';
   end if;
 
-  -- El histórico de peso son mediciones reales de las dos fichas: se
-  -- fusionan, no se elige una. Es historia, igual que las consultas.
   select coalesce(jsonb_agg(e order by e ->> 'fechaISO'), '[]'::jsonb)
     into v_peso_hist
     from (
@@ -154,8 +158,6 @@ begin
       ) e
     ) s;
 
-  -- Campos de la ficha: `p_datos ? 'campo'` distingue "el usuario eligió
-  -- vaciarlo" de "el front no lo mandó", que no es lo mismo.
   update public.mascotas set
     propietario_id      = v_resp,
     nombre              = coalesce(nullif(btrim(p_datos ->> 'nombre'), ''), v_pri.nombre),
@@ -196,7 +198,6 @@ begin
            (select max(orden) + 1 from public.mascota_problemas where mascota_id = p_principal_id), 0)
    where mascota_id = p_duplicada_id;
 
-  -- ── Mover la historia clínica ────────────────────────────
   foreach v_tabla in array c_tablas loop
     execute format('update public.%I set mascota_id = $1 where mascota_id = $2', v_tabla)
       using p_principal_id, p_duplicada_id;
@@ -222,9 +223,6 @@ begin
   update public.red_solicitudes set mascota_destino_id = p_principal_id
    where mascota_destino_id = p_duplicada_id;
 
-  -- Agenda y recordatorios NO referencian la mascota por FK sino por
-  -- `pet_key` (texto). Sin esto quedarían apuntando a una key que ya no
-  -- existe y los eventos desaparecerían de la ficha sin ningún error.
   update public.agenda_eventos set pet_key = v_pri.pet_key
    where establecimiento_id = v_estab and pet_key = v_dup.pet_key;
   get diagnostics v_n = row_count;
@@ -235,7 +233,6 @@ begin
   get diagnostics v_n = row_count;
   if v_n > 0 then v_mov := v_mov || jsonb_build_object('eventos_seguimiento', v_n); end if;
 
-  -- Contactos que ya tuviera la ficha duplicada (fusiones encadenadas).
   update public.mascota_contactos set mascota_id = p_principal_id
    where mascota_id = p_duplicada_id
      and propietario_id not in (
@@ -243,10 +240,6 @@ begin
      );
   delete from public.mascota_contactos where mascota_id = p_duplicada_id;
 
-  -- ── Contactos secundarios ────────────────────────────────
-  -- Los dos tutores originales que NO quedaron como responsable pasan a
-  -- ser contacto. Son dos porque el responsable elegido puede ser el de
-  -- la ficha duplicada, y entonces el que se desplaza es el de la principal.
   insert into public.mascota_contactos (establecimiento_id, mascota_id, propietario_id, relacion, created_by)
   select v_estab, p_principal_id, prop, nullif(btrim(p_relacion_contacto), ''), auth.uid()
     from (select unnest(array[v_pri.propietario_id, v_dup.propietario_id]) as prop) s
@@ -254,11 +247,9 @@ begin
   on conflict (mascota_id, propietario_id)
     do update set relacion = coalesce(excluded.relacion, public.mascota_contactos.relacion);
 
-  -- El responsable no puede figurar además como contacto secundario.
   delete from public.mascota_contactos
    where mascota_id = p_principal_id and propietario_id = v_resp;
 
-  -- ── Auditoría y borrado ──────────────────────────────────
   v_snapshot := to_jsonb(v_dup);
 
   delete from public.mascotas where id = p_duplicada_id;
