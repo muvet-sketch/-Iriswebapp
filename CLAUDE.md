@@ -1211,6 +1211,31 @@ archivo en sí nunca se sube a Storage (la URL de blob local del
 que las fotos no son descargables tras recargar, solo se conserva el
 nombre de cada una.
 
+**Exámenes de laboratorio / Imágenes diagnósticas — VARIOS archivos por
+bloque.** Cada bloque de `examenes.pruebas` (jsonb) guarda sus adjuntos en
+`archivos: [{path, nombre}]`, no en un solo archivo: un estudio de imagen
+son varias placas más el informe en PDF, y ese era el límite real del
+módulo. Detalles que hay que respetar:
+- **Los adjuntos se leen SIEMPRE por `examenPruebaArchivos(prueba)`.** Los
+  registros anteriores a esto guardaban un único archivo en
+  `resultadoPath`/`resultadoNombre`; ese formato se sigue leyendo ahí y
+  **solo ahí** (no hubo backfill ni cambio de schema — la columna ya era
+  jsonb). Esos dos campos ya no se escriben: no los reintroduzcas ni
+  agregues una segunda forma de leer lo mismo.
+- Los archivos elegidos se **acumulan** (`examenPendingFiles[uid]` es un
+  array): seleccionar de a tandas es el caso normal y un `input
+  type="file"` solo reporta la última selección, por eso
+  `handleExamenResultadoFileChange()` limpia el `value` del input — sin
+  eso, volver a elegir un archivo que se acaba de quitar no dispara el
+  `change`.
+- **Quitar un archivo no lo borra del bucket en el momento**: su path se
+  encola en `examenArchivosAEliminar` y el `remove()` corre recién después
+  del update exitoso en `guardarExamen()`. Cancelar el modal no debe
+  borrar nada, y si el guardado falla la fila sigue apuntando a él. Ese
+  borrado no relanza el error (dejar un archivo huérfano no invalida el
+  registro). `removeExamenBlock()` encola los archivos del bloque por el
+  mismo motivo.
+
 **Mensajes al propietario SÍ persiste en Supabase** (tabla `mensajes`,
 ver `supabase/schema.sql`) — `enviarMensaje()` ya era `async` e
 insertaba en Supabase antes de tocar `patientData[petKey].mensajes`,
