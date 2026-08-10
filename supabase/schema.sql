@@ -954,6 +954,13 @@ create table if not exists public.consultas (
 
 alter table public.consultas add column if not exists diagnosticos_presuntivos jsonb not null default '[]'::jsonb;
 
+-- Recuadro del Plan terapéutico. Mismo patrón que diagnosticos_presuntivos:
+-- jsonb con una lista de textos que alimenta el multiselect de chips del
+-- Tablero. El modal clásico de edición NO las escribe (igual que los
+-- vital_*), así que editar desde ahí no las pisa a lista vacía.
+alter table public.consultas add column if not exists examenes_solicitados jsonb not null default '[]'::jsonb;
+alter table public.consultas add column if not exists especialidades_indicadas jsonb not null default '[]'::jsonb;
+
 create index if not exists consultas_establecimiento_id_idx on public.consultas (establecimiento_id);
 create index if not exists consultas_mascota_id_idx on public.consultas (mascota_id);
 
@@ -3591,6 +3598,54 @@ drop policy if exists "mascota_contactos_delete_member" on public.mascota_contac
 create policy "mascota_contactos_delete_member" on public.mascota_contactos for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── Lista de problemas del paciente ─────────────────────────
+-- Ver 20260810_problemas_y_plan_consulta.sql. Cuelga de `mascotas` y no
+-- de `consultas`: el problema es del paciente y sobrevive a la consulta
+-- que lo detectó (de ahí el `on delete set null` de consulta_id).
+--
+-- El ORDEN es información clínica, no presentación: un listado de
+-- problemas se lee de arriba hacia abajo y el primero es siempre el que
+-- más compromete la vida. Por eso hay una columna `orden` explícita y no
+-- se depende de la posición en un array ni de created_at.
+create table if not exists public.mascota_problemas (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id         uuid not null references public.mascotas (id) on delete cascade,
+  texto              text not null,
+  estado             text not null default 'activo',   -- 'activo' | 'resuelto'
+  orden              integer not null default 0,       -- menor = más arriba = más grave
+  origen             text,                             -- 'manual' | 'audio'
+  gravedad           text,                             -- 'critico' | 'mayor' | 'menor' (informativa)
+  consulta_id        uuid references public.consultas (id) on delete set null,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create index if not exists mascota_problemas_establecimiento_idx
+  on public.mascota_problemas (establecimiento_id);
+create index if not exists mascota_problemas_mascota_orden_idx
+  on public.mascota_problemas (mascota_id, orden);
+
+alter table public.mascota_problemas enable row level security;
+
+drop policy if exists "mascota_problemas_select_member" on public.mascota_problemas;
+create policy "mascota_problemas_select_member" on public.mascota_problemas for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascota_problemas_insert_member" on public.mascota_problemas;
+create policy "mascota_problemas_insert_member" on public.mascota_problemas for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascota_problemas_update_member" on public.mascota_problemas;
+create policy "mascota_problemas_update_member" on public.mascota_problemas for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "mascota_problemas_delete_member" on public.mascota_problemas;
+create policy "mascota_problemas_delete_member" on public.mascota_problemas for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── Auditoría de fusiones ───────────────────────────────────
 -- Es lo único que queda de la ficha borrada. Sin policies de escritura a
 -- propósito: solo la escribe fusionar_mascotas() (definer). Un log que
@@ -3638,7 +3693,7 @@ declare
     'consultas', 'formulas_medicas', 'documentos', 'examenes', 'vacunaciones',
     'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
     'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes',
-    'mensajes', 'consultas_audio'
+    'mensajes', 'consultas_audio', 'mascota_problemas'
   ];
   v_pri        public.mascotas;
   v_dup        public.mascotas;
@@ -3723,6 +3778,16 @@ begin
     updated_at          = now()
    where id = p_principal_id;
 
+  -- Los `orden` de las dos listas de problemas colisionan: las dos empiezan
+  -- en 0. Hay que correr los de la duplicada DETRAS de los de la principal
+  -- ANTES de moverlos — despues del move las dos listas son indistinguibles
+  -- (todas las filas quedan con mascota_id = principal) y el primer problema,
+  -- que es el que mas compromete la vida, dejaria de ser el primero.
+  update public.mascota_problemas
+     set orden = orden + coalesce(
+           (select max(orden) + 1 from public.mascota_problemas where mascota_id = p_principal_id), 0)
+   where mascota_id = p_duplicada_id;
+
   -- ── Mover la historia clínica ────────────────────────────
   foreach v_tabla in array c_tablas loop
     execute format('update public.%I set mascota_id = $1 where mascota_id = $2', v_tabla)
@@ -3730,6 +3795,19 @@ begin
     get diagnostics v_n = row_count;
     if v_n > 0 then v_mov := v_mov || jsonb_build_object(v_tabla, v_n); end if;
   end loop;
+
+  -- Ya juntas, se renumeran 1..N para que la secuencia quede densa (las
+  -- flechas del front intercambian `orden` entre vecinos y con huecos el
+  -- intercambio sigue funcionando, pero la lista es mas facil de leer asi).
+  with ordenados as (
+    select id, row_number() over (order by orden, created_at) as rn
+      from public.mascota_problemas
+     where mascota_id = p_principal_id
+  )
+  update public.mascota_problemas p
+     set orden = o.rn, updated_at = now()
+    from ordenados o
+   where p.id = o.id and p.orden <> o.rn;
 
   update public.red_solicitudes set mascota_solicitante_id = p_principal_id
    where mascota_solicitante_id = p_duplicada_id;

@@ -543,9 +543,118 @@ cierra el script") en vez del literal `</script>`.
       `rowActionImprimir`, que reusa ese mismo HTML) y
       `construirConsultaDesdeFila()` al recargar desde Supabase.
       Si se agrega otro par de vitales combinados, mismo criterio.
+  - **PAS > PAM > PAD, siempre — `reordenarPresionesArteriales()`.** La
+    sistólica es el valor más alto, la diastólica el más bajo y la media el
+    intermedio; lo impone la mecánica de fluidos del sistema cardiovascular
+    y no se invierte nunca. Si los tres tiles quedan incoherentes, la app
+    los **reasigna sola por magnitud**. Tres cosas que no se pueden tocar:
+    - Se dispara en el `onchange` de los 3 números y de los 3 sliders,
+      **nunca en `oninput`**: con `input` el reordenamiento saltaría a mitad
+      de digitación ("15" camino a "150") y barajaría los campos bajo el
+      cursor. Y ni siquiera el `change` propio alcanza — en un input
+      numérico dispara al perder el foco, o sea justo al tabular de PAS a
+      PAD con PAD todavía vacío. Por eso hay un `setTimeout(…, 0)` +
+      `paGrupoTieneFoco()`: se espera a que el foco salga del GRUPO entero.
+    - Un tile marcado como **"no evaluado" no participa** (mismo criterio
+      que todo lo demás: escribir ahí resucitaría un vital que el médico
+      declaró no medido).
+    - No es silencioso: reasignar la sistólica de un paciente es un cambio
+      clínico, así que avisa con un toast (una vez por consulta,
+      `paReordenAvisado`).
+    El mismo criterio existe en el pipeline (`ordenar_presiones()` en
+    `extraer_soip.py`) y **hay que mantener los dos alineados**. En cambio
+    los 3 sitios de IMPRESIÓN de la PA no reordenan nada y no deben
+    hacerlo: reordenar al imprimir sería reescribir un dato ya firmado, así
+    que una consulta vieja guardada con las presiones cruzadas se imprime
+    como se guardó. El reordenamiento vive solo donde se captura.
+  - **Recuadro del Plan: "Exámenes solicitados" y "Especialidad
+    indicada"** (`.tablero-plan-extras`, bajo `#tablero-soap-p`). Son
+    listas, no prosa, porque se imprimen como bloque propio de la consulta
+    (`consultas.examenes_solicitados` / `.especialidades_indicadas`, jsonb,
+    mismo patrón que `diagnosticos_presuntivos`). Detalles:
+    - **Solo el Tablero las escribe.** `guardarConsulta()` las mete al
+      payload únicamente si `idPrefix === 'tablero-soap-'`, igual que los
+      `vital_*`: si no, editar una consulta desde el modal clásico —que no
+      tiene el recuadro— las pisaría a lista vacía.
+    - Reusan el multiselect de chips de los diagnósticos presuntivos. Ese
+      componente ya estaba parametrizado por `scope`; lo único cableado era
+      el catálogo, y ahora sale de **`MULTISELECT_CONFIGS`** (scope →
+      `{catalogo, rapidos, vacio, soip}`). El catálogo es una FUNCIÓN, no
+      un array, porque el de exámenes se arma sobre
+      `getPruebasLaboratorioCatalogo()`/`getImagenesDiagnosticasCatalogo()`,
+      que se amplían en caliente con "+Registrar nuevo". Para agregar otro
+      campo de chips, basta una entrada más ahí: no clones el componente.
+    - `soip: null` en los scopes nuevos es lo que evita que agregar un
+      examen marque `.filled` en el riel o satisfaga la obligatoriedad de
+      la letra I (ver `sincronizarStepSoipDeScope()`, que reemplazó a las
+      dos ramas `if (scope === 'tablero')` que había sueltas).
+    - `abrirTableroTrabajo()` los resetea con `setDiagSelected()`. Sin eso,
+      la especialidad del paciente anterior se guarda en la consulta del
+      siguiente.
+    - `CATALOGO_ESPECIALIDADES` espeja `ESPECIALIDADES` en
+      `extraer_soip.py`. Ninguno de los dos restringe: se puede escribir
+      uno personalizado y el pipeline puede devolver uno fuera de la lista.
   - El badge de cada letra se rellena (`.tablero-step.filled`) desde el
     `oninput` que ya fijaba `abrirTableroTrabajo()` para limpiar
     `field-error` — un solo handler por textarea, no agregues otro.
+
+### Tarjeta "Por verificar" (`#tablero-verif-card`)
+Primera tarjeta de `.tablero-side-col`, oculta cuando no hay ítems. Es lo
+que reemplazó al párrafo "Qué revisar" que vivía dentro del modal del audio
+y **desaparecía justo al pulsar "Cargar en el formulario"** — el médico
+tenía que acordarse de memoria de 7 puntos mientras llenaba el formulario.
+- Cada ítem viene de `verificaciones[]` del pipeline y trae el `campo` al
+  que apunta. **`VERIF_CAMPO_MAP` es el contrato** con `CAMPOS_VERIFICABLES`
+  en `extraer_soip.py`: si agregas un campo verificable allá, agrégalo acá o
+  el ítem se descarta en `setTableroVerificaciones()`.
+- "Ir al campo" usa `focus({preventScroll:true})` + `tableroScrollAField()`.
+  Las dos cosas son necesarias: sin `preventScroll` el navegador hace su
+  propio scroll, que no sabe nada de `.tablero-sticky-stack` y deja el campo
+  tapado por el hero (el usuario ve que "no pasó nada"). Y
+  `tableroScrollAField()` hace **dos pasadas** a propósito: bajar dispara
+  `onTableroScroll()` → `.condensed`, y como `.tablero-hero-photo` tiene
+  `transition` el alto del sticky se ANIMA, así que el destino calculado con
+  el alto expandido queda corto por ~90px. No quites la segunda pasada.
+- Las `opciones` se aplican con `aplicarOpcionVerificacion(i, j)` — índices,
+  no el texto interpolado en el `onclick`. (Los chips viejos de
+  `renderDiagQuickSuggestions`/`onDiagInputChange` sí interpolan el nombre
+  dentro del atributo; hoy no se rompe porque ningún catálogo lleva
+  apóstrofo, pero no repitas ese patrón en algo que reciba texto de un LLM.)
+  En un textarea la opción se **anexa**, nunca reemplaza.
+- **No se persisten en ninguna parte**, mismo criterio que el interruptor
+  "No evaluado": una duda pendiente es estado de pantalla, no dato clínico,
+  y no puede quedar rastro en la historia de lo que quedó dudoso en una
+  grabación. Consecuencia conocida y aceptada: recargar la página a mitad
+  de consulta las pierde. `abrirTableroTrabajo()` y
+  `cerrarTableroAConsultorio()` las vacían.
+- El gate vive en `intentarFinalizarConsulta()` (no en `guardarConsulta()`,
+  que es compartida con el modal clásico) y es **blando**: avisa una vez por
+  las `bloqueante` pendientes y al segundo intento deja finalizar.
+
+### Lista de problemas (`mascota_problemas`)
+Antes vivía solo en memoria y se perdía al recargar. Ahora persiste, y el
+**orden es información clínica, no presentación**: se lee de arriba hacia
+abajo y el primero es siempre el que más compromete la vida del paciente.
+- La fuente de verdad es la columna `orden`, **no la posición en el array**.
+  `renderTableroProblemList()` ordena por ahí y `moverTableroProblema()`
+  (flechas ↑↓) intercambia el `orden` con el vecino de la lista ordenada.
+- **`agregarProblemasDesdeAudio()` no usa `unshift` ni
+  `agregarTableroProblema()`**: la lista del pipeline ya viene priorizada, y
+  meterla de a uno por arriba la INVERTIRÍA — el problema menos grave
+  quedaría primero y sería el que sale como chip de alerta en el hero.
+  Reserva un bloque de `orden` y respeta el índice. Deduplica por texto, así
+  que reaplicar un audio no duplica la lista.
+- Los inserts/updates son BLOQUEANTES antes de tocar memoria (mismo criterio
+  que Cirugías/Tareas Pendientes); las flechas repintan primero y revierten
+  si la escritura falla, porque una flecha que tarda se siente rota.
+- `mascota_problemas` está en `RESPALDO_TABLAS` **y** en `c_tablas` de
+  `fusionar_mascotas`. Además la fusión corre los `orden` de la ficha
+  duplicada detrás de los de la principal **antes** de mover las filas: una
+  vez movidas las dos listas son indistinguibles y el primer problema
+  dejaría de ser el primero.
+- `renderTableroProblemList()` pasa el texto por `escapeHtml()`: desde que
+  el audio crea problemas solos, ese string ya no lo escribe siempre una
+  persona de la clínica.
 
 ## Grabar audio de la consulta → SOIP (botón "Grabar audio" del Tablero)
 Flujo completo: el Tablero graba con el micrófono del equipo, el audio va a
@@ -601,6 +710,37 @@ del modal, para cuando el equipo de la oficina está apagado.
 - Lo que este bloque **no** hace no cambió: solo PRECARGA los campos. No
   guarda, no finaliza y no toca `consultas`. Un LLM no cierra una historia
   clínica.
+- **En el texto clínico no existe la grabación.** El pipeline dejaba en
+  S/O/I/P frases como *"un episodio que en el audio no se entiende con
+  claridad ('ñarrea ñarrea')"* o, en Interpretación, *"Sin contenido en el
+  audio"*. Eso no venía de una instrucción sino de que **no había ninguna
+  que lo prohibiera**. Una historia clínica es un documento legal que firma
+  un veterinario: nada sobre el micrófono, la grabación o la calidad del
+  sonido puede quedar ahí. Ahora hay tres capas y las tres hacen falta:
+  1. **Regla 0** del prompt de `extraer_soip.py` prohíbe nombrar el audio,
+     citar lo que sonó y escribir frases de relleno; un campo sin contenido
+     va como cadena **vacía**. `construir_prompt()` además ya no pasa el
+     nombre del archivo ni la duración: encuadraban la tarea como "estás
+     leyendo una transcripción".
+  2. **`depurar_prosa()`** lo comprueba en vez de confiar (mismo criterio
+     que el guard de citas de los vitales y que `intakeVerificarContraTexto`
+     del intake de WhatsApp). Quita primero los **paréntesis** contaminados
+     —el envase habitual del comentario, casi siempre colgado de un hallazgo
+     válido— y sólo después descarta oraciones enteras. Así *"compromiso en
+     mesogastrio (en el audio se oye…)"* conserva el hallazgo.
+  3. Lo quitado **no se tira**: va al `contexto` de una verificación, que es
+     el único lugar donde el veterinario sí puede leerlo.
+- **La duda tiene un canal propio: `verificaciones[]`.** Un elemento por
+  cada dato a confirmar, con `campo` (a qué input del Tablero apunta),
+  `pregunta`, `contexto`, `opciones` aplicables de un click y `severidad`.
+  Se pintan en la tarjeta "Por verificar" del Tablero (ver esa sección) y ya
+  no en un párrafo dentro del modal. `notas_revision` sigue existiendo como
+  respaldo: los `.json` de formato 1 que ya están en la carpeta de la
+  oficina no traen `verificaciones` y `renderAudioSoipPreview()` cae a él.
+- **`problemas[]` viene ya priorizado** por compromiso vital y alimenta la
+  Lista de problemas del paciente (ver esa sección — ojo con el `unshift`).
+- El payload trae `"formato": 2`. Todos los accesos nuevos van con `|| []`,
+  así que un `.json` viejo sigue cargando: probar eso al tocar este bloque.
 - El medidor de nivel (`.audio-rec-nivel`) no es decorado: el problema
   medido nº 1 de los audios reales es el micrófono lejos (ver "Lo que más
   mejoraría el resultado" en el README del pipeline), y ver la barra es lo
@@ -768,6 +908,17 @@ queda como responsable y el otro como **contacto secundario**.
   Si agregás un módulo clínico nuevo con esa columna, **sumalo ahí** o su
   historia se perderá en la próxima fusión — la fila duplicada se borra y el
   CASCADE se la lleva. Ese es el punto de mantenimiento del módulo.
+  Cambiarla obliga a **re-emitir la función completa** (`create or replace`)
+  en una migración nueva: hacelo por sustitución sobre el original y diffeá
+  el resultado antes de aplicar, son ~175 líneas donde una diferencia
+  accidental afecta a 17 tablas dentro de una transacción. Así se agregó
+  `mascota_problemas` en `20260810_problemas_y_plan_consulta.sql`.
+- **`mascota_problemas` necesita además correr sus `orden`.** Las dos listas
+  empiezan en 0, así que la función desplaza los de la ficha duplicada
+  detrás de los de la principal **antes** del bucle de `c_tablas` (después
+  del move las dos son indistinguibles: todas quedan con la misma
+  `mascota_id`) y renumera 1..N al final. Sin eso el primer problema — el
+  que más compromete la vida — dejaría de ser el primero.
 - **`agenda_eventos` y `eventos_seguimiento` referencian la mascota por
   `pet_key` (texto), no por FK.** Se actualizan aparte. Sin eso quedarían
   apuntando a una key inexistente y los eventos desaparecerían de la ficha
@@ -1445,7 +1596,7 @@ que existe es lo de abajo. Dos mecanismos, no se reemplazan:
      Supabase pause el proyecto por inactividad (riesgo real del free).
 2. **Respaldo manual desde la app** — Admin > Respaldo de datos
    (`#admin-outer-respaldo`, `descargarRespaldoEstablecimiento()`).
-   Descarga un `.json` con las filas reales de las 27 tablas por
+   Descarga un `.json` con las filas reales de las 32 tablas por
    establecimiento (`RESPALDO_TABLAS`), no el modelo en memoria: el
    objetivo es poder volver a insertar. Si agregas una tabla nueva por
    establecimiento, **agrégala a `RESPALDO_TABLAS`** o el respaldo

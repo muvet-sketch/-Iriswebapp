@@ -135,8 +135,74 @@ Un vital en `null` llega al formulario como campo vacío, que es exactamente lo
 que el CLAUDE.md exige para "no evaluado": no se registra en ninguna parte.
 
 Todo lo que sale de acá es un **borrador para que el veterinario revise y firme**,
-nunca un registro que se guarde solo. `revision_requerida` y `notas_revision`
-marcan lo que quedó dudoso.
+nunca un registro que se guarde solo.
+
+### En el texto clínico no existe la grabación
+
+`subjetivo`, `objetivo`, `interpretacion` y `plan` se imprimen en una historia
+clínica que firma un veterinario. **Nada sobre el audio, la transcripción o la
+calidad del sonido puede quedar ahí.** Antes salían frases como *"un episodio que
+en el audio no se entiende con claridad ('ñarrea ñarrea')"* o, en Interpretación,
+*"Sin contenido en el audio"* — no venían de una instrucción, venían de que no
+había ninguna que lo prohibiera.
+
+Ahora hay tres capas, y las tres hacen falta:
+
+1. **Regla 0 del prompt**: en esos cuatro campos está prohibido nombrar el audio,
+   citar lo que sonó y escribir frases de relleno. Un campo sin contenido va como
+   cadena **vacía**.
+2. **`depurar_prosa()`** lo comprueba en vez de confiar (mismo criterio que el
+   guard de citas de los vitales). Primero quita los **paréntesis** contaminados
+   —que es el envase habitual del comentario y casi siempre cuelga de un hallazgo
+   válido— y sólo después descarta las oraciones que sigan contaminadas. Así
+   *"compromiso en mesogastrio (en el audio se oye…)"* conserva el hallazgo en
+   vez de perderse entero.
+3. Lo que se quitó **no se tira**: alimenta el `contexto` de una verificación,
+   que es el único lugar donde el veterinario sí puede leerlo.
+
+### `verificaciones` — el canal de la duda
+
+Cada cosa que quedó dudosa sale como un elemento de `verificaciones`, no como
+prosa dentro del SOIP:
+
+```jsonc
+{ "campo": "p",              // a qué campo del formulario apunta
+  "pregunta": "Confirmar el nombre del medicamento indicado para la piel",
+  "contexto": "'de toxicando'",   // acá SÍ se puede citar: no entra a la historia
+  "opciones": ["Dexatopic"],      // hasta 4, aplicables de un click
+  "severidad": "bloqueante" }     // bloqueante | importante | menor
+```
+
+`campo` es contrato con `VERIF_CAMPO_MAP` en `index.html` (ver
+`CAMPOS_VERIFICABLES`), y es lo que permite que el Tablero lleve al médico
+directo al input que hay que revisar. Máximo 8, recortadas por severidad.
+
+### Presión arterial: PAS > PAM > PAD, siempre
+
+La sistólica es el valor más alto, la diastólica el más bajo y la media el
+intermedio; lo impone la mecánica de fluidos del sistema cardiovascular y no se
+invierte nunca. Pero al dictar se dicen los tres números seguidos y sin rótulo
+(*"las presiones están en 150 125 100"*), así que el modelo repartía a ciegas —
+antes de esto quedaba PAS 150 y las otras dos vacías. `ordenar_presiones()`
+reasigna por magnitud **después** de `depurar_vitales()`, y **la cita viaja con
+el valor, no con la casilla**: si el 100 se mueve de `pas` a `pad`, se lleva su
+cita, porque la cita es lo que prueba que ese número se dijo. Con sólo dos
+valores, el mayor es PAS y el menor PAD — la media no se inventa.
+
+### `problemas` — ya priorizados
+
+Lista del cuadro del paciente **ordenada de mayor a menor compromiso vital**: el
+primero es el que puede matarlo hoy. `ordenar_problemas()` reordena por
+`gravedad` (`critico`/`mayor`/`menor`) con un sort estable, como red de seguridad
+por si el modelo no respetó el orden pedido. Son problemas (signos, hallazgos),
+no diagnósticos deducidos. El front los crea en la Lista de problemas del
+paciente respetando ese orden.
+
+### Compatibilidad
+
+La salida lleva `"formato": 2`. `revision_requerida` y `notas_revision` siguen
+existiendo, degradados a resumen de una línea: el front cae a ellos cuando abre
+un `.json` de formato 1 de los que ya están en la carpeta de la oficina.
 
 ## Vocabulario clínico (`vocabulario_clinico.py`)
 
