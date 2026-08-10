@@ -1064,6 +1064,18 @@
       object-fit: cover; background-color: #FAFBFD;
     }
 
+    /* Archivos adjuntos de un bloque de Examen de laboratorio / Imagen
+       diagnóstica — un chip por archivo (varios PDFs e imágenes por bloque) */
+    .examen-files-wrap { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+    .examen-file-chip {
+      display: inline-flex; align-items: center; gap: 6px; max-width: 260px;
+      padding: 4px 6px 4px 9px; border-radius: 999px; border: 1px solid var(--border);
+      background-color: #FAFBFD; font-size: 12px; color: var(--text-1);
+    }
+    .examen-file-chip i { width: 12px; height: 12px; color: var(--text-2); flex-shrink: 0; }
+    .examen-file-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .examen-files-empty { font-size: 12px; color: var(--text-2); }
+
     /* NIVEL 1 — Barra de Pestañas Horizontal (48px) */
     .nav-tabs-bar {
       height: 48px;
@@ -19274,8 +19286,23 @@
     let examenModalTipo = null;         // 'laboratorio' | 'imagen' — fija todo el modal mientras está abierto
     let editingExamenContext = null;    // { petKey, index } al editar, null al crear
     let examenBlockUidSeq = 0;          // uid estable por bloque, independiente de su posición visual (no hay que renumerar al eliminar uno del medio)
-    let examenPendingFiles = {};        // { [uid]: File } archivo nuevo elegido en esta sesión del modal
-    let examenExistingFiles = {};       // { [uid]: { path, nombre } } archivo ya guardado, se conserva si no se reemplaza/quita
+    let examenPendingFiles = {};        // { [uid]: File[] } archivos nuevos elegidos en esta sesión del modal (se acumulan, no se reemplazan)
+    let examenExistingFiles = {};       // { [uid]: [{ path, nombre }] } archivos ya guardados que se conservan
+    let examenArchivosAEliminar = [];   // paths de archivos ya guardados que el usuario quitó — se borran del bucket recién al guardar (cancelar el modal no debe borrar nada)
+
+    // Un bloque puede tener VARIOS archivos de resultado (`archivos:
+    // [{path, nombre}]` dentro de `examenes.pruebas`): un estudio de
+    // imagen normalmente son varias placas más el informe en PDF. Los
+    // registros anteriores a esto guardaban uno solo en
+    // `resultadoPath`/`resultadoNombre`; se siguen leyendo, pero SIEMPRE
+    // por acá, para no tener dos formas distintas de leer lo mismo (esos
+    // dos campos ya no se escriben). No hubo cambio de schema: la columna
+    // `pruebas` es jsonb.
+    function examenPruebaArchivos(prueba) {
+      if (!prueba) return [];
+      if (Array.isArray(prueba.archivos)) return prueba.archivos.filter(a => a && a.path);
+      return prueba.resultadoPath ? [{ path: prueba.resultadoPath, nombre: prueba.resultadoNombre || 'Resultado' }] : [];
+    }
 
     function registrarNuevaPruebaExamen(uid) {
       const tipo = examenModalTipo;
@@ -19304,31 +19331,54 @@
       openUsuarioModal('create');
     }
 
+    // Los archivos elegidos se ACUMULAN sobre los que ya había en el
+    // bloque: seleccionar de a tandas (primero las placas, después el
+    // informe) es el caso normal, y un `input type="file"` solo reporta la
+    // última selección. Por lo mismo se limpia el value del input, así
+    // volver a elegir un archivo que se acaba de quitar dispara el change.
     function handleExamenResultadoFileChange(uid, input) {
-      const file = input.files[0];
-      if (!file) return;
-      examenPendingFiles[uid] = file;
-      delete examenExistingFiles[uid];
+      const nuevos = [...input.files];
+      input.value = '';
+      if (!nuevos.length) return;
+      examenPendingFiles[uid] = [...(examenPendingFiles[uid] || []), ...nuevos];
       renderExamenResultadoFileLabel(uid);
     }
 
-    function removeExamenResultadoFile(uid) {
-      delete examenPendingFiles[uid];
-      delete examenExistingFiles[uid];
-      const input = document.querySelector(`#examen-blocks-list .examen-block[data-block-uid="${uid}"] input[type="file"]`);
-      if (input) input.value = '';
+    function removeExamenResultadoFileNuevo(uid, index) {
+      const lista = examenPendingFiles[uid] || [];
+      lista.splice(index, 1);
+      examenPendingFiles[uid] = lista;
       renderExamenResultadoFileLabel(uid);
+    }
+
+    function removeExamenResultadoFileGuardado(uid, index) {
+      const lista = examenExistingFiles[uid] || [];
+      const quitado = lista.splice(index, 1)[0];
+      examenExistingFiles[uid] = lista;
+      if (quitado && quitado.path) examenArchivosAEliminar.push(quitado.path);
+      renderExamenResultadoFileLabel(uid);
+    }
+
+    function examenResultadoFilesHTML(uid) {
+      const guardados = examenExistingFiles[uid] || [];
+      const nuevos = examenPendingFiles[uid] || [];
+      if (!guardados.length && !nuevos.length) return '<span class="examen-files-empty">Ningún archivo seleccionado</span>';
+      const chip = (nombre, onclick) => `
+        <span class="examen-file-chip">
+          <i data-lucide="paperclip"></i>
+          <span class="examen-file-chip-name" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</span>
+          <button type="button" class="med-block-remove" style="display:inline-flex;" onclick="${onclick}" title="Quitar archivo">
+            <i data-lucide="x" style="width:12px;height:12px;"></i>
+          </button>
+        </span>`;
+      return guardados.map((a, i) => chip(a.nombre || 'Archivo', `removeExamenResultadoFileGuardado(${uid}, ${i})`)).join('') +
+             nuevos.map((f, i) => chip(f.name, `removeExamenResultadoFileNuevo(${uid}, ${i})`)).join('');
     }
 
     function renderExamenResultadoFileLabel(uid) {
       const el = document.querySelector(`#examen-blocks-list .examen-block[data-block-uid="${uid}"] [data-examen-resultado-label]`);
       if (!el) return;
-      const pending = examenPendingFiles[uid];
-      const existing = examenExistingFiles[uid];
-      const nombre = pending ? pending.name : (existing ? existing.nombre : '');
-      el.innerHTML = nombre
-        ? `<span>${nombre}</span> <button type="button" class="med-block-remove" style="display:inline-flex;" onclick="removeExamenResultadoFile(${uid})"><i data-lucide="x" style="width:12px;height:12px;"></i></button>`
-        : '';
+      el.innerHTML = examenResultadoFilesHTML(uid);
       lucide.createIcons();
     }
 
@@ -19338,9 +19388,7 @@
       const profesionales = USUARIOS_SISTEMA.filter(u => u.estado === 'activo');
       const profesionalOptions = profesionales.map(u => `<option value="${u.nombre}" ${block.profesional === u.nombre ? 'selected' : ''}>${u.nombre}</option>`).join('');
       const pruebaOptions = getExamenCatalogo(tipo).map(p => `<option value="${p}" ${block.prueba === p ? 'selected' : ''}>${p}</option>`).join('');
-      if (block.resultadoPath) examenExistingFiles[uid] = { path: block.resultadoPath, nombre: block.resultadoNombre };
-      const existing = examenExistingFiles[uid];
-      const nombreArchivo = existing ? existing.nombre : '';
+      examenExistingFiles[uid] = examenPruebaArchivos(block).map(a => ({ path: a.path, nombre: a.nombre }));
       return `
         <div class="orden-block examen-block" data-block-uid="${uid}">
           <div class="orden-block-header">
@@ -19381,12 +19429,12 @@
 
           <div class="input-group">
             <label class="input-label">Resultado</label>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-              <button type="button" class="btn-outline" style="padding:9px 12px;font-size:12px;" onclick="this.nextElementSibling.click()">
-                <i data-lucide="upload" style="width:12px;height:12px;"></i> Seleccionar archivo
+            <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+              <button type="button" class="btn-outline" style="padding:9px 12px;font-size:12px;flex-shrink:0;" onclick="this.nextElementSibling.click()">
+                <i data-lucide="upload" style="width:12px;height:12px;"></i> Seleccionar archivos
               </button>
-              <input type="file" accept=".pdf,image/*" style="display:none;" onchange="handleExamenResultadoFileChange(${uid}, this)">
-              <span data-examen-resultado-label style="font-size:12px;color:var(--text-2);display:inline-flex;align-items:center;gap:6px;">${nombreArchivo ? `<span>${nombreArchivo}</span> <button type="button" class="med-block-remove" style="display:inline-flex;" onclick="removeExamenResultadoFile(${uid})"><i data-lucide="x" style="width:12px;height:12px;"></i></button>` : ''}</span>
+              <input type="file" accept=".pdf,image/*" multiple style="display:none;" onchange="handleExamenResultadoFileChange(${uid}, this)">
+              <span data-examen-resultado-label class="examen-files-wrap" style="flex:1;min-width:200px;">${examenResultadoFilesHTML(uid)}</span>
             </div>
           </div>
         </div>
@@ -19402,6 +19450,7 @@
       examenBlockUidSeq = 0;
       examenPendingFiles = {};
       examenExistingFiles = {};
+      examenArchivosAEliminar = [];
       const list = document.getElementById('examen-blocks-list');
       list.innerHTML = bloques.map(b => examenBlockTemplate(examenBlockUidSeq++, b)).join('');
       lucide.createIcons();
@@ -19418,6 +19467,9 @@
       if (list.children.length <= 1) return; // al menos un bloque
       const block = list.querySelector(`.examen-block[data-block-uid="${uid}"]`);
       if (block) block.remove();
+      // Los archivos que el bloque ya tenía guardados quedarían huérfanos
+      // en el bucket si solo se olvidara la referencia.
+      (examenExistingFiles[uid] || []).forEach(a => { if (a.path) examenArchivosAEliminar.push(a.path); });
       delete examenPendingFiles[uid];
       delete examenExistingFiles[uid];
     }
@@ -19461,6 +19513,7 @@
       examenModalTipo = null;
       examenPendingFiles = {};
       examenExistingFiles = {};
+      examenArchivosAEliminar = [];
     }
 
     function handleExamenModalOverlayClick(e) {
@@ -19505,13 +19558,12 @@
 
         let examenId = isEdit ? data.examenes[editingExamenContext.index].id : null;
 
-        // Metadata sin resultadoPath todavía — hace falta el id del examen
-        // para construir la ruta de storage de cada archivo (mismo criterio
-        // de 2 pasos que mascota.foto_path/documento.pdf_path).
+        // Metadata sin los archivos nuevos todavía — hace falta el id del
+        // examen para construir la ruta de storage de cada archivo (mismo
+        // criterio de 2 pasos que mascota.foto_path/documento.pdf_path).
         const pruebasMetaSinArchivo = bloquesInfo.map(b => ({
           profesional: b.profesional, prueba: b.prueba, cantidad: b.cantidad,
-          resultadoPath: examenExistingFiles[b.uid] ? examenExistingFiles[b.uid].path : null,
-          resultadoNombre: examenExistingFiles[b.uid] ? examenExistingFiles[b.uid].nombre : null
+          archivos: (examenExistingFiles[b.uid] || []).map(a => ({ path: a.path, nombre: a.nombre }))
         }));
 
         if (!examenId) {
@@ -19524,22 +19576,24 @@
           examenId = inserted.id;
         }
 
-        // Subir archivos nuevos elegidos en esta sesión del modal.
+        // Subir los archivos nuevos elegidos en esta sesión del modal. Se
+        // suman a los que el bloque ya tenía guardados: un bloque puede
+        // llevar varios PDFs e imágenes.
         const pruebasFinal = [];
         for (let i = 0; i < bloquesInfo.length; i++) {
           const b = bloquesInfo[i];
-          const file = examenPendingFiles[b.uid];
-          let resultadoPath = pruebasMetaSinArchivo[i].resultadoPath;
-          let resultadoNombre = pruebasMetaSinArchivo[i].resultadoNombre;
-          if (file) {
+          const archivos = [...pruebasMetaSinArchivo[i].archivos];
+          const nuevos = examenPendingFiles[b.uid] || [];
+          for (let j = 0; j < nuevos.length; j++) {
+            const file = nuevos[j];
             const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
-            resultadoPath = `clinica/${establecimientoId}/examenes/${examenId}/${i}-${Date.now()}.${ext}`;
+            const path = `clinica/${establecimientoId}/examenes/${examenId}/${i}-${Date.now()}-${j}.${ext}`;
             const { error: uploadError } = await window.supabase.storage.from('pdfs')
-              .upload(resultadoPath, file, { contentType: file.type || 'application/octet-stream', upsert: true });
+              .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: true });
             if (uploadError) throw uploadError;
-            resultadoNombre = file.name;
+            archivos.push({ path, nombre: file.name });
           }
-          pruebasFinal.push({ profesional: b.profesional, prueba: b.prueba, cantidad: b.cantidad, resultadoPath, resultadoNombre });
+          pruebasFinal.push({ profesional: b.profesional, prueba: b.prueba, cantidad: b.cantidad, archivos });
         }
 
         const { error: updateError } = await window.supabase.from('examenes').update({
@@ -19547,6 +19601,17 @@
           pruebas: pruebasFinal, usuario: usuarioNombre, updated_at: new Date().toISOString()
         }).eq('id', examenId);
         if (updateError) throw updateError;
+
+        // Recién acá se borran del bucket los archivos que el usuario quitó
+        // en esta sesión del modal: cancelar el modal no debe borrar nada, y
+        // si el guardado falla la fila sigue apuntando a ellos. Que falle el
+        // borrado no invalida el registro (solo deja un archivo huérfano),
+        // así que no se relanza el error.
+        if (examenArchivosAEliminar.length) {
+          const { error: removeError } = await window.supabase.storage.from('pdfs').remove(examenArchivosAEliminar);
+          if (removeError) console.error('[IRIS] Error eliminando archivos de resultado en storage:', removeError);
+          examenArchivosAEliminar = [];
+        }
 
         const record = {
           id: examenId, tipo, fecha: formatFechaCorta(fechaISO), fechaISO,
@@ -19602,12 +19667,13 @@
       };
     }
 
-    async function descargarResultadoExamen(petKey, examenIndex, pruebaIndex) {
+    async function descargarResultadoExamen(petKey, examenIndex, pruebaIndex, archivoIndex) {
       const record = patientData[petKey] && patientData[petKey].examenes[examenIndex];
       const prueba = record && record.pruebas[pruebaIndex];
-      if (!prueba || !prueba.resultadoPath) { showToast('Este registro no tiene un archivo de resultado adjunto'); return; }
+      const archivo = examenPruebaArchivos(prueba)[archivoIndex || 0];
+      if (!archivo) { showToast('Este registro no tiene un archivo de resultado adjunto'); return; }
       if (!window.supabase) return;
-      const { data, error } = await window.supabase.storage.from('pdfs').createSignedUrl(prueba.resultadoPath, 3600);
+      const { data, error } = await window.supabase.storage.from('pdfs').createSignedUrl(archivo.path, 3600);
       if (error) { console.error('[IRIS] Error firmando URL del resultado de examen:', error); showToast('No se pudo generar el enlace de descarga'); return; }
       window.open(data.signedUrl, '_blank');
     }
@@ -19632,7 +19698,7 @@
       }
       if (!window.supabase || !record || !record.id) return;
       try {
-        const paths = (record.pruebas || []).filter(p => p.resultadoPath).map(p => p.resultadoPath);
+        const paths = (record.pruebas || []).flatMap(p => examenPruebaArchivos(p).map(a => a.path));
         if (paths.length) await window.supabase.storage.from('pdfs').remove(paths);
         const { error } = await window.supabase.from('examenes').delete().eq('id', record.id);
         if (error) throw error;
@@ -20010,6 +20076,17 @@
       }
     }
 
+    // Un enlace por archivo adjunto del bloque, separados por coma —
+    // reutilizado por la tabla del módulo y por el modal "Ver"/el PDF de
+    // "Imprimir", para que las tres pantallas listen lo mismo.
+    function examenArchivosLinksHTML(petKey, examenIndex, pruebaIndex, prueba) {
+      const archivos = examenPruebaArchivos(prueba);
+      if (!archivos.length) return '—';
+      return archivos.map((a, ai) =>
+        `<a href="#" onclick="event.preventDefault(); descargarResultadoExamen('${petKey}', ${examenIndex}, ${pruebaIndex}, ${ai});" class="link-ghost">${escapeHtml(a.nombre || 'Archivo')}</a>`
+      ).join(', ');
+    }
+
     function examenPruebasResumenHTML(petKey, examenIndex, tipo, pruebas) {
       const campoLabel = getExamenCampoLabel(tipo);
       return pruebas.map((p, pi) => `
@@ -20017,9 +20094,7 @@
           <div>Profesional: ${p.profesional}</div>
           <div>${campoLabel}: ${p.prueba}</div>
           <div>Cantidad: ${p.cantidad}</div>
-          <div>Resultado: ${p.resultadoPath
-            ? `<a href="#" onclick="event.preventDefault(); descargarResultadoExamen('${petKey}', ${examenIndex}, ${pi});" class="link-ghost">${p.resultadoNombre}</a>`
-            : '—'}</div>
+          <div>Resultado: ${examenArchivosLinksHTML(petKey, examenIndex, pi, p)}</div>
         </div>
       `).join('');
     }
@@ -20031,9 +20106,7 @@
           <div style="font-size:12px;">Profesional: ${p.profesional}</div>
           <div style="font-size:12px;">${campoLabel}: ${p.prueba}</div>
           <div style="font-size:12px;">Cantidad: ${p.cantidad}</div>
-          <div style="font-size:12px;">Resultado: ${p.resultadoPath
-            ? `<a href="#" onclick="event.preventDefault(); descargarResultadoExamen('${petKey}', ${idx}, ${pi});" class="link-ghost">${p.resultadoNombre}</a>`
-            : '—'}</div>
+          <div style="font-size:12px;">Resultado: ${examenArchivosLinksHTML(petKey, idx, pi, p)}</div>
         </div>
       `).join('');
       return `
