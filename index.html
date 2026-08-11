@@ -2974,6 +2974,87 @@
        abrir el Tablero (resetVitalesNoEvaluados()) y nunca se persiste. */
     .tablero-vital-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
     .tablero-vital-head .tablero-vital-label { min-width: 0; }
+
+    /* ── Seguimiento de anestesia (modal de Cirugías) ────────────────
+       Deliberadamente NO reusa .tablero-vital-tile: allá se llena una vez
+       por consulta y el slider ayuda; acá se registra una medición cada
+       5–10 minutos durante el procedimiento y lo único que importa es
+       teclear rápido. Por eso son campos planos, sin slider ni
+       interruptor "No evaluado" — un campo vacío ya se guarda como null,
+       que es exactamente lo que ese interruptor conseguía allá. */
+    .anestesia-vitals-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .anestesia-field {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background-color: var(--surface-container-low);
+      padding: 8px 11px; display: flex; flex-direction: column; gap: 3px;
+      transition: var(--transition);
+    }
+    .anestesia-field:focus-within {
+      border-color: var(--clinic-accent); background-color: var(--surface);
+      box-shadow: 0 0 0 3px rgba(var(--clinic-accent-rgb), 0.12);
+    }
+    .anestesia-field-label {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-2);
+    }
+    .anestesia-field-label i { color: var(--clinic-accent); }
+    .anestesia-field-row { display: flex; align-items: baseline; gap: 4px; }
+    .anestesia-field-input {
+      width: 100%; min-width: 0; border: none; background: transparent; outline: none;
+      padding: 0; font-family: inherit; font-size: 16px; font-weight: 700; color: var(--text-1);
+    }
+    .anestesia-field-input::placeholder { color: var(--text-2); opacity: 0.45; font-weight: 600; }
+    .anestesia-field-input::-webkit-outer-spin-button,
+    .anestesia-field-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .anestesia-field-input[type="number"] { -moz-appearance: textfield; }
+    .anestesia-field-unit { font-size: 11px; font-weight: 600; color: var(--text-2); flex-shrink: 0; }
+
+    /* Datos de la cirugía madre, solo lectura — mismo rol que la cabecera
+       de referencia del modal de Resultados sobre su orden. */
+    .anestesia-ref {
+      display: flex; flex-wrap: wrap; gap: 16px;
+      padding: 10px 12px; margin-bottom: 14px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: rgba(var(--clinic-accent-rgb), 0.06);
+    }
+    .anestesia-ref-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .anestesia-ref-label {
+      font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-2);
+    }
+    .anestesia-ref-value { font-size: 12.5px; font-weight: 600; color: var(--text-1); }
+
+    /* Barra de estado del formulario: dice si se está creando una medición
+       nueva o editando una ya registrada. Sin esto, al editar no hay forma
+       de saber por qué el botón dice "Actualizar". */
+    .anestesia-form-state {
+      display: none; align-items: center; gap: 8px;
+      padding: 7px 11px; margin-bottom: 10px; border-radius: var(--radius);
+      border: 1px solid var(--warning); font-size: 12px; color: var(--text-1);
+      background: color-mix(in srgb, var(--warning) 10%, transparent);
+    }
+    .anestesia-form-state.show { display: flex; }
+    .anestesia-form-state i { width: 14px; height: 14px; flex-shrink: 0; }
+
+    .anestesia-tabla-titulo {
+      display: flex; align-items: center; gap: 6px;
+      margin: 18px 0 8px; font-size: 12px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-2);
+    }
+    .anestesia-tabla-titulo i { width: 14px; height: 14px; color: var(--clinic-accent); }
+    /* Una anestesia larga son decenas de filas: la tabla scrollea sola en
+       vez de estirar el modal fuera de la pantalla. */
+    .anestesia-tabla-wrap { max-height: 260px; overflow-y: auto; }
+    .anestesia-obs-cell {
+      max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
     /* Previsualización del modal "Cargar desde audio" (paso 3 del flujo de
        transcripción). Solo colores de la paleta — nada hardcodeado, y los
        derivados con rgba(var(--clinic-accent-rgb), α) como el resto. */
@@ -6409,7 +6490,15 @@
               </div>
               <div class="tablero-hero-id">
                 <div class="tablero-hero-name-row">
-                  <span class="tablero-hero-name" id="tablero-pet-name">—</span>
+                  <!-- Editar mascota desde el nombre, mismo criterio de
+                       affordance que la cabecera del Consultorio
+                       (.pet-name-title-btn, reutilizada tal cual). -->
+                  <span class="pet-name-title-btn" role="button" tabindex="0" title="Editar mascota"
+                        onclick="openEditMascotaModal(selectedPetKey)"
+                        onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditMascotaModal(selectedPetKey);}">
+                    <span class="tablero-hero-name" id="tablero-pet-name">—</span>
+                    <i data-lucide="pencil" style="width:14px;height:14px;"></i>
+                  </span>
                   <span class="tablero-hero-code" id="tablero-pet-code">—</span>
                   <span class="tablero-hero-live"><span class="tablero-hero-live-dot"></span> Consulta en curso</span>
                 </div>
@@ -8202,6 +8291,12 @@
             usuario: 'Dr. Sebastián Ríos'
           }
         ],
+        // Monitoreo de anestesia — una entrada por MEDICIÓN, enlazada a su
+        // cirugía por `cirugiaId` (uuid real de cirugias.id). Vacío en los
+        // mocks a propósito: estas cirugías de ejemplo no tienen id de
+        // Supabase, y sin él la acción del menú "..." ni siquiera aparece
+        // (ver puedeSeguimientoAnestesia()).
+        anestesias: [],
         problemas: [
           { id: 'prob-1', texto: 'Vómito recurrente en las últimas 48 horas — en estudio (imagen/laboratorio pendiente)', estado: 'activo' },
           { id: 'prob-2', texto: 'Hiporexia', estado: 'resuelto' }
@@ -8263,6 +8358,7 @@
         seguimientos: [],
         hospitalizaciones: [],
         cirugias: [],
+        anestesias: [],
         problemas: []
       },
       milo: {
@@ -8321,6 +8417,7 @@
         mensajes: [],
         seguimientos: [],
         cirugias: [],
+        anestesias: [],
         problemas: []
       }
     };
@@ -12029,6 +12126,13 @@
         document.getElementById('pet-profile-chip').textContent = data.chip;
         mountPetGeneralCard('pet-header', petKey);
       }
+      // El hero del Tablero muestra los mismos datos y desde ahí también se
+      // abre "Editar mascota" — mismo criterio que guardarPesoActualizado()/
+      // guardarTemperamento(), sin esto el hero seguiría mostrando los datos
+      // viejos hasta cerrar la consulta.
+      if (selectedPetKey === petKey && document.getElementById('tablero-view').classList.contains('active')) {
+        mountTableroHeader(petKey);
+      }
       // Fuera del bloque anterior: el Kardex puede estar abierto sobre una
       // mascota distinta de la seleccionada en el Consultorio y su header
       // también repinta la gráfica de peso.
@@ -12291,6 +12395,9 @@
         timeline: [], consultas: [],
         formulas: [], ordenes: [], documentos: [], resultados: [], vacunaciones: [], desparasitaciones: [], tareasPendientes: [],
         peluquerias: [], guarderias: [], remisiones: [], mensajes: [], seguimientos: [], hospitalizaciones: [], cirugias: [],
+        // Monitoreo de anestesia: una entrada por MEDICIÓN, no por cirugía
+        // (ver ANESTESIA_VITALES y el bloque "SEGUIMIENTO DE ANESTESIA").
+        anestesias: [],
         problemas: [], examenes: [],
         // Otros tutores que responden por la mascota (ver mascota_contactos).
         contactos: []
@@ -13319,12 +13426,22 @@
           <strong>${data.weight || '—'}</strong>
           <i data-lucide="pencil" class="pet-edit-hint" style="width:11px;height:11px;"></i>
         </span>`;
+      // Temperamento clickeable acá igual que en la cabecera del Consultorio:
+      // abre el mismo #temperamento-modal (openTemperamentoModal), que es el
+      // único camino que escribe `data.temperamento` (no se duplica lógica).
+      const temperamentoItem = `
+        <span class="tablero-hero-meta-item pet-temperamento-btn" role="button" tabindex="0" title="Actualizar temperamento"
+              onclick="openTemperamentoModal('${petKey}')"
+              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openTemperamentoModal('${petKey}');}">
+          ${temperamentoChipHtml(data.temperamento)}
+          <i data-lucide="pencil" class="pet-edit-hint" style="width:11px;height:11px;"></i>
+        </span>`;
       document.getElementById('tablero-pet-meta').innerHTML = [
         metaItem(data.avatarClass === 'cat' ? 'cat' : 'dog', `${data.species} — ${data.breed}`),
         metaItem('calendar', edadTextoParaMostrar(data) || '—'),
         pesoItem,
         generoMetaItemHtml(data.genero),
-        temperamentoChipHtml(data.temperamento)
+        temperamentoItem
       ].filter(Boolean).join('');
 
       document.getElementById('tablero-pet-alerts').innerHTML = tableroAlertChipsHtml(data, petKey);
@@ -15134,6 +15251,11 @@
         const record = patientData[petKey].cirugias[Number(idx)];
         if (!record) return null;
         return { title: 'Cirugía/procedimiento', html: cirugiaViewContentHTML(record) };
+      } else if (moduleKey === 'anestesia') {
+        const [petKey, idx] = recordId.split(':');
+        const record = patientData[petKey].anestesias[Number(idx)];
+        if (!record) return null;
+        return { title: 'Medición de anestesia', html: anestesiaViewContentHTML(record) };
       } else if (moduleKey === 'peluqueria') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].peluquerias[Number(idx)];
@@ -15263,6 +15385,11 @@
       } else if (moduleKey === 'cirugia') {
         const [petKey, idx] = recordId.split(':');
         openCirugiaModal('edit', petKey, Number(idx));
+      } else if (moduleKey === 'anestesia') {
+        // No abre un modal propio: precarga el formulario que ya está
+        // arriba en el mismo #anestesia-modal (ver editarAnestesiaMedicion).
+        const [petKey, idx] = recordId.split(':');
+        editarAnestesiaMedicion(petKey, Number(idx));
       } else if (moduleKey === 'peluqueria') {
         const [petKey, idx] = recordId.split(':');
         openPeluqueriaModal('edit', petKey, Number(idx));
@@ -15493,7 +15620,7 @@
 
     function rowActionImprimir(moduleKey, recordId) {
       closeAllRowMenus();
-      if (moduleKey === 'usuario' || moduleKey === 'seguimiento' || moduleKey === 'agenda-evento') {
+      if (moduleKey === 'usuario' || moduleKey === 'seguimiento' || moduleKey === 'agenda-evento' || moduleKey === 'anestesia') {
         showToast('Impresión no disponible para este tipo de registro');
         return;
       }
@@ -15720,6 +15847,11 @@
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-cirugia-row="${idx}"]`);
         eliminarCirugiaReal(petKey, idx, row);
+      } else if (moduleKey === 'anestesia') {
+        const [petKey, idxStr] = recordId.split(':');
+        const idx = Number(idxStr);
+        const row = document.querySelector(`tr[data-anestesia-row="${idx}"]`);
+        eliminarAnestesiaMedicionReal(petKey, idx, row);
       } else if (moduleKey === 'agenda-evento') {
         eliminarEventoAgendaReal(recordId);
       } else if (moduleKey === 'cotizacion') {
@@ -18229,8 +18361,13 @@
       return []; // Ventas — la tab ya está bloqueada por VENTAS_ALLOWED_SUBTABS
     }
 
-    function renderCirugiaRowActionsMenu(record, recordId) {
+    // Clon local de renderRowActionsMenu (este módulo tiene sus propias
+    // reglas por rol, ver getCirugiaRowActions). `extraActions` sigue el
+    // mismo formato {icon, label, onclick} de la función genérica — se
+    // agregó para colgar acá "Seguimiento de anestesia".
+    function renderCirugiaRowActionsMenu(record, recordId, extraActions) {
       const actions = getCirugiaRowActions(record);
+      extraActions = extraActions || [];
       if (!actions.length) return '';
       const menuId = `row-menu-cirugia-${String(recordId).replace(/[^a-zA-Z0-9]/g, '_')}`;
       const items = actions.map(key => {
@@ -18239,12 +18376,17 @@
           <i data-lucide="${def.icon}"></i> ${def.label}
         </div>`;
       }).join('');
+      const extraItems = extraActions.map(ea => `
+        <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); ${ea.onclick}">
+          <i data-lucide="${ea.icon}"></i> ${ea.label}
+        </div>
+      `).join('');
       return `
         <div class="row-actions-wrap">
           <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones">
             <i data-lucide="more-vertical" style="width:16px;height:16px;"></i>
           </button>
-          <div class="row-actions-menu" id="${menuId}">${items}</div>
+          <div class="row-actions-menu" id="${menuId}">${items}${extraItems}</div>
         </div>
       `;
     }
@@ -18269,16 +18411,26 @@
         const ordenados = data.cirugias
           .map((c, i) => ({ c, i }))
           .sort((a, b) => (b.c.fechaISO + b.c.hora).localeCompare(a.c.fechaISO + a.c.hora));
-        tbody.innerHTML = ordenados.map(({ c, i }) => `
+        tbody.innerHTML = ordenados.map(({ c, i }) => {
+          // Monitoreo de anestesia: solo tiene sentido si el procedimiento
+          // lleva anestesia y no se canceló (ver puedeSeguimientoAnestesia).
+          // El contador entre paréntesis evita tener que abrir el modal para
+          // saber si ya se registró algo.
+          const nMed = puedeSeguimientoAnestesia(c) ? getAnestesiaMediciones(petKey, c.id).length : 0;
+          const extraActions = puedeSeguimientoAnestesia(c)
+            ? [{ icon: 'activity', label: `Seguimiento de anestesia${nMed ? ` (${nMed})` : ''}`, onclick: `abrirAnestesiaModal('${petKey}', ${i})` }]
+            : [];
+          return `
           <tr data-cirugia-row="${i}">
             <td>${c.fecha} · ${c.hora}</td>
             <td>${c.tipo}</td>
             <td>${c.medicoResponsable}</td>
             <td>${c.auxiliarAsignado}</td>
             <td>${cirugiaEstadoBadgeHTML(c.estado)}</td>
-            <td style="text-align: right;">${renderCirugiaRowActionsMenu(c, `${petKey}:${i}`)}</td>
+            <td style="text-align: right;">${renderCirugiaRowActionsMenu(c, `${petKey}:${i}`, extraActions)}</td>
           </tr>
-        `).join('');
+        `;
+        }).join('');
       }
 
       const counter = document.querySelector('.sidebar-item[data-subtab="cirugias"] .sidebar-counter');
@@ -18572,6 +18724,441 @@
         showToast('No se pudo guardar el procedimiento — intenta de nuevo');
       } finally {
         if (saveBtn) saveBtn.disabled = false;
+      }
+    }
+
+    // ── SEGUIMIENTO DE ANESTESIA (sub-registro de Cirugías) ──────
+    // Durante una cirugía con anestesia se monitorea al paciente cada
+    // 5–10 minutos. Cada entrada de patientData[petKey].anestesias[] es UNA
+    // medición, enlazada a su cirugía por `cirugiaId` (el uuid real de
+    // cirugias.id, no la posición del array — las cirugías se reordenan al
+    // renderizar y el array se altera con unshift, mismo motivo por el que
+    // getHospSeguimientos() filtra por hospId).
+    //
+    // Lo que este módulo NO hace, a propósito:
+    //  · No escribe en data.timeline. Una anestesia produce decenas de
+    //    mediciones; la entrada de historia ya la crea la cirugía
+    //    (construirCirugiaTimelineDesdeFila). Volcarlas al timeline lo
+    //    haría ilegible.
+    //  · No tiene interruptor "No evaluado" como el Tablero. Acá un campo
+    //    vacío YA se guarda como null, que es exactamente el resultado que
+    //    ese interruptor conseguía allá — no hace falta el control extra.
+
+    // Fuente ÚNICA de los 8 vitales: de acá salen la grilla del formulario,
+    // las columnas de la tabla y el detalle del modal Ver. Agregar un vital
+    // nuevo es agregar una entrada acá y una columna en la tabla de
+    // Supabase — nada más. (En el Kardex las 8 filas de signos están
+    // repetidas a mano en cada render; ese es el error que no se repite.)
+    const ANESTESIA_VITALES = [
+      { key: 'fc',    sigla: 'FC',    label: 'Frecuencia cardíaca',     unidad: 'lpm',  icon: 'heart-pulse', step: '1',   placeholder: '140',  decimal: false },
+      { key: 'fr',    sigla: 'FR',    label: 'Frecuencia respiratoria', unidad: 'rpm',  icon: 'wind',        step: '1',   placeholder: '20',   decimal: false },
+      { key: 'pas',   sigla: 'PAS',   label: 'Presión sistólica',       unidad: 'mmHg', icon: 'activity',    step: '1',   placeholder: '120',  decimal: false },
+      { key: 'pad',   sigla: 'PAD',   label: 'Presión diastólica',      unidad: 'mmHg', icon: 'activity',    step: '1',   placeholder: '80',   decimal: false },
+      { key: 'pam',   sigla: 'PAM',   label: 'Presión arterial media',  unidad: 'mmHg', icon: 'activity',    step: '1',   placeholder: '93',   decimal: false },
+      { key: 'spo2',  sigla: 'SpO₂',  label: 'Saturación de oxígeno',   unidad: '%',    icon: 'droplet',     step: '0.1', placeholder: '98',   decimal: true  },
+      { key: 'tc',    sigla: 'TC',    label: 'Temperatura corporal',    unidad: '°C',   icon: 'thermometer', step: '0.1', placeholder: '37.5', decimal: true  },
+      { key: 'etco2', sigla: 'EtCO₂', label: 'Capnografía',             unidad: 'mmHg', icon: 'gauge',       step: '1',   placeholder: '35',   decimal: false }
+    ];
+
+    let anestesiaContext = null;   // { petKey, cirugiaIndex } — cirugía abierta
+    let editingAnestesiaIdx = null; // índice en data.anestesias al editar
+
+    // Mediciones de UNA cirugía. Devuelve el índice original junto al
+    // registro, porque es lo que consumen ver/editar/eliminar.
+    function getAnestesiaMediciones(petKey, cirugiaId) {
+      const data = patientData[petKey];
+      if (!data || !data.anestesias || !cirugiaId) return [];
+      return data.anestesias
+        .map((m, i) => ({ m, i }))
+        .filter(({ m }) => m.cirugiaId === cirugiaId)
+        // Ascendente: una curva de anestesia se lee hacia adelante, al
+        // revés que el resto de los módulos (que son historial).
+        .sort((a, b) => String(a.m.fechaISO).localeCompare(String(b.m.fechaISO)));
+    }
+
+    // El guard `!!record.id` no es cosmético: sin el uuid de la cirugía no
+    // hay a qué colgar la medición. Las cirugías mock (pacientes de
+    // ejemplo) no lo tienen; las reales siempre vienen de Supabase con id.
+    function puedeSeguimientoAnestesia(record) {
+      return !!record.id
+        && !!record.anestesia && record.anestesia !== 'Ninguna'
+        && record.estado !== 'cancelado';
+    }
+
+    // Registrar es tarea de quien monitorea: el auxiliar también entra.
+    // Mismo criterio que el Kardex, donde llenar signos vitales NO exige el
+    // "Modo programación" que sí exige crear tratamientos.
+    function puedeRegistrarAnestesia() {
+      return currentSimRole === 'admin' || currentSimRole === 'medico' || currentSimRole === 'auxiliar';
+    }
+
+    // Editar/eliminar: mismo criterio que Seguimientos — admin todo, médico
+    // y auxiliar solo lo propio, y el auxiliar nunca elimina.
+    function getAnestesiaRowActions(record) {
+      const esPropio = record.registradoPor === getCurrentSimUserId();
+      if (currentSimRole === 'admin') return ['ver', 'editar', 'eliminar'];
+      if (currentSimRole === 'medico') return esPropio ? ['ver', 'editar', 'eliminar'] : ['ver'];
+      if (currentSimRole === 'auxiliar') return esPropio ? ['ver', 'editar'] : ['ver'];
+      return []; // Ventas — el subtab ya está bloqueado por VENTAS_ALLOWED_SUBTABS
+    }
+
+    function renderAnestesiaRowActionsMenu(record, recordId) {
+      const actions = getAnestesiaRowActions(record);
+      if (!actions.length) return '';
+      const menuId = `row-menu-anestesia-${String(recordId).replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const items = actions.map(key => {
+        const def = ROW_ACTION_DEFS[key];
+        return `<div class="row-actions-item ${def.danger ? 'danger' : ''}" onclick="event.stopPropagation(); rowAction${key.charAt(0).toUpperCase() + key.slice(1)}('anestesia','${recordId}')">
+          <i data-lucide="${def.icon}"></i> ${def.label}
+        </div>`;
+      }).join('');
+      return `
+        <div class="row-actions-wrap">
+          <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones">
+            <i data-lucide="more-vertical" style="width:16px;height:16px;"></i>
+          </button>
+          <div class="row-actions-menu" id="${menuId}">${items}</div>
+        </div>
+      `;
+    }
+
+    function anestesiaUsuarioNombre(record) {
+      const u = USUARIOS_SISTEMA.find(u => u.id === record.registradoPor);
+      return u ? u.nombre : (record.registradoPorNombre || '—');
+    }
+
+    function anestesiaTieneValor(v) { return v !== null && v !== undefined && v !== ''; }
+
+    // "120/80" solo si están las DOS mitades; si falta una, la que haya
+    // suelta y rotulada. Un "PA —/80" sería justamente el rastro de la
+    // variable ausente que este módulo no quiere dejar — mismo criterio ya
+    // aplicado en guardarConsulta()/consultaViewContentHTML().
+    function anestesiaPresionTexto(r) {
+      const pas = anestesiaTieneValor(r.pas), pad = anestesiaTieneValor(r.pad);
+      if (pas && pad) return `${r.pas}/${r.pad}`;
+      if (pas) return `PAS ${r.pas}`;
+      if (pad) return `PAD ${r.pad}`;
+      return '—';
+    }
+
+    // Columnas de la tabla: las mismas de ANESTESIA_VITALES, con PAS/PAD
+    // fundidos en una sola columna "PA" (es como se lee una presión).
+    function anestesiaTablaColumnas() {
+      const cols = [];
+      ANESTESIA_VITALES.forEach(v => {
+        if (v.key === 'pad') return;                              // va dentro de PA
+        if (v.key === 'pas') { cols.push({ key: 'pa', sigla: 'PA' }); return; }
+        cols.push({ key: v.key, sigla: v.sigla });
+      });
+      return cols;
+    }
+
+    function anestesiaCeldaValor(record, key) {
+      if (key === 'pa') return anestesiaPresionTexto(record);
+      return anestesiaTieneValor(record[key]) ? String(record[key]) : '—';
+    }
+
+    function renderAnestesiaFormFields() {
+      const grid = document.getElementById('anestesia-vitals-grid');
+      if (!grid) return;
+      grid.innerHTML = ANESTESIA_VITALES.map(v => `
+        <div class="anestesia-field">
+          <label class="anestesia-field-label" for="anestesia-${v.key}">
+            <i data-lucide="${v.icon}" style="width:13px;height:13px;"></i> ${v.sigla}
+          </label>
+          <span class="anestesia-field-row">
+            <input type="number" step="${v.step}" id="anestesia-${v.key}" class="anestesia-field-input"
+                   placeholder="${v.placeholder}" aria-label="${v.label}">
+            <span class="anestesia-field-unit">${v.unidad}</span>
+          </span>
+        </div>
+      `).join('');
+    }
+
+    function renderAnestesiaMedicionesTable() {
+      if (!anestesiaContext) return;
+      const { petKey, cirugiaIndex } = anestesiaContext;
+      const cirugia = patientData[petKey].cirugias[cirugiaIndex];
+      if (!cirugia) return;
+
+      const cols = anestesiaTablaColumnas();
+      const head = document.getElementById('anestesia-table-head');
+      if (head) {
+        head.innerHTML = `<tr>
+          <th>Hora</th>
+          ${cols.map(c => `<th>${c.sigla}</th>`).join('')}
+          <th>Observaciones</th>
+          <th>Registró</th>
+          <th style="text-align:right;">Acciones</th>
+        </tr>`;
+      }
+
+      const registros = getAnestesiaMediciones(petKey, cirugia.id);
+      const tbody = document.getElementById('anestesia-table-body');
+      const colspan = cols.length + 4;
+      tbody.innerHTML = registros.length ? registros.map(({ m, i }) => `
+        <tr data-anestesia-row="${i}">
+          <td>${m.fecha}</td>
+          ${cols.map(c => `<td>${anestesiaCeldaValor(m, c.key)}</td>`).join('')}
+          <td class="anestesia-obs-cell" title="${(m.observaciones || '').replace(/"/g, '&quot;')}">${m.observaciones || '—'}</td>
+          <td>${anestesiaUsuarioNombre(m)}</td>
+          <td style="text-align: right;">${renderAnestesiaRowActionsMenu(m, `${petKey}:${i}`)}</td>
+        </tr>
+      `).join('') : `<tr><td colspan="${colspan}" style="text-align:center;color:var(--text-2);padding:16px 0;">Todavía no hay mediciones registradas para este procedimiento.</td></tr>`;
+
+      lucide.createIcons();
+    }
+
+    function anestesiaResetFormulario() {
+      editingAnestesiaIdx = null;
+      document.getElementById('anestesia-fecha').value = getNowDatetimeLocalValue();
+      ANESTESIA_VITALES.forEach(v => {
+        const el = document.getElementById(`anestesia-${v.key}`);
+        if (el) el.value = '';
+      });
+      document.getElementById('anestesia-observaciones').value = '';
+      document.getElementById('anestesia-form-state').classList.remove('show');
+      document.getElementById('anestesia-save-label').textContent = 'Registrar';
+    }
+
+    function abrirAnestesiaModal(petKey, cirugiaIndex) {
+      const data = patientData[petKey];
+      const cirugia = data && data.cirugias ? data.cirugias[cirugiaIndex] : null;
+      if (!cirugia) return;
+      if (!data.anestesias) data.anestesias = [];
+      anestesiaContext = { petKey, cirugiaIndex };
+
+      const avatar = document.getElementById('anestesia-pet-avatar');
+      avatar.textContent = data.avatarText;
+      avatar.className = `soap-modal-pet-avatar ${data.avatarClass}`;
+      document.getElementById('anestesia-pet-name').textContent = data.name;
+
+      document.getElementById('anestesia-ref').innerHTML = `
+        <div class="anestesia-ref-item">
+          <span class="anestesia-ref-label">Procedimiento</span>
+          <span class="anestesia-ref-value">${cirugia.tipo}</span>
+        </div>
+        <div class="anestesia-ref-item">
+          <span class="anestesia-ref-label">Fecha programada</span>
+          <span class="anestesia-ref-value">${cirugia.fecha} · ${cirugia.hora}</span>
+        </div>
+        <div class="anestesia-ref-item">
+          <span class="anestesia-ref-label">Anestesia</span>
+          <span class="anestesia-ref-value">${cirugia.anestesia}</span>
+        </div>
+        <div class="anestesia-ref-item">
+          <span class="anestesia-ref-label">Médico responsable</span>
+          <span class="anestesia-ref-value">${cirugia.medicoResponsable}</span>
+        </div>
+        <div class="anestesia-ref-item">
+          <span class="anestesia-ref-label">Estado</span>
+          <span class="anestesia-ref-value">${cirugiaEstadoBadgeHTML(cirugia.estado)}</span>
+        </div>
+      `;
+
+      renderAnestesiaFormFields();
+      anestesiaResetFormulario();
+
+      // Ventas no llega acá, pero un rol sin permiso de registro debe poder
+      // CONSULTAR el monitoreo sin ver un formulario que no puede usar.
+      const puedeRegistrar = puedeRegistrarAnestesia();
+      document.getElementById('anestesia-save-btn').style.display = puedeRegistrar ? '' : 'none';
+      document.getElementById('anestesia-vitals-grid').style.display = puedeRegistrar ? '' : 'none';
+
+      renderAnestesiaMedicionesTable();
+      document.getElementById('anestesia-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeAnestesiaModal() {
+      document.getElementById('anestesia-modal').classList.remove('show');
+      anestesiaContext = null;
+      editingAnestesiaIdx = null;
+    }
+    function handleAnestesiaModalOverlayClick(e) {
+      if (e.target === document.getElementById('anestesia-modal')) closeAnestesiaModal();
+    }
+
+    // Vacío = no se midió → null. Nunca 0: un 0 en FC o SpO₂ es un dato
+    // clínico distinto de "no lo medí".
+    function anestesiaLeerCampo(v) {
+      const el = document.getElementById(`anestesia-${v.key}`);
+      const raw = el ? String(el.value).trim() : '';
+      if (raw === '') return null;
+      const n = v.decimal ? parseFloat(raw) : parseInt(raw, 10);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function editarAnestesiaMedicion(petKey, idx) {
+      if (!anestesiaContext) return;
+      const record = patientData[petKey].anestesias[idx];
+      if (!record) return;
+      editingAnestesiaIdx = idx;
+      document.getElementById('anestesia-fecha').value = record.fechaISO || '';
+      ANESTESIA_VITALES.forEach(v => {
+        const el = document.getElementById(`anestesia-${v.key}`);
+        if (el) el.value = anestesiaTieneValor(record[v.key]) ? record[v.key] : '';
+      });
+      document.getElementById('anestesia-observaciones').value = record.observaciones || '';
+      document.getElementById('anestesia-form-state-text').textContent = `Editando la medición de las ${record.fecha}`;
+      document.getElementById('anestesia-form-state').classList.add('show');
+      document.getElementById('anestesia-save-label').textContent = 'Actualizar';
+      document.getElementById('anestesia-fecha').scrollIntoView({ block: 'nearest' });
+      lucide.createIcons();
+    }
+
+    function cancelarEdicionAnestesia() { anestesiaResetFormulario(); }
+
+    function anestesiaViewContentHTML(m) {
+      // Los vitales sin dato no se listan: no dejar rastro de la variable
+      // ausente es el mismo requisito del "No evaluado" del Tablero.
+      const medidos = ANESTESIA_VITALES
+        .filter(v => anestesiaTieneValor(m[v.key]))
+        .map(v => `
+          <div class="info-label">${v.label} (${v.sigla})</div>
+          <div class="info-value">${m[v.key]} ${v.unidad}</div>
+        `).join('');
+      return `
+        <div class="info-label">Fecha y hora</div>
+        <div class="info-value">${m.fecha}</div>
+        ${medidos || '<div class="info-value">Sin signos vitales registrados.</div>'}
+        <div class="info-label">Observaciones</div>
+        <div class="info-value">${m.observaciones || '—'}</div>
+        <div class="info-label" style="margin-top:8px;">Registró</div>
+        <div class="info-value">${anestesiaUsuarioNombre(m)}</div>
+      `;
+    }
+
+    async function guardarAnestesiaMedicion() {
+      if (!anestesiaContext) return;
+      const { petKey, cirugiaIndex } = anestesiaContext;
+      const data = patientData[petKey];
+      const cirugia = data.cirugias[cirugiaIndex];
+      if (!cirugia || !cirugia.id) { showToast('El procedimiento no está sincronizado — no se puede registrar'); return; }
+      if (!puedeRegistrarAnestesia()) { showToast('Tu rol no puede registrar mediciones de anestesia'); return; }
+
+      const isEdit = editingAnestesiaIdx !== null;
+      const fechaISO = document.getElementById('anestesia-fecha').value;
+      if (!fechaISO) { showToast('Indica la fecha y hora de la medición'); return; }
+
+      const valores = {};
+      ANESTESIA_VITALES.forEach(v => { valores[v.key] = anestesiaLeerCampo(v); });
+      const observaciones = document.getElementById('anestesia-observaciones').value.trim();
+
+      // Una medición sin un solo vital ni observación no registra nada real
+      // — solo ensuciaría la curva con una fila vacía.
+      if (!ANESTESIA_VITALES.some(v => valores[v.key] !== null) && !observaciones) {
+        showToast('Registra al menos un signo vital o una observación');
+        return;
+      }
+
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+
+      const saveBtn = document.getElementById('anestesia-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const usuarioLocalId = getCurrentSimUserId();
+        const usuarioNombre = anestesiaUsuarioNombre({ registradoPor: usuarioLocalId, registradoPorNombre: (currentSession.user && currentSession.user.nombre) || '' });
+
+        const payload = {
+          fecha: fechaISO,
+          ...valores,
+          observaciones: observaciones || null,
+          registrado_por: usuarioLocalId,
+          registrado_por_nombre: usuarioNombre
+        };
+
+        let dbId = isEdit ? data.anestesias[editingAnestesiaIdx].id : null;
+        if (isEdit) {
+          const { error } = await window.supabase.from('anestesia_mediciones')
+            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+        } else {
+          const { data: inserted, error } = await window.supabase.from('anestesia_mediciones').insert({
+            ...payload,
+            establecimiento_id: establecimientoId,
+            mascota_id: data.mascotaId,
+            cirugia_id: cirugia.id,
+            created_by: userId
+          }).select().single();
+          if (error) throw error;
+          dbId = inserted.id;
+        }
+
+        const record = {
+          id: dbId, cirugiaId: cirugia.id,
+          fechaISO, fecha: formatFechaHoraCorta(fechaISO),
+          ...valores,
+          observaciones,
+          registradoPor: usuarioLocalId, registradoPorNombre: usuarioNombre
+        };
+
+        if (isEdit) {
+          data.anestesias[editingAnestesiaIdx] = record;
+        } else {
+          // push y no unshift: la tabla ordena por hora al renderizar, y el
+          // índice del array es el recordId de ver/editar/eliminar.
+          data.anestesias.push(record);
+        }
+
+        anestesiaResetFormulario();
+        renderAnestesiaMedicionesTable();
+        renderCirugiasTable(petKey);   // el contador (N) de la acción del menú "..."
+        showToast(isEdit ? 'Medición actualizada' : 'Medición registrada');
+        const primerCampo = document.getElementById(`anestesia-${ANESTESIA_VITALES[0].key}`);
+        if (primerCampo && !isEdit) primerCampo.focus();
+      } catch (err) {
+        console.error('[IRIS] Error guardando medición de anestesia en Supabase:', err);
+        showToast('No se pudo guardar la medición — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    }
+
+    function construirAnestesiaDesdeFila(r) {
+      // `fecha` es timestamp SIN zona: llega como '2026-08-09T14:35:00'. Se
+      // corta a 16 caracteres para el <input type="datetime-local"> sin
+      // pasar por new Date() (ver la trampa de zona horaria en CLAUDE.md).
+      const fechaISO = String(r.fecha || '').slice(0, 16);
+      const record = {
+        id: r.id, cirugiaId: r.cirugia_id,
+        fechaISO, fecha: formatFechaHoraCorta(fechaISO),
+        observaciones: r.observaciones || '',
+        registradoPor: r.registrado_por,
+        registradoPorNombre: r.registrado_por_nombre || ''
+      };
+      ANESTESIA_VITALES.forEach(v => {
+        record[v.key] = (r[v.key] === null || r[v.key] === undefined) ? null : Number(r[v.key]);
+      });
+      return record;
+    }
+
+    async function eliminarAnestesiaMedicionReal(petKey, idx, row) {
+      const record = patientData[petKey].anestesias[idx];
+      if (!record) return;
+      const aplicarLocal = () => {
+        patientData[petKey].anestesias.splice(idx, 1);
+        renderAnestesiaMedicionesTable();
+        renderCirugiasTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(aplicarLocal, 250);
+      } else {
+        aplicarLocal();
+      }
+      if (!window.supabase || !record.id) return;
+      const { error } = await window.supabase.from('anestesia_mediciones').delete().eq('id', record.id);
+      if (error) {
+        console.error('[IRIS] Error eliminando medición de anestesia en Supabase:', error);
+        showToast('La medición se quitó de la vista, pero no se pudo borrar del servidor');
       }
     }
 
@@ -23101,7 +23688,7 @@
     // sí a esta lista, o el respaldo manual la omite en silencio.
     const RESPALDO_TABLAS = [
       'propietarios', 'mascotas', 'consultas', 'documentos', 'examenes', 'formulas_medicas',
-      'vacunaciones', 'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
+      'vacunaciones', 'desparasitaciones', 'cirugias', 'anestesia_mediciones', 'hospitalizaciones', 'seguimientos',
       'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes', 'mensajes',
       'agenda_eventos', 'eventos_seguimiento', 'productos', 'movimientos', 'arqueos', 'ventas_facturas',
       'ventas_cotizaciones', 'catalogos_custom', 'documento_plantillas',
@@ -30588,7 +31175,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, eventoSegRes, vacunacionRes, desparasitacionRes, cirugiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes, plantillaRes, contactoRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, eventoSegRes, vacunacionRes, desparasitacionRes, cirugiaRes, anestesiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes, plantillaRes, contactoRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -30606,6 +31193,8 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           window.supabase.from('vacunaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('desparasitaciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('cirugias').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          // Ascendente: el monitoreo de una anestesia se lee hacia adelante.
+          window.supabase.from('anestesia_mediciones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: true }),
           window.supabase.from('tareas_pendientes').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('seguimientos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('remisiones').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
@@ -30633,6 +31222,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         if (vacunacionRes.error) throw vacunacionRes.error;
         if (desparasitacionRes.error) throw desparasitacionRes.error;
         if (cirugiaRes.error) throw cirugiaRes.error;
+        if (anestesiaRes.error) throw anestesiaRes.error;
         if (tareaPendienteRes.error) throw tareaPendienteRes.error;
         if (seguimientoRes.error) throw seguimientoRes.error;
         if (remisionRes.error) throw remisionRes.error;
@@ -30650,7 +31240,8 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           movimientoRows: movimientoRes.data || [], arqueoRows: arqueoRes.data || [],
           agendaRows: agendaRes.data || [], eventoSegRows: eventoSegRes.data || [],
           vacunacionRows: vacunacionRes.data || [], desparasitacionRows: desparasitacionRes.data || [],
-          cirugiaRows: cirugiaRes.data || [], tareaPendienteRows: tareaPendienteRes.data || [],
+          cirugiaRows: cirugiaRes.data || [], anestesiaRows: anestesiaRes.data || [],
+          tareaPendienteRows: tareaPendienteRes.data || [],
           seguimientoRows: seguimientoRes.data || [], remisionRows: remisionRes.data || [],
           peluqueriaRows: peluqueriaRes.data || [], guarderiaRows: guarderiaRes.data || [],
           mensajeRows: mensajeRes.data || [], catalogoRows: catalogoRes.data || [],
@@ -30658,11 +31249,11 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, anestesiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, anestesiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo());
       }
 
       // Formatos propios de esta clínica (los de fábrica viven en
@@ -30749,6 +31340,16 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         const record = construirCirugiaDesdeFila(r);
         pet.cirugias.push(record);
         pet.timeline.push(construirCirugiaTimelineDesdeFila(record));
+      });
+
+      // Monitoreo de anestesia. Sin entrada de timeline a propósito: la
+      // cirugía ya aportó la suya y una anestesia produce decenas de
+      // mediciones (ver el bloque "SEGUIMIENTO DE ANESTESIA").
+      anestesiaRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (!pet) return;
+        if (!pet.anestesias) pet.anestesias = [];
+        pet.anestesias.push(construirAnestesiaDesdeFila(r));
       });
 
       tareaPendienteRows.forEach(r => {
@@ -33323,6 +33924,69 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeSeguimientoFormModal()">Cerrar</button>
         <button class="btn-primary" id="seg-save-btn" onclick="guardarSeguimiento()">Guardar seguimiento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Seguimiento de anestesia (sub-registro de una cirugía)
+       UN SOLO modal, no dos como Seguimientos (listado + formulario): acá
+       se registra una medición cada 5–10 minutos mientras dura el
+       procedimiento, y abrir/cerrar un modal por cada una es inviable. El
+       formulario queda arriba, las mediciones ya registradas debajo, y
+       "Registrar" NO cierra nada — limpia el formulario, repone la hora y
+       deja listo el siguiente registro. -->
+  <div class="modal-overlay" id="anestesia-modal" onclick="handleAnestesiaModalOverlayClick(event)">
+    <div class="soap-modal-card" style="width:900px;" onclick="event.stopPropagation()">
+      <div class="soap-modal-header">
+        <div class="soap-modal-pet">
+          <div class="soap-modal-pet-avatar" id="anestesia-pet-avatar">L</div>
+          <div>
+            <div class="soap-modal-pet-name">Seguimiento de anestesia</div>
+            <span class="pet-chip-tag" id="anestesia-pet-name">Luna</span>
+          </div>
+        </div>
+        <button class="soap-modal-close" onclick="closeAnestesiaModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div class="soap-modal-body">
+        <!-- Datos de la cirugía madre (solo lectura) -->
+        <div class="anestesia-ref" id="anestesia-ref"></div>
+
+        <div class="anestesia-form-state" id="anestesia-form-state">
+          <i data-lucide="pencil"></i>
+          <span id="anestesia-form-state-text"></span>
+          <button class="btn-secondary" style="padding:2px 9px;font-size:11px;margin-left:auto;" onclick="cancelarEdicionAnestesia()">Cancelar edición</button>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label" for="anestesia-fecha">Fecha y hora</label>
+          <input type="datetime-local" class="input-control" style="padding-left:12px;max-width:260px;" id="anestesia-fecha">
+        </div>
+
+        <!-- Los campos los pinta renderAnestesiaFormFields() desde
+             ANESTESIA_VITALES: los 8 vitales se declaran una sola vez y de
+             ahí salen también las columnas de la tabla y el modal Ver. -->
+        <div class="anestesia-vitals-grid" id="anestesia-vitals-grid"></div>
+
+        <div class="input-group">
+          <label class="input-label" for="anestesia-observaciones">Observaciones</label>
+          <textarea class="soap-textarea" style="min-height:56px;" id="anestesia-observaciones" placeholder="Observaciones adicionales..."></textarea>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+          <button class="btn-primary" id="anestesia-save-btn" onclick="guardarAnestesiaMedicion()">
+            <i data-lucide="plus-circle" style="width:14px;height:14px;"></i> <span id="anestesia-save-label">Registrar</span>
+          </button>
+        </div>
+
+        <div class="anestesia-tabla-titulo">
+          <i data-lucide="activity"></i> Mediciones registradas
+        </div>
+        <div class="anestesia-tabla-wrap">
+          <table class="results-table">
+            <thead id="anestesia-table-head"></thead>
+            <tbody id="anestesia-table-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

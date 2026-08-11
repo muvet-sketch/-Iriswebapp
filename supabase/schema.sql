@@ -1667,6 +1667,91 @@ create policy "cirugias_delete_member"
   on public.cirugias for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── TABLA: anestesia_mediciones (Seguimiento de anestesia) ────────
+-- Sub-registro de `cirugias`: durante una cirugía con anestesia se
+-- monitorea al paciente cada 5–10 minutos, y cada fila de esta tabla es
+-- UNA medición puntual (una anestesia normal produce decenas). Antes eso
+-- terminaba como prosa dentro de cirugias.notas_postop, que no es
+-- consultable ni comparable en el tiempo.
+--
+-- `cirugia_id` con `on delete cascade` es el enlace al padre: a
+-- diferencia de los seguimientos de hospitalización (que se enganchan por
+-- `origen_referencia_id` en texto porque un día de kardex no es una fila
+-- propia), acá el padre SÍ es una fila con uuid, así que es una FK real.
+-- `mascota_id` va además de `cirugia_id` aunque sea derivable: es la
+-- columna por la que hidrata patientData, reasigna fusionar_mascotas y
+-- filtra el respaldo.
+--
+-- `fecha` es `timestamp` SIN zona, igual que seguimientos.fecha y
+-- agenda_eventos.start_iso (el campo es un <input type="datetime-local">
+-- y el front trabaja esa cadena local ingenua tal cual).
+--
+-- Los 8 vitales son nullable y un campo vacío se guarda como NULL: mismo
+-- criterio que el interruptor "No evaluado" del Tablero — un vital que no
+-- se midió no deja rastro. NO hay columnas `*_no_evaluado` y no hay que
+-- agregarlas. spo2/tc son numeric porque se miden con decimales. Sin
+-- CHECK de rango a propósito: una FC de 300 bajo anestesia es una
+-- urgencia real, no un error de digitación.
+--
+-- `registrado_por` tiene la misma limitación que
+-- tareas_pendientes.responsable_id (id LOCAL numérico de USUARIOS_SISTEMA,
+-- no un uuid), por eso también se guarda el nombre.
+--
+-- Sin policy `_select_red` a propósito: el monitoreo de anestesia no se
+-- comparte entre clínicas (la cirugía sí).
+create table if not exists public.anestesia_mediciones (
+  id                    uuid primary key default gen_random_uuid(),
+  establecimiento_id    uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id            uuid not null references public.mascotas (id) on delete cascade,
+  cirugia_id            uuid not null references public.cirugias (id) on delete cascade,
+  fecha                 timestamp not null,
+  fc                    integer,   -- frecuencia cardíaca, lpm
+  fr                    integer,   -- frecuencia respiratoria, rpm
+  pas                   integer,   -- presión sistólica, mmHg
+  pad                   integer,   -- presión diastólica, mmHg
+  pam                   integer,   -- presión arterial media, mmHg
+  spo2                  numeric,   -- saturación de oxígeno, %
+  tc                    numeric,   -- temperatura corporal, °C
+  etco2                 integer,   -- capnografía, mmHg
+  observaciones         text,
+  registrado_por        integer,
+  registrado_por_nombre text,
+  created_by            uuid references auth.users (id) on delete set null,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now()
+);
+
+create index if not exists anestesia_mediciones_establecimiento_id_idx
+  on public.anestesia_mediciones (establecimiento_id);
+create index if not exists anestesia_mediciones_mascota_id_idx
+  on public.anestesia_mediciones (mascota_id);
+-- El acceso normal es "dame el monitoreo de ESTA cirugía, en orden".
+create index if not exists anestesia_mediciones_cirugia_id_idx
+  on public.anestesia_mediciones (cirugia_id, fecha);
+
+alter table public.anestesia_mediciones enable row level security;
+
+drop policy if exists "anestesia_mediciones_select_member" on public.anestesia_mediciones;
+create policy "anestesia_mediciones_select_member"
+  on public.anestesia_mediciones for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "anestesia_mediciones_insert_member" on public.anestesia_mediciones;
+create policy "anestesia_mediciones_insert_member"
+  on public.anestesia_mediciones for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "anestesia_mediciones_update_member" on public.anestesia_mediciones;
+create policy "anestesia_mediciones_update_member"
+  on public.anestesia_mediciones for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "anestesia_mediciones_delete_member" on public.anestesia_mediciones;
+create policy "anestesia_mediciones_delete_member"
+  on public.anestesia_mediciones for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── TABLA: tareas_pendientes ──────────────────────────────────────
 -- Antes vivía solo en memoria (patientData[petKey].tareasPendientes,
 -- mock) y se perdía al refrescar. responsable_id es el id LOCAL

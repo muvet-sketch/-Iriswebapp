@@ -824,6 +824,73 @@ queda como responsable y el otro como **contacto secundario**.
   desbordaría.
 - Las dos tablas están en `RESPALDO_TABLAS`.
 
+## Seguimiento de anestesia (sub-registro de Cirugías)
+Durante una cirugía con anestesia se monitorea al paciente **cada 5–10
+minutos**: FC, FR, PAS/PAD/PAM, SpO₂, TC y EtCO₂. Antes eso terminaba como
+prosa dentro de "Notas post-operatorias", que no es consultable ni comparable
+en el tiempo. Entrada: acción **"Seguimiento de anestesia (N)"** en el menú
+"..." de la fila de Cirugías → `#anestesia-modal`. Tabla
+`anestesia_mediciones` (migración `20260809_seguimiento_anestesia.sql`).
+
+- **El enlace al padre es `cirugia_id`, un uuid con FK real** — no un índice
+  de array ni una cadena tipo `${hospId}:${diaIndex}`. Los seguimientos de
+  hospitalización usan esa cadena porque un día de kardex no es una fila
+  propia; acá el padre SÍ lo es. `getAnestesiaMediciones(petKey, cirugiaId)`
+  filtra por ese uuid, nunca por posición: `renderCirugiasTable()` reordena
+  las filas al pintar y el array se altera con `unshift`.
+- **`puedeSeguimientoAnestesia()` exige `!!record.id`, y no es opcional.**
+  Sin el uuid de la cirugía no hay a qué colgar la medición, y las cirugías
+  mock de los pacientes de ejemplo no lo tienen — por eso la acción no
+  aparece ahí. Las otras dos condiciones son de negocio: `anestesia !==
+  'Ninguna'` y `estado !== 'cancelado'`.
+- **`ANESTESIA_VITALES` es la fuente ÚNICA de los 8 vitales.** De esa
+  constante salen la grilla del formulario, las columnas de la tabla
+  (`anestesiaTablaColumnas()`) y el detalle del modal Ver. Agregar un vital
+  es agregar una entrada ahí y una columna en Supabase, nada más. En el
+  Kardex las 8 filas de signos están repetidas a mano en cada render; ese es
+  justamente el error que este módulo no repite.
+- **Un vital vacío se guarda `null` y desaparece por completo** — no se lista
+  en el modal Ver, no sale en la tabla salvo como `—`, y no hay columna
+  `*_no_evaluado` ni hay que crearla. Es el mismo requisito del interruptor
+  "No evaluado" del Tablero, pero acá NO hace falta el control: el campo
+  vacío ya produce ese resultado. Por lo mismo, PAS/PAD se imprimen `120/80`
+  solo si están las dos (`anestesiaPresionTexto()`); si falta una sale `PAS
+  118` suelta, nunca `PA —/80`.
+- **UN solo modal, no dos como Seguimientos** (que tiene listado + formulario
+  separados). Acá se registran mediciones seguidas mientras dura el
+  procedimiento: formulario arriba, mediciones abajo, y "Registrar" **no
+  cierra nada** — limpia el formulario, repone la hora actual y enfoca el
+  primer campo. Editar tampoco abre un modal: precarga ese mismo formulario y
+  el botón pasa a "Actualizar" (`editarAnestesiaMedicion()` /
+  `cancelarEdicionAnestesia()`).
+- **La tabla ordena ASCENDENTE**, al revés que todos los demás módulos: una
+  curva de anestesia se lee hacia adelante, no es un historial. Por eso la
+  query de `cargarDatosClinicaDesdeSupabase()` también va `ascending: true` y
+  el guardado hace `push` en vez de `unshift`.
+- **No escribe en `data.timeline`, a propósito.** Una anestesia produce
+  decenas de mediciones; la entrada de historia ya la crea la cirugía
+  (`construirCirugiaTimelineDesdeFila`). Volcarlas al timeline lo haría
+  ilegible — no lo "arregles".
+- Roles: registrar lo puede **admin, médico y auxiliar** (el auxiliar es
+  quien monitorea — mismo criterio del Kardex, donde llenar signos vitales
+  no exige el "Modo programación"). Editar/eliminar sigue el criterio de
+  Seguimientos: admin todo, médico y auxiliar solo lo propio, auxiliar nunca
+  elimina.
+- `renderCirugiaRowActionsMenu()` es un clon local de `renderRowActionsMenu`
+  (Cirugías tiene reglas de rol propias) y **no aceptaba `extraActions`** —
+  se le agregó el tercer parámetro con el mismo formato `{icon, label,
+  onclick}` de la genérica. Si hace falta otra acción condicional en
+  Cirugías, va por ahí.
+- `anestesia_mediciones` está en `RESPALDO_TABLAS` y en el `c_tablas` de
+  `fusionar_mascotas`. Ese `create or replace` vive en la misma migración, y
+  **el nombre del archivo ordena después de `20260809_fusionar_mascotas.sql`
+  a propósito**: si ordenara antes, un replay completo de las migraciones
+  repondría la lista vieja y la próxima unificación de mascotas perdería el
+  monitoreo en silencio.
+- Sin policy `_select_red` ni tipo nuevo en `red_solicitudes_tipos_validos`:
+  el monitoreo de anestesia no se comparte entre clínicas. La cirugía sí, y
+  eso alcanza para que la otra clínica sepa que el procedimiento existió.
+
 ## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·
 Desparasitaciones · Hospitalizaciones/ambulatorios ·
