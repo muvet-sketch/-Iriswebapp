@@ -6222,7 +6222,6 @@
                         <th>Fecha y hora</th>
                         <th>Procedimiento</th>
                         <th>Médico responsable</th>
-                        <th>Auxiliar asignado</th>
                         <th>Estado</th>
                         <th style="text-align: right;">Acciones</th>
                       </tr>
@@ -8273,7 +8272,7 @@
           {
             grupo: 'quirurgico', tipo: 'Ovariohisterectomía',
             fechaISO: '2026-07-05', fecha: '05/07/2026', hora: '09:00',
-            medicoResponsable: 'Dra. Catalina Sarmiento', auxiliarAsignado: 'Laura Gómez',
+            medicoResponsable: 'Dra. Catalina Sarmiento',
             anestesia: 'General', estado: 'realizado',
             notasPreOp: 'Paciente en ayuno de 12h. Perfil prequirúrgico dentro de rangos normales. Sin contraindicaciones para anestesia general.',
             notasPostOp: 'Procedimiento sin complicaciones. Recuperación anestésica adecuada. Se indica collar isabelino por 10 días y control de sutura en 7 días.',
@@ -8283,7 +8282,7 @@
           {
             grupo: 'quirurgico', tipo: 'Extracción dental quirúrgica',
             fechaISO: '2026-07-15', fecha: '15/07/2026', hora: '10:30',
-            medicoResponsable: 'Dr. Sebastián Ríos', auxiliarAsignado: 'Laura Gómez',
+            medicoResponsable: 'Dr. Sebastián Ríos',
             anestesia: 'General', estado: 'programado',
             notasPreOp: 'Se programa extracción de pieza dental fracturada detectada en control de rutina.',
             notasPostOp: '',
@@ -8293,7 +8292,7 @@
           {
             grupo: 'menor', tipo: 'Retiro de puntos',
             fechaISO: '2026-07-06', fecha: '06/07/2026', hora: '16:00',
-            medicoResponsable: 'Dra. Catalina Sarmiento', auxiliarAsignado: 'Laura Gómez',
+            medicoResponsable: 'Dra. Catalina Sarmiento',
             anestesia: 'Ninguna', estado: 'realizado',
             notasPreOp: 'Control post-quirúrgico de rutina, herida con buen aspecto.',
             notasPostOp: 'Retiro de puntos sin incidentes. Cicatrización completa. Alta de seguimiento de la herida.',
@@ -8303,7 +8302,7 @@
           {
             grupo: 'menor', tipo: 'Cambio de vendaje/curación',
             fechaISO: '2026-07-04', fecha: '04/07/2026', hora: '08:00',
-            medicoResponsable: 'Dr. Sebastián Ríos', auxiliarAsignado: 'Laura Gómez',
+            medicoResponsable: 'Dr. Sebastián Ríos',
             anestesia: 'Ninguna', estado: 'cancelado',
             notasPreOp: 'Propietario no asistió a la cita programada. Se reagendará.',
             notasPostOp: '',
@@ -18555,7 +18554,6 @@
             <td>${c.fecha} · ${c.hora}</td>
             <td>${c.tipo}</td>
             <td>${c.medicoResponsable}</td>
-            <td>${c.auxiliarAsignado}</td>
             <td>${cirugiaEstadoBadgeHTML(c.estado)}</td>
             <td style="text-align: right;">${renderCirugiaRowActionsMenu(c, `${petKey}:${i}`, extraActions)}</td>
           </tr>
@@ -18579,8 +18577,6 @@
         <div class="info-value">${record.fecha} · ${record.hora}</div>
         <div class="info-label">Médico responsable</div>
         <div class="info-value">${record.medicoResponsable}</div>
-        <div class="info-label">Auxiliar asignado</div>
-        <div class="info-value">${record.auxiliarAsignado}</div>
         <div class="info-label">Tipo de anestesia</div>
         <div class="info-value">${record.anestesia}</div>
         <div class="info-label">Estado</div>
@@ -18641,12 +18637,6 @@
       select.innerHTML = usuarios.map(u => `<option value="${u.nombre}" ${u.nombre === selected ? 'selected' : ''}>${u.nombre}</option>`).join('');
     }
 
-    function renderCirugiaAuxiliarOptions(selected) {
-      const select = document.getElementById('cirugia-auxiliar');
-      const usuarios = USUARIOS_SISTEMA.filter(u => u.estado === 'activo' && u.rol === 'auxiliar');
-      select.innerHTML = usuarios.map(u => `<option value="${u.nombre}" ${u.nombre === selected ? 'selected' : ''}>${u.nombre}</option>`).join('');
-    }
-
     // Bloquea el modal para Auxiliar: solo puede tocar notas post-operatorias
     // (crear, tipo, fecha, médico responsable, fármacos y descripción
     // quirúrgica quedan fuera de su privilegio — ver sección de roles del
@@ -18656,7 +18646,7 @@
       const isAuxiliar = currentSimRole === 'auxiliar';
       const lockIds = [
         'cirugia-grupo', 'cirugia-tipo', 'cirugia-tipo-otro', 'cirugia-fecha', 'cirugia-hora',
-        'cirugia-medico', 'cirugia-auxiliar', 'cirugia-anestesia',
+        'cirugia-medico', 'cirugia-anestesia',
         'cirugia-descripcion-quirurgica', 'cirugia-consentimiento', 'cirugia-consentimiento-fecha'
       ];
       lockIds.forEach(id => {
@@ -18693,7 +18683,6 @@
         document.getElementById('cirugia-fecha').value = record.fechaISO;
         document.getElementById('cirugia-hora').value = record.hora;
         renderCirugiaMedicoOptions(record.medicoResponsable);
-        renderCirugiaAuxiliarOptions(record.auxiliarAsignado);
         document.getElementById('cirugia-anestesia').value = record.anestesia;
         renderCirugiaFarmacos('premedicacion', record.premedicacion);
         renderCirugiaFarmacos('preanestesia', record.preanestesia);
@@ -18712,7 +18701,6 @@
         document.getElementById('cirugia-fecha').value = new Date().toISOString().slice(0, 10);
         document.getElementById('cirugia-hora').value = '';
         renderCirugiaMedicoOptions('');
-        renderCirugiaAuxiliarOptions('');
         document.getElementById('cirugia-anestesia').value = 'General';
         renderCirugiaFarmacos('premedicacion', []);
         renderCirugiaFarmacos('preanestesia', []);
@@ -18746,7 +18734,7 @@
         date: `${record.fecha} ${record.hora}`,
         dateSortKey: record.fechaISO,
         title: `${record.tipo} — ${CIRUGIA_ESTADO_LABELS[record.estado]}`,
-        summary: `Médico responsable: ${record.medicoResponsable} · Auxiliar: ${record.auxiliarAsignado}${record.descripcionQuirurgica ? ' · ' + record.descripcionQuirurgica : (record.notasPreOp ? ' · ' + record.notasPreOp : '')}`,
+        summary: `Médico responsable: ${record.medicoResponsable}${record.descripcionQuirurgica ? ' · ' + record.descripcionQuirurgica : (record.notasPreOp ? ' · ' + record.notasPreOp : '')}`,
         vet: record.medicoResponsable
       };
     }
@@ -18780,7 +18768,6 @@
       const fechaISO = document.getElementById('cirugia-fecha').value;
       const hora = document.getElementById('cirugia-hora').value;
       const medicoResponsable = document.getElementById('cirugia-medico').value;
-      const auxiliarAsignado = document.getElementById('cirugia-auxiliar').value;
       const anestesia = document.getElementById('cirugia-anestesia').value;
       // El estado ya no se edita en este formulario (ver
       // cirugiaEstadoTransicionesExtra) — al crear arranca en 'programado'
@@ -18794,7 +18781,7 @@
       const consentimientoFirmado = document.getElementById('cirugia-consentimiento').checked;
       const consentimientoFechaISO = consentimientoFirmado ? document.getElementById('cirugia-consentimiento-fecha').value : null;
 
-      if (!tipo || !fechaISO || !hora || !medicoResponsable || !auxiliarAsignado) {
+      if (!tipo || !fechaISO || !hora || !medicoResponsable) {
         showToast('Completa los campos obligatorios');
         return;
       }
@@ -18816,7 +18803,6 @@
         const payload = {
           grupo, tipo, fecha: fechaISO, hora,
           medico_responsable: medicoResponsable || null,
-          auxiliar_asignado: auxiliarAsignado || null,
           anestesia: anestesia || null, estado,
           premedicacion, preanestesia, medicamentos_anestesia: medicamentosAnestesia,
           descripcion_quirurgica: descripcionQuirurgica || null,
@@ -18842,7 +18828,7 @@
         const record = {
           id: dbId, grupo, tipo,
           fechaISO, fecha: formatFechaCorta(fechaISO), hora,
-          medicoResponsable, auxiliarAsignado, anestesia, estado,
+          medicoResponsable, anestesia, estado,
           // notasPreOp ya no se edita — se conserva la del registro previo
           // para no perder el dato de las cirugías guardadas antes de este
           // cambio (ver cirugiaViewContentHTML, que la usa como respaldo).
@@ -20640,7 +20626,7 @@
       return {
         id: r.id, grupo: r.grupo, tipo: r.tipo,
         fechaISO: r.fecha, fecha: formatFechaCorta(r.fecha), hora: r.hora,
-        medicoResponsable: r.medico_responsable || '', auxiliarAsignado: r.auxiliar_asignado || '',
+        medicoResponsable: r.medico_responsable || '',
         anestesia: r.anestesia || '', estado: r.estado,
         notasPreOp: r.notas_preop || '', notasPostOp: r.notas_postop || '',
         premedicacion: r.premedicacion || [], preanestesia: r.preanestesia || [],
@@ -33103,15 +33089,9 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           </div>
         </div>
 
-        <div class="soap-meta-row">
-          <div class="input-group">
-            <label class="input-label" for="cirugia-medico">Médico responsable</label>
-            <select class="soap-select-control" id="cirugia-medico"></select>
-          </div>
-          <div class="input-group">
-            <label class="input-label" for="cirugia-auxiliar">Auxiliar asignado</label>
-            <select class="soap-select-control" id="cirugia-auxiliar"></select>
-          </div>
+        <div class="input-group">
+          <label class="input-label" for="cirugia-medico">Médico responsable</label>
+          <select class="soap-select-control" id="cirugia-medico" style="max-width:280px;"></select>
         </div>
 
         <div class="input-group">
