@@ -775,6 +775,14 @@
       border-radius: 6px; padding: 6px 8px; margin-top: 6px; align-items: flex-start; gap: 6px; line-height: 1.4;
     }
 
+    /* MÓDULO: CIRUGÍAS/PROCEDIMIENTOS — filas rápidas de fármaco
+       (premedicación/pre-anestesia/anestesia), nombre + dosis, elegible
+       desde un datalist o escrito libre. */
+    .cirugia-farmacos-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+    .cirugia-farmaco-row { display: flex; align-items: center; gap: 8px; }
+    .cirugia-farmaco-row input[data-farmaco-field="nombre"] { flex: 1.6; }
+    .cirugia-farmaco-row input[data-farmaco-field="dosis"] { flex: 1; }
+
     /* MÓDULO: ÓRDENES — bloques de orden repetibles */
     .orden-block {
       border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background-color: #FAFBFD;
@@ -18356,6 +18364,77 @@
     };
     const CIRUGIA_ESTADO_LABELS = { programado: 'Programado', 'en-curso': 'En curso', realizado: 'Realizado', cancelado: 'Cancelado' };
 
+    // Catálogo de fármacos comunes por categoría — solo alimenta el
+    // datalist de cada fila (ver cirugiaFarmacoRowTemplate). No es la
+    // única fuente de verdad: el input es texto libre, el datalist es
+    // apenas un atajo para no tipear el nombre completo.
+    const CIRUGIA_FARMACOS_CATALOGO = {
+      premedicacion: ['Acepromazina', 'Diazepam', 'Midazolam', 'Butorfanol', 'Tramadol', 'Dexmedetomidina', 'Atropina', 'Meperidina'],
+      preanestesia: ['Propofol', 'Ketamina', 'Alfaxalona', 'Tiopental', 'Etomidato'],
+      anestesia: ['Isoflurano', 'Sevoflurano', 'Propofol (CRI)', 'Lidocaína (CRI)', 'Fentanilo (CRI)']
+    };
+
+    function cirugiaFarmacoRowTemplate(categoria, index, item) {
+      item = item || {};
+      return `
+        <div class="cirugia-farmaco-row" data-farmaco-index="${index}">
+          <input type="text" class="input-control" style="padding-left:12px;" list="cirugia-farmaco-catalogo-${categoria}"
+                 placeholder="Fármaco" data-farmaco-field="nombre" value="${item.nombre || ''}">
+          <input type="text" class="input-control" style="padding-left:12px;" placeholder="Dosis" data-farmaco-field="dosis" value="${item.dosis || ''}">
+          <button type="button" class="med-block-remove" onclick="removeCirugiaFarmaco('${categoria}', ${index})" title="Quitar">
+            <i data-lucide="x" style="width:12px;height:12px;"></i>
+          </button>
+        </div>
+      `;
+    }
+
+    function renderCirugiaFarmacos(categoria, items) {
+      const list = document.getElementById(`cirugia-farmacos-${categoria}`);
+      list.innerHTML = (items || []).map((it, i) => cirugiaFarmacoRowTemplate(categoria, i, it)).join('');
+      lucide.createIcons();
+    }
+
+    function addCirugiaFarmaco(categoria) {
+      const list = document.getElementById(`cirugia-farmacos-${categoria}`);
+      list.insertAdjacentHTML('beforeend', cirugiaFarmacoRowTemplate(categoria, list.children.length, {}));
+      lucide.createIcons();
+    }
+
+    function removeCirugiaFarmaco(categoria, index) {
+      const list = document.getElementById(`cirugia-farmacos-${categoria}`);
+      const row = list.querySelector(`[data-farmaco-index="${index}"]`);
+      if (row) row.remove();
+      [...list.children].forEach((row, i) => {
+        row.setAttribute('data-farmaco-index', i);
+        row.querySelector('.med-block-remove').setAttribute('onclick', `removeCirugiaFarmaco('${categoria}', ${i})`);
+      });
+    }
+
+    function collectCirugiaFarmacos(categoria) {
+      const list = document.getElementById(`cirugia-farmacos-${categoria}`);
+      return [...list.querySelectorAll('.cirugia-farmaco-row')]
+        .map(row => ({
+          nombre: row.querySelector('[data-farmaco-field="nombre"]').value.trim(),
+          dosis: row.querySelector('[data-farmaco-field="dosis"]').value.trim()
+        }))
+        .filter(it => it.nombre);
+    }
+
+    // Texto de una sola línea para Ver/Imprimir y el resumen del timeline.
+    function cirugiaFarmacosLineaHTML(items) {
+      if (!items || !items.length) return '—';
+      return items.map(m => m.dosis ? `${m.nombre} — ${m.dosis}` : m.nombre).join(', ');
+    }
+
+    // Bloquea/desbloquea las 3 listas de fármacos completas (inputs +
+    // botones "Agregar fármaco" + botones "Quitar" ya renderizados), ya
+    // que sus filas se agregan/quitan dinámicamente y no tienen un id fijo
+    // que la lista `lockIds` de applyCirugiaRoleLock() pueda cubrir.
+    function applyCirugiaFarmacosLock(disabled) {
+      document.querySelectorAll('#cirugia-farmacos-section input, #cirugia-farmacos-section button')
+        .forEach(el => { el.disabled = disabled; });
+    }
+
     let editingCirugiaContext = null; // { petKey, index } al editar un procedimiento existente
 
     // Reglas de acciones por rol específicas de este módulo (distintas del
@@ -18407,6 +18486,46 @@
       return `<span class="status-badge status-badge-cirugia-${estado}">${CIRUGIA_ESTADO_LABELS[estado] || estado}</span>`;
     }
 
+    // El formulario de Cirugías ya no tiene un select de "Estado" (se
+    // sacó a pedido del cliente): el estado se mueve con acciones cortas
+    // del menú "...", mismo criterio que "Marcar como completada"/
+    // "Reabrir tarea" de Tareas Pendientes. Solo Admin/Médico lo tocan —
+    // Auxiliar nunca controló este campo (antes lo tenía bloqueado en el
+    // modal, ver applyCirugiaRoleLock).
+    function cirugiaEstadoTransicionesExtra(record, petKey, i) {
+      if (currentSimRole !== 'admin' && currentSimRole !== 'medico') return [];
+      if (record.estado === 'programado') {
+        return [
+          { icon: 'play', label: 'Iniciar procedimiento', onclick: `cambiarEstadoCirugia('${petKey}', ${i}, 'en-curso')` },
+          { icon: 'ban', label: 'Cancelar procedimiento', onclick: `cambiarEstadoCirugia('${petKey}', ${i}, 'cancelado')` }
+        ];
+      }
+      if (record.estado === 'en-curso') {
+        return [
+          { icon: 'check', label: 'Finalizar procedimiento', onclick: `cambiarEstadoCirugia('${petKey}', ${i}, 'realizado')` },
+          { icon: 'ban', label: 'Cancelar procedimiento', onclick: `cambiarEstadoCirugia('${petKey}', ${i}, 'cancelado')` }
+        ];
+      }
+      if (record.estado === 'cancelado') {
+        return [{ icon: 'rotate-ccw', label: 'Reabrir procedimiento', onclick: `cambiarEstadoCirugia('${petKey}', ${i}, 'programado')` }];
+      }
+      return []; // 'realizado' es terminal, no se reabre desde acá
+    }
+
+    async function cambiarEstadoCirugia(petKey, index, nuevoEstado) {
+      const data = patientData[petKey];
+      const record = data.cirugias[index];
+      if (!record) return;
+      record.estado = nuevoEstado;
+      renderCirugiasTable(petKey);
+      showToast(`Procedimiento: ${CIRUGIA_ESTADO_LABELS[nuevoEstado]}`);
+      if (window.supabase && record.id) {
+        const { error } = await window.supabase.from('cirugias')
+          .update({ estado: nuevoEstado, updated_at: new Date().toISOString() }).eq('id', record.id);
+        if (error) console.error('[IRIS] Error actualizando estado de cirugía en Supabase:', error);
+      }
+    }
+
     function renderCirugiasTable(petKey) {
       const data = patientData[petKey];
       const tbody = document.getElementById('cirugias-table-body');
@@ -18429,9 +18548,12 @@
           // El contador entre paréntesis evita tener que abrir el modal para
           // saber si ya se registró algo.
           const nMed = puedeSeguimientoAnestesia(c) ? getAnestesiaMediciones(petKey, c.id).length : 0;
-          const extraActions = puedeSeguimientoAnestesia(c)
-            ? [{ icon: 'activity', label: `Seguimiento de anestesia${nMed ? ` (${nMed})` : ''}`, onclick: `abrirAnestesiaModal('${petKey}', ${i})` }]
-            : [];
+          const extraActions = [
+            ...(puedeSeguimientoAnestesia(c)
+              ? [{ icon: 'activity', label: `Seguimiento de anestesia${nMed ? ` (${nMed})` : ''}`, onclick: `abrirAnestesiaModal('${petKey}', ${i})` }]
+              : []),
+            ...cirugiaEstadoTransicionesExtra(c, petKey, i)
+          ];
           return `
           <tr data-cirugia-row="${i}">
             <td>${c.fecha} · ${c.hora}</td>
@@ -18467,8 +18589,14 @@
         <div class="info-value">${record.anestesia}</div>
         <div class="info-label">Estado</div>
         <div class="info-value">${cirugiaEstadoBadgeHTML(record.estado)}</div>
-        <div class="info-label">Notas pre-operatorias</div>
-        <div class="info-value">${record.notasPreOp || '—'}</div>
+        <div class="info-label">Premedicación</div>
+        <div class="info-value">${cirugiaFarmacosLineaHTML(record.premedicacion)}</div>
+        <div class="info-label">Pre-anestesia</div>
+        <div class="info-value">${cirugiaFarmacosLineaHTML(record.preanestesia)}</div>
+        <div class="info-label">Anestesia — fármacos</div>
+        <div class="info-value">${cirugiaFarmacosLineaHTML(record.medicamentosAnestesia)}</div>
+        <div class="info-label">Descripción quirúrgica</div>
+        <div class="info-value">${record.descripcionQuirurgica || record.notasPreOp || '—'}</div>
         <div class="info-label">Notas post-operatorias</div>
         <div class="info-value">${record.notasPostOp || '—'}</div>
         <div class="info-label">Consentimiento informado firmado</div>
@@ -18503,12 +18631,6 @@
       if (tipo !== 'Otro') otroInput.value = '';
     }
 
-    function handleCirugiaEstadoChange() {
-      if (currentSimRole === 'auxiliar') return; // el campo Estado está bloqueado para este rol
-      const estado = document.getElementById('cirugia-estado').value;
-      document.getElementById('cirugia-notas-postop').disabled = estado !== 'realizado';
-    }
-
     function handleCirugiaConsentimientoChange() {
       const checked = document.getElementById('cirugia-consentimiento').checked;
       const wrap = document.getElementById('cirugia-consentimiento-fecha-wrap');
@@ -18530,23 +18652,24 @@
     }
 
     // Bloquea el modal para Auxiliar: solo puede tocar notas post-operatorias
-    // (crear, tipo, fecha, médico responsable y estado quedan fuera de su
-    // privilegio — ver sección de roles del prompt de este módulo).
+    // (crear, tipo, fecha, médico responsable, fármacos y descripción
+    // quirúrgica quedan fuera de su privilegio — ver sección de roles del
+    // prompt de este módulo). El estado ya no vive en este modal — ver
+    // cirugiaEstadoTransicionesExtra(), que ya excluye a Auxiliar.
     function applyCirugiaRoleLock() {
       const isAuxiliar = currentSimRole === 'auxiliar';
       const lockIds = [
         'cirugia-grupo', 'cirugia-tipo', 'cirugia-tipo-otro', 'cirugia-fecha', 'cirugia-hora',
-        'cirugia-medico', 'cirugia-auxiliar', 'cirugia-anestesia', 'cirugia-estado',
-        'cirugia-notas-preop', 'cirugia-consentimiento', 'cirugia-consentimiento-fecha'
+        'cirugia-medico', 'cirugia-auxiliar', 'cirugia-anestesia',
+        'cirugia-descripcion-quirurgica', 'cirugia-consentimiento', 'cirugia-consentimiento-fecha'
       ];
       lockIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.disabled = isAuxiliar;
       });
+      applyCirugiaFarmacosLock(isAuxiliar);
       if (isAuxiliar) {
         document.getElementById('cirugia-notas-postop').disabled = false;
-      } else {
-        handleCirugiaEstadoChange();
       }
     }
 
@@ -18576,8 +18699,10 @@
         renderCirugiaMedicoOptions(record.medicoResponsable);
         renderCirugiaAuxiliarOptions(record.auxiliarAsignado);
         document.getElementById('cirugia-anestesia').value = record.anestesia;
-        document.getElementById('cirugia-estado').value = record.estado;
-        document.getElementById('cirugia-notas-preop').value = record.notasPreOp || '';
+        renderCirugiaFarmacos('premedicacion', record.premedicacion);
+        renderCirugiaFarmacos('preanestesia', record.preanestesia);
+        renderCirugiaFarmacos('anestesia', record.medicamentosAnestesia);
+        document.getElementById('cirugia-descripcion-quirurgica').value = record.descripcionQuirurgica || '';
         document.getElementById('cirugia-notas-postop').value = record.notasPostOp || '';
         document.getElementById('cirugia-consentimiento').checked = !!record.consentimientoFirmado;
         consentimientoFechaWrap.style.display = record.consentimientoFirmado ? 'block' : 'none';
@@ -18593,8 +18718,10 @@
         renderCirugiaMedicoOptions('');
         renderCirugiaAuxiliarOptions('');
         document.getElementById('cirugia-anestesia').value = 'General';
-        document.getElementById('cirugia-estado').value = 'programado';
-        document.getElementById('cirugia-notas-preop').value = '';
+        renderCirugiaFarmacos('premedicacion', []);
+        renderCirugiaFarmacos('preanestesia', []);
+        renderCirugiaFarmacos('anestesia', []);
+        document.getElementById('cirugia-descripcion-quirurgica').value = '';
         document.getElementById('cirugia-notas-postop').value = '';
         document.getElementById('cirugia-consentimiento').checked = false;
         consentimientoFechaWrap.style.display = 'none';
@@ -18623,7 +18750,7 @@
         date: `${record.fecha} ${record.hora}`,
         dateSortKey: record.fechaISO,
         title: `${record.tipo} — ${CIRUGIA_ESTADO_LABELS[record.estado]}`,
-        summary: `Médico responsable: ${record.medicoResponsable} · Auxiliar: ${record.auxiliarAsignado}${record.notasPreOp ? ' · ' + record.notasPreOp : ''}`,
+        summary: `Médico responsable: ${record.medicoResponsable} · Auxiliar: ${record.auxiliarAsignado}${record.descripcionQuirurgica ? ' · ' + record.descripcionQuirurgica : (record.notasPreOp ? ' · ' + record.notasPreOp : '')}`,
         vet: record.medicoResponsable
       };
     }
@@ -18659,8 +18786,14 @@
       const medicoResponsable = document.getElementById('cirugia-medico').value;
       const auxiliarAsignado = document.getElementById('cirugia-auxiliar').value;
       const anestesia = document.getElementById('cirugia-anestesia').value;
-      const estado = document.getElementById('cirugia-estado').value;
-      const notasPreOp = document.getElementById('cirugia-notas-preop').value.trim();
+      // El estado ya no se edita en este formulario (ver
+      // cirugiaEstadoTransicionesExtra) — al crear arranca en 'programado'
+      // y al editar se conserva el que ya tenía el registro.
+      const estado = isEdit ? data.cirugias[editingCirugiaContext.index].estado : 'programado';
+      const premedicacion = collectCirugiaFarmacos('premedicacion');
+      const preanestesia = collectCirugiaFarmacos('preanestesia');
+      const medicamentosAnestesia = collectCirugiaFarmacos('anestesia');
+      const descripcionQuirurgica = document.getElementById('cirugia-descripcion-quirurgica').value.trim();
       const notasPostOp = document.getElementById('cirugia-notas-postop').value.trim();
       const consentimientoFirmado = document.getElementById('cirugia-consentimiento').checked;
       const consentimientoFechaISO = consentimientoFirmado ? document.getElementById('cirugia-consentimiento-fecha').value : null;
@@ -18689,7 +18822,9 @@
           medico_responsable: medicoResponsable || null,
           auxiliar_asignado: auxiliarAsignado || null,
           anestesia: anestesia || null, estado,
-          notas_preop: notasPreOp || null, notas_postop: notasPostOp || null,
+          premedicacion, preanestesia, medicamentos_anestesia: medicamentosAnestesia,
+          descripcion_quirurgica: descripcionQuirurgica || null,
+          notas_postop: notasPostOp || null,
           consentimiento_firmado: consentimientoFirmado,
           consentimiento_fecha: consentimientoFechaISO || null,
           usuario: usuarioNombre
@@ -18712,7 +18847,12 @@
           id: dbId, grupo, tipo,
           fechaISO, fecha: formatFechaCorta(fechaISO), hora,
           medicoResponsable, auxiliarAsignado, anestesia, estado,
-          notasPreOp, notasPostOp,
+          // notasPreOp ya no se edita — se conserva la del registro previo
+          // para no perder el dato de las cirugías guardadas antes de este
+          // cambio (ver cirugiaViewContentHTML, que la usa como respaldo).
+          notasPreOp: isEdit ? (data.cirugias[editingCirugiaContext.index].notasPreOp || '') : '',
+          premedicacion, preanestesia, medicamentosAnestesia,
+          descripcionQuirurgica, notasPostOp,
           consentimientoFirmado,
           consentimientoFechaISO: consentimientoFechaISO || null,
           consentimientoFecha: consentimientoFechaISO ? formatFechaCorta(consentimientoFechaISO) : null,
@@ -20456,6 +20596,9 @@
         medicoResponsable: r.medico_responsable || '', auxiliarAsignado: r.auxiliar_asignado || '',
         anestesia: r.anestesia || '', estado: r.estado,
         notasPreOp: r.notas_preop || '', notasPostOp: r.notas_postop || '',
+        premedicacion: r.premedicacion || [], preanestesia: r.preanestesia || [],
+        medicamentosAnestesia: r.medicamentos_anestesia || [],
+        descripcionQuirurgica: r.descripcion_quirurgica || '',
         consentimientoFirmado: !!r.consentimiento_firmado,
         consentimientoFechaISO: r.consentimiento_fecha || null,
         consentimientoFecha: r.consentimiento_fecha ? formatFechaCorta(r.consentimiento_fecha) : null,
@@ -32874,35 +33017,75 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           </div>
         </div>
 
-        <div class="soap-meta-row">
+        <div class="input-group">
+          <label class="input-label" for="cirugia-anestesia">Tipo de anestesia</label>
+          <select class="soap-select-control" id="cirugia-anestesia" style="max-width:280px;">
+            <option value="General">General</option>
+            <option value="Sedación">Sedación</option>
+            <option value="Local">Local</option>
+            <option value="Ninguna">Ninguna</option>
+          </select>
+        </div>
+
+        <div id="cirugia-farmacos-section">
           <div class="input-group">
-            <label class="input-label" for="cirugia-anestesia">Tipo de anestesia</label>
-            <select class="soap-select-control" id="cirugia-anestesia">
-              <option value="General">General</option>
-              <option value="Sedación">Sedación</option>
-              <option value="Local">Local</option>
-              <option value="Ninguna">Ninguna</option>
-            </select>
+            <label class="input-label">Premedicación</label>
+            <div class="cirugia-farmacos-list" id="cirugia-farmacos-premedicacion"></div>
+            <button type="button" class="btn-outline" style="padding:6px 12px;font-size:12px;" onclick="addCirugiaFarmaco('premedicacion')">
+              <i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar fármaco
+            </button>
           </div>
+
           <div class="input-group">
-            <label class="input-label" for="cirugia-estado">Estado</label>
-            <select class="soap-select-control" id="cirugia-estado" onchange="handleCirugiaEstadoChange()">
-              <option value="programado">Programado</option>
-              <option value="en-curso">En curso</option>
-              <option value="realizado">Realizado</option>
-              <option value="cancelado">Cancelado</option>
-            </select>
+            <label class="input-label">Pre-anestesia</label>
+            <div class="cirugia-farmacos-list" id="cirugia-farmacos-preanestesia"></div>
+            <button type="button" class="btn-outline" style="padding:6px 12px;font-size:12px;" onclick="addCirugiaFarmaco('preanestesia')">
+              <i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar fármaco
+            </button>
+          </div>
+
+          <div class="input-group">
+            <label class="input-label">Anestesia</label>
+            <div class="cirugia-farmacos-list" id="cirugia-farmacos-anestesia"></div>
+            <button type="button" class="btn-outline" style="padding:6px 12px;font-size:12px;" onclick="addCirugiaFarmaco('anestesia')">
+              <i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar fármaco
+            </button>
           </div>
         </div>
 
+        <datalist id="cirugia-farmaco-catalogo-premedicacion">
+          <option value="Acepromazina"></option>
+          <option value="Diazepam"></option>
+          <option value="Midazolam"></option>
+          <option value="Butorfanol"></option>
+          <option value="Tramadol"></option>
+          <option value="Dexmedetomidina"></option>
+          <option value="Atropina"></option>
+          <option value="Meperidina"></option>
+        </datalist>
+        <datalist id="cirugia-farmaco-catalogo-preanestesia">
+          <option value="Propofol"></option>
+          <option value="Ketamina"></option>
+          <option value="Alfaxalona"></option>
+          <option value="Tiopental"></option>
+          <option value="Etomidato"></option>
+        </datalist>
+        <datalist id="cirugia-farmaco-catalogo-anestesia">
+          <option value="Isoflurano"></option>
+          <option value="Sevoflurano"></option>
+          <option value="Propofol (CRI)"></option>
+          <option value="Lidocaína (CRI)"></option>
+          <option value="Fentanilo (CRI)"></option>
+        </datalist>
+
         <div class="input-group">
-          <label class="input-label" for="cirugia-notas-preop">Notas pre-operatorias</label>
-          <textarea class="soap-textarea" id="cirugia-notas-preop"></textarea>
+          <label class="input-label" for="cirugia-descripcion-quirurgica">Descripción quirúrgica</label>
+          <textarea class="soap-textarea" id="cirugia-descripcion-quirurgica" placeholder="Técnica empleada, hallazgos, incidentes durante el procedimiento"></textarea>
         </div>
 
         <div class="input-group">
           <label class="input-label" for="cirugia-notas-postop">Notas post-operatorias</label>
-          <textarea class="soap-textarea" id="cirugia-notas-postop" placeholder="Habilitado cuando el estado es 'Realizado'"></textarea>
+          <textarea class="soap-textarea" id="cirugia-notas-postop"></textarea>
         </div>
 
         <label class="mini-toggle" style="margin-top:-4px;">
