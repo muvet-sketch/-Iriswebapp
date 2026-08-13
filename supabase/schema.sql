@@ -2022,6 +2022,60 @@ create policy "guarderias_delete_member"
   on public.guarderias for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── TABLA: ordenes (Consultorio > Órdenes) ─────────────────────────
+-- Antes vivía solo en memoria (patientData[petKey].ordenes, mock) y se
+-- perdía al refrescar/reiniciar sesión. `tipo`/`prioridad` guardan el
+-- código crudo (ver TIPOS_ORDEN/PRIORIDADES_ORDEN en index.html); la
+-- etiqueta y el color se recalculan en el front (construirOrdenDesdeFila),
+-- no se duplican como columnas. `estado` ('pendiente'/'completado') lo
+-- mueve la finalización de un Resultado (patientData[petKey].resultados,
+-- que sigue siendo mock) — ver persistirEstadoOrden() en index.html.
+-- Ver migración 20260813_ordenes_persistencia.sql para el detalle.
+create table if not exists public.ordenes (
+  id                  uuid primary key default gen_random_uuid(),
+  establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
+  mascota_id          uuid not null references public.mascotas (id) on delete cascade,
+  fecha               date not null,
+  tipo                text not null,
+  detalle             text,
+  cantidad            integer not null default 1,
+  prioridad           text,
+  notas               text,
+  generar_solicitud   boolean not null default false,
+  motivo              text,
+  estado              text not null default 'pendiente' check (estado in ('pendiente', 'completado')),
+  usuario             text,
+  created_by          uuid references auth.users (id) on delete set null,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now()
+);
+
+create index if not exists ordenes_establecimiento_id_idx on public.ordenes (establecimiento_id);
+create index if not exists ordenes_mascota_id_idx on public.ordenes (mascota_id);
+
+alter table public.ordenes enable row level security;
+
+drop policy if exists "ordenes_select_member" on public.ordenes;
+create policy "ordenes_select_member"
+  on public.ordenes for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "ordenes_insert_member" on public.ordenes;
+create policy "ordenes_insert_member"
+  on public.ordenes for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "ordenes_update_member" on public.ordenes;
+create policy "ordenes_update_member"
+  on public.ordenes for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "ordenes_delete_member" on public.ordenes;
+create policy "ordenes_delete_member"
+  on public.ordenes for delete
+  using (public.user_is_member_of(establecimiento_id));
+
 -- ── vacunaciones.vencimiento / desparasitaciones.lote,vencimiento ──
 -- Recuadro de Lote + Fecha de vencimiento en el formulario, mismo
 -- criterio en ambos módulos (desparasitaciones no tenía Lote todavía).
@@ -3723,11 +3777,15 @@ declare
   -- Las tablas que cuelgan de `mascotas` por FK. Si se agrega un módulo
   -- clínico nuevo con mascota_id, SUMARLO ACÁ o su historia se perderá
   -- en la próxima fusión (la fila duplicada se borra con CASCADE).
+  -- NOTA: este array (y el resto de la función) se sincronizó con la
+  -- definición LIVE del proyecto al agregar 'ordenes' — schema.sql estaba
+  -- desactualizado (le faltaban 'anestesia_mediciones'/'mascota_problemas'
+  -- y el bloque de renumeración de mascota_problemas de más abajo).
   c_tablas constant text[] := array[
     'consultas', 'formulas_medicas', 'documentos', 'examenes', 'vacunaciones',
-    'desparasitaciones', 'cirugias', 'hospitalizaciones', 'seguimientos',
-    'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes',
-    'mensajes', 'consultas_audio'
+    'desparasitaciones', 'cirugias', 'anestesia_mediciones', 'hospitalizaciones',
+    'seguimientos', 'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes',
+    'mensajes', 'consultas_audio', 'mascota_problemas', 'ordenes'
   ];
   v_pri        public.mascotas;
   v_dup        public.mascotas;
@@ -3812,6 +3870,16 @@ begin
     updated_at          = now()
    where id = p_principal_id;
 
+  -- Los `orden` de las dos listas de problemas colisionan: las dos empiezan
+  -- en 0. Hay que correr los de la duplicada DETRAS de los de la principal
+  -- ANTES de moverlos — despues del move las dos listas son indistinguibles
+  -- (todas las filas quedan con mascota_id = principal) y el primer problema,
+  -- que es el que mas compromete la vida, dejaria de ser el primero.
+  update public.mascota_problemas
+     set orden = orden + coalesce(
+           (select max(orden) + 1 from public.mascota_problemas where mascota_id = p_principal_id), 0)
+   where mascota_id = p_duplicada_id;
+
   -- ── Mover la historia clínica ────────────────────────────
   foreach v_tabla in array c_tablas loop
     execute format('update public.%I set mascota_id = $1 where mascota_id = $2', v_tabla)
@@ -3819,6 +3887,19 @@ begin
     get diagnostics v_n = row_count;
     if v_n > 0 then v_mov := v_mov || jsonb_build_object(v_tabla, v_n); end if;
   end loop;
+
+  -- Ya juntas, se renumeran 1..N para que la secuencia quede densa (las
+  -- flechas del front intercambian `orden` entre vecinos y con huecos el
+  -- intercambio sigue funcionando, pero la lista es mas facil de leer asi).
+  with ordenados as (
+    select id, row_number() over (order by orden, created_at) as rn
+      from public.mascota_problemas
+     where mascota_id = p_principal_id
+  )
+  update public.mascota_problemas p
+     set orden = o.rn, updated_at = now()
+    from ordenados o
+   where p.id = o.id and p.orden <> o.rn;
 
   update public.red_solicitudes set mascota_solicitante_id = p_principal_id
    where mascota_solicitante_id = p_duplicada_id;

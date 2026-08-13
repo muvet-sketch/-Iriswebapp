@@ -1334,6 +1334,53 @@ patrón que el resto). Sin patrón de edición (un mensaje enviado no se
 edita) — por eso no hay `updated_at` ni política de update en esa
 tabla, a diferencia de vacunaciones/desparasitaciones.
 
+**Órdenes (tab general de Consultorio) SÍ persiste en Supabase** (tabla
+`ordenes`, migración `20260813_ordenes_persistencia.sql`) — mismo
+criterio que el resto: `guardarOrdenes()` es `async` y hace insert/update
+BLOQUEANTE antes de tocar `patientData[petKey].ordenes` (si falla la
+escritura remota no se aplica el cambio local), `eliminarOrdenReal()`
+borra de forma optimista, y `cargarDatosClinicaDesdeSupabase()`
+reconstruye el array (`construirOrdenDesdeFila()`) al iniciar sesión.
+Antes vivía solo en memoria y se perdía al refrescar la página o volver
+a iniciar sesión. Detalles propios de este módulo:
+- **`tipo`/`prioridad` se guardan como el código crudo**, no la etiqueta
+  ni el color ya resueltos (`tipoLabel`/`prioridadLabel`/
+  `prioridadColor`): esos se recalculan en `construirOrdenDesdeFila()` a
+  partir de `TIPOS_ORDEN`/`PRIORIDADES_ORDEN`, igual que
+  `guardarOrdenes()` ya los calculaba al crear. No se agregan columnas
+  para el dato derivado.
+- **Un solo modal puede crear VARIAS órdenes a la vez** (un bloque por
+  cada "+ Agregar orden"): el insert es un solo `.insert([...]).select()`
+  con todas las filas, y los ids reales que devuelve se reasignan de
+  vuelta a cada registro en memoria en el mismo orden — sin eso, una
+  orden creada en esta sesión no tendría `id` y ni editarla ni borrarla
+  (ni el flujo de Resultados, ver abajo) podrían alcanzar la fila real.
+- **`resultados` (la sub-tabla de Resultados vinculados a una orden de
+  Imagen diagnóstica/Prueba-Examen) SIGUE siendo 100% mock** — fuera del
+  alcance de esta migración, a propósito. Pero `ordenes.estado`
+  (`pendiente`/`completado`) SÍ es una columna real, así que las dos
+  transiciones que ese mock dispara sobre la orden padre —finalizar un
+  resultado y eliminar un resultado ya finalizado— tienen que persistir
+  ese campo aunque el resultado en sí no se guarde: `guardarResultado()`
+  llama a `persistirEstadoOrden(orden, 'completado')` y el borrado del
+  resultado (menú "..." → `rowActionEliminarConfirmado`, moduleKey
+  `'resultado'`) llama a `persistirEstadoOrden(orden, 'pendiente')` al
+  revertir. Sin esto, el estado de la orden volvería a `pendiente` en la
+  próxima recarga aunque el resultado (mock, ya perdido de todas formas)
+  la mostrara como completada — o peor, un `completado` local se perdería
+  dentro de la misma sesión si algo más disparaba una recarga completa
+  de `patientData`.
+- Sin entrada de `data.timeline`: `guardarOrdenes()` nunca escribió ahí
+  (solo el resultado, aún mock, lo hace al finalizar) — mismo criterio
+  se mantiene en `cargarDatosClinicaDesdeSupabase()`.
+- La migración también corrigió `fusionar_mascotas` (sumó `'ordenes'` a
+  `c_tablas`) y de paso sincronizó `supabase/schema.sql`, que ya estaba
+  desactualizado respecto a la función LIVE (le faltaban
+  `anestesia_mediciones`/`mascota_problemas` en el array y el bloque de
+  renumeración de `mascota_problemas`) — mismo hueco documentado en
+  RESPALDOS para `formulas_medicas`/`ventas_facturas`/
+  `ventas_cotizaciones`, aplicado sin querer también acá.
+
 **Documentos — formatos propios de la clínica y proceso de firma.**
 La tabla `documentos` ya persistía, pero el módulo tenía tres huecos que
 lo dejaban a medio funcionar; los tres ya están cerrados y conviene no

@@ -8899,13 +8899,13 @@
       const tel = (p && p.movil) || data.ownerPhone || '';
       const email = (p && p.email) || '';
       const direccion = p ? [p.direccion, p.ciudad].filter(Boolean).join(', ') : '';
-      const row = (label, value) => value ? `
+      const row = (label, value, copyValue) => value ? `
         <div class="owner-popover-row">
           <div class="owner-popover-row-text">
             <span class="owner-popover-label">${label}</span>
             <span class="owner-popover-value">${value}</span>
           </div>
-          ${copyIconHTML(value)}
+          ${copyIconHTML(copyValue !== undefined ? copyValue : value)}
         </div>` : '';
       // Sección "Mascotas" — mismas mascotas del propietario que ya usa el
       // chip del buscador (Parte B.1, ver getMascotasRelacionadasDePropietario),
@@ -8934,7 +8934,7 @@
       })() : '';
       document.getElementById('pet-owner-popover').innerHTML = `
         <div class="owner-popover-header">${nombre}</div>
-        ${row('Documento', doc)}
+        ${row('Documento', doc, p && p.docNumero)}
         ${row('Teléfono', tel)}
         ${row('Email', email)}
         ${row('Dirección', direccion)}
@@ -11497,6 +11497,7 @@
         propietario: p,
         nombre: (p && p.nombre) || item.propietario || '—',
         documento: p && p.docNumero ? `${p.docTipo || ''} ${p.docNumero}`.trim() : '',
+        docNumero: (p && p.docNumero) || '',
         movil: (p && p.movil) || (data && data.ownerPhone) || '',
         telefonoAlterno: (p && (p.telefonoAlterno || p.telefonoOpcional)) || '',
         email: (p && p.email) || '',
@@ -11519,16 +11520,16 @@
       const item = EVENTOS_SEGUIMIENTO.find(it => it.id === id);
       if (!item) return;
       const d = datosPropietarioEvento(item);
-      const row = (label, value) => value ? `
+      const row = (label, value, copyValue) => value ? `
         <div class="owner-popover-row">
           <div class="owner-popover-row-text">
             <span class="owner-popover-label">${label}</span>
             <span class="owner-popover-value" title="${String(value).replace(/"/g, '&quot;')}">${value}</span>
           </div>
-          ${copyIconHTML(value)}
+          ${copyIconHTML(copyValue !== undefined ? copyValue : value)}
         </div>` : '';
       const filas = [
-        row('Documento', d.documento),
+        row('Documento', d.documento, d.docNumero),
         row('Móvil', d.movil),
         row('Teléfono alterno', d.telefonoAlterno),
         row('Email', d.email),
@@ -12405,8 +12406,8 @@
 
     // Arrays de las sub-secciones cl\u00ednicas de Historia (algunas ya
     // persisten en Supabase \u2014 documentos, examenes, hospitalizaciones,
-    // vacunaciones, desparasitaciones, cirugias, tareasPendientes \u2014 el
-    // resto sigue 100% mock) \u2014 comparten este mismo scaffold vac\u00edo tanto
+    // vacunaciones, desparasitaciones, cirugias, tareasPendientes, ordenes
+    // \u2014 el resto (ej. resultados) sigue 100% mock) \u2014 comparten este mismo scaffold vac\u00edo tanto
     // al registrar una mascota nueva (guardarMascotaRegistro) como al
     // reconstruir patientData desde Supabase (cargarDatosClinicaDesdeSupabase),
     // para no duplicar la lista de campos.
@@ -15799,13 +15800,7 @@
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
         const row = document.querySelector(`tr[data-orden-row="${idx}"]`);
-        if (row) {
-          row.classList.add('row-fade-out');
-          setTimeout(() => {
-            patientData[petKey].ordenes.splice(idx, 1);
-            renderOrdenesTable(petKey);
-          }, 250);
-        }
+        eliminarOrdenReal(petKey, idx, row);
       } else if (moduleKey === 'documento') {
         const [petKey, idxStr] = recordId.split(':');
         const idx = Number(idxStr);
@@ -15833,6 +15828,7 @@
             const orden = patientData[petKey].ordenes[record.ordenIndex];
             if (orden && orden.estado === 'completado') {
               orden.estado = 'pendiente';
+              persistirEstadoOrden(orden, 'pendiente');
               renderOrdenesTable(petKey);
             }
             patientData[petKey].resultados.splice(idx, 1);
@@ -19654,7 +19650,7 @@
       if (e.target === document.getElementById('orden-modal')) closeOrdenModal();
     }
 
-    function guardarOrdenes() {
+    async function guardarOrdenes() {
       const isEdit = !!editingOrdenContext;
       const petKey = isEdit ? editingOrdenContext.petKey : selectedPetKey;
       const data = patientData[petKey];
@@ -19690,17 +19686,52 @@
         return;
       }
 
-      if (isEdit) {
-        // Preserva el estado (ej. "completado" por un resultado ya registrado)
-        const estadoPrevio = data.ordenes[editingOrdenContext.index].estado || 'pendiente';
-        data.ordenes[editingOrdenContext.index] = { ...nuevasOrdenes[0], estado: estadoPrevio };
-      } else {
-        data.ordenes.unshift(...nuevasOrdenes);
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
       }
 
-      renderOrdenesTable(petKey);
-      closeOrdenModal();
-      showToast(isEdit ? 'Orden actualizada' : (nuevasOrdenes.length > 1 ? 'Órdenes registradas' : 'Orden registrada'));
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const saveBtn = document.getElementById('orden-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+
+      const filaSupabaseDesdeOrden = o => ({
+        fecha: o.fechaISO, tipo: o.tipo, detalle: o.detalle, cantidad: o.cantidad,
+        prioridad: o.prioridad || null, notas: o.notas || null,
+        generar_solicitud: o.generarSolicitud, motivo: o.motivo || null, usuario: o.usuario
+      });
+
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+
+        if (isEdit) {
+          const dbId = data.ordenes[editingOrdenContext.index].id;
+          const estadoPrevio = data.ordenes[editingOrdenContext.index].estado || 'pendiente';
+          const { error } = await window.supabase.from('ordenes')
+            .update({ ...filaSupabaseDesdeOrden(nuevasOrdenes[0]), updated_at: new Date().toISOString() }).eq('id', dbId);
+          if (error) throw error;
+          // Preserva el estado (ej. "completado" por un resultado ya registrado)
+          data.ordenes[editingOrdenContext.index] = { ...nuevasOrdenes[0], estado: estadoPrevio, id: dbId };
+        } else {
+          const insertRows = nuevasOrdenes.map(o => ({
+            ...filaSupabaseDesdeOrden(o), estado: 'pendiente',
+            establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+          }));
+          const { data: inserted, error } = await window.supabase.from('ordenes').insert(insertRows).select();
+          if (error) throw error;
+          data.ordenes.unshift(...nuevasOrdenes.map((o, i) => ({ ...o, id: inserted[i].id })));
+        }
+
+        renderOrdenesTable(petKey);
+        closeOrdenModal();
+        showToast(isEdit ? 'Orden actualizada' : (nuevasOrdenes.length > 1 ? 'Órdenes registradas' : 'Orden registrada'));
+      } catch (err) {
+        console.error('[IRIS] Error guardando orden en Supabase:', err);
+        showToast('No se pudo guardar la orden — intenta de nuevo');
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
     }
 
     // ── MÓDULO: RESULTADOS (vinculados a Órdenes de Imagen diagnóstica / Prueba-Examen) ──
@@ -19868,7 +19899,22 @@
       if (e.target === document.getElementById('resultado-modal')) closeResultadoModal();
     }
 
-    function guardarResultado(accion) {
+    // `resultados` sigue siendo mock (fuera del alcance de esta migración),
+    // pero `ordenes` ya es una fila real — sin esto, marcar/revertir
+    // "Completado" quedaría solo en memoria y se perdería en la próxima
+    // recarga aunque el resultado (mock) siguiera mostrando lo contrario.
+    async function persistirEstadoOrden(orden, estado) {
+      if (!window.supabase || !orden || !orden.id) return;
+      try {
+        const { error } = await window.supabase.from('ordenes')
+          .update({ estado, updated_at: new Date().toISOString() }).eq('id', orden.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error actualizando estado de la orden en Supabase:', err);
+      }
+    }
+
+    async function guardarResultado(accion) {
       const isEdit = !!editingResultadoContext;
       const petKey = isEdit ? editingResultadoContext.petKey : creatingResultadoContext.petKey;
       const data = patientData[petKey];
@@ -19918,6 +19964,7 @@
 
       if (accion === 'finalizado') {
         orden.estado = 'completado';
+        await persistirEstadoOrden(orden, 'completado');
         data.timeline.unshift({
           type: esLab ? 'Prueba/Examen' : 'Imagen diagnóstica',
           date: formatFechaConsulta(),
@@ -20625,6 +20672,47 @@
         if (error) throw error;
       } catch (err) {
         console.error('[IRIS] Error eliminando cirugía/procedimiento en Supabase:', err);
+        showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
+      }
+    }
+
+    // tipoLabel/prioridadLabel/prioridadColor NO se persisten (serían un
+    // dato derivado duplicado): se recalculan acá igual que guardarOrdenes()
+    // los calcula al crear, a partir del código crudo guardado en la fila.
+    function construirOrdenDesdeFila(r) {
+      const tipoDef = TIPOS_ORDEN.find(t => t.value === r.tipo);
+      const prioDef = PRIORIDADES_ORDEN.find(p => p.value === r.prioridad);
+      return {
+        id: r.id,
+        fechaISO: r.fecha, fecha: formatFechaCorta(r.fecha),
+        tipo: r.tipo, tipoLabel: tipoDef ? tipoDef.label : r.tipo,
+        detalle: r.detalle || '—', cantidad: r.cantidad,
+        prioridad: r.prioridad || '', prioridadLabel: prioDef ? prioDef.label : '—',
+        prioridadColor: prioDef ? prioDef.color : '#94A3B8',
+        notas: r.notas || '', generarSolicitud: !!r.generar_solicitud,
+        motivo: r.motivo || '', estado: r.estado, usuario: r.usuario || ''
+      };
+    }
+
+    async function eliminarOrdenReal(petKey, idx, row) {
+      const data = patientData[petKey];
+      const record = data.ordenes[idx];
+      const quitarLocal = () => {
+        data.ordenes.splice(idx, 1);
+        renderOrdenesTable(petKey);
+      };
+      if (row) {
+        row.classList.add('row-fade-out');
+        setTimeout(quitarLocal, 250);
+      } else {
+        quitarLocal();
+      }
+      if (!window.supabase || !record || !record.id) return;
+      try {
+        const { error } = await window.supabase.from('ordenes').delete().eq('id', record.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('[IRIS] Error eliminando orden en Supabase:', err);
         showToast('El registro se quitó de la lista pero no se pudo eliminar del servidor');
       }
     }
@@ -23905,7 +23993,7 @@
     const RESPALDO_TABLAS = [
       'propietarios', 'mascotas', 'consultas', 'documentos', 'examenes', 'formulas_medicas',
       'vacunaciones', 'desparasitaciones', 'cirugias', 'anestesia_mediciones', 'hospitalizaciones', 'seguimientos',
-      'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes', 'mensajes',
+      'remisiones', 'peluquerias', 'guarderias', 'tareas_pendientes', 'mensajes', 'ordenes',
       'agenda_eventos', 'eventos_seguimiento', 'productos', 'movimientos', 'arqueos', 'ventas_facturas',
       'ventas_cotizaciones', 'catalogos_custom', 'documento_plantillas',
       'memberships', 'invites', 'link_requests', 'intake_links',
@@ -31391,7 +31479,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       if (!window.supabase || !establecimientoId) return;
 
       async function leerTodo() {
-        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, eventoSegRes, vacunacionRes, desparasitacionRes, cirugiaRes, anestesiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, catalogoRes, plantillaRes, contactoRes] = await Promise.all([
+        const [propRes, petRes, docRes, examRes, consultaRes, formulaRes, facturaRes, cotizacionRes, hospRes, productoRes, movimientoRes, arqueoRes, agendaRes, eventoSegRes, vacunacionRes, desparasitacionRes, cirugiaRes, anestesiaRes, tareaPendienteRes, seguimientoRes, remisionRes, peluqueriaRes, guarderiaRes, mensajeRes, ordenRes, catalogoRes, plantillaRes, contactoRes] = await Promise.all([
           window.supabase.from('propietarios').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('mascotas').select('*').eq('establecimiento_id', establecimientoId),
           window.supabase.from('documentos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
@@ -31417,6 +31505,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           window.supabase.from('peluquerias').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('guarderias').select('*').eq('establecimiento_id', establecimientoId).order('fecha_ingreso', { ascending: false }),
           window.supabase.from('mensajes').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
+          window.supabase.from('ordenes').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('catalogos_custom').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true }),
           window.supabase.from('documento_plantillas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true }),
           window.supabase.from('mascota_contactos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: true })
@@ -31445,6 +31534,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         if (peluqueriaRes.error) throw peluqueriaRes.error;
         if (guarderiaRes.error) throw guarderiaRes.error;
         if (mensajeRes.error) throw mensajeRes.error;
+        if (ordenRes.error) throw ordenRes.error;
         if (catalogoRes.error) throw catalogoRes.error;
         if (plantillaRes.error) throw plantillaRes.error;
         if (contactoRes.error) throw contactoRes.error;
@@ -31460,16 +31550,16 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           tareaPendienteRows: tareaPendienteRes.data || [],
           seguimientoRows: seguimientoRes.data || [], remisionRows: remisionRes.data || [],
           peluqueriaRows: peluqueriaRes.data || [], guarderiaRows: guarderiaRes.data || [],
-          mensajeRows: mensajeRes.data || [], catalogoRows: catalogoRes.data || [],
+          mensajeRows: mensajeRes.data || [], ordenRows: ordenRes.data || [], catalogoRows: catalogoRes.data || [],
           plantillaRows: plantillaRes.data || [], contactoRows: contactoRes.data || []
         };
       }
 
-      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, anestesiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo();
+      let { propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, anestesiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, ordenRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo();
 
       if (seedDemoSiVacio && propRows.length === 0 && petRows.length === 0) {
         await sembrarDemoEnSupabase(establecimientoId);
-        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, anestesiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo());
+        ({ propRows, petRows, docRows, examRows, consultaRows, formulaRows, facturaRows, cotizacionRows, hospRows, productoRows, movimientoRows, arqueoRows, agendaRows, eventoSegRows, vacunacionRows, desparasitacionRows, cirugiaRows, anestesiaRows, tareaPendienteRows, seguimientoRows, remisionRows, peluqueriaRows, guarderiaRows, mensajeRows, ordenRows, catalogoRows, plantillaRows, contactoRows } = await leerTodo());
       }
 
       // Formatos propios de esta clínica (los de fábrica viven en
@@ -31571,6 +31661,13 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       tareaPendienteRows.forEach(r => {
         const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
         if (pet) pet.tareasPendientes.push(construirTareaPendienteDesdeFila(r));
+      });
+
+      // Sin entrada de timeline: guardarOrdenes() nunca escribió en
+      // data.timeline (solo el resultado, aún mock, lo hace al finalizar).
+      ordenRows.forEach(r => {
+        const pet = Object.values(patientData).find(d => d.mascotaId === r.mascota_id);
+        if (pet) pet.ordenes.push(construirOrdenDesdeFila(r));
       });
 
       peluqueriaRows.forEach(r => {
