@@ -1053,6 +1053,33 @@
     #agenda-calendar .fc-timegrid-col.fc-day-today { background-color: rgba(var(--clinic-accent-rgb), 0.05); }
     #agenda-calendar .fc-event { border: none; cursor: pointer; }
 
+    /* Botón "Ver en consultorio" agregado sobre la burbuja de evento por
+       agendaFcEventDidMount() (ver initAgendaCalendar()/
+       initAgendaPersonalCalendar()) — se agrega como hijo directo de
+       `.fc-event` (que FullCalendar ya deja `position:absolute/relative`,
+       ver .fc-timegrid-event/.fc-daygrid-event) y se posiciona ABSOLUTO en
+       la esquina, sin participar del flex de time+title. Se probó la
+       alternativa de meterlo dentro de `.fc-event-title-container` junto al
+       título: en una cita de 30 min (columna angosta del calendario
+       Semana/Día) el botón empujaba el ancho total más allá de la burbuja y
+       quedaba cortado por el `overflow:hidden` del contenedor — invisible
+       en la mitad de las citas reales. Como badge en la esquina no compite
+       por ese ancho y nunca se corta. Sin scope de id a propósito: lo usan
+       tanto #agenda-calendar (General) como #agenda-personal-calendar
+       (Personal), que no tiene su propio bloque de estilos. */
+    .agenda-fc-pet-btn {
+      position: absolute; top: 1px; right: 1px; z-index: 2;
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 15px; height: 15px; padding: 0; border: none; border-radius: 3px;
+      background: rgba(255, 255, 255, 0.35); color: inherit; cursor: pointer; transition: var(--transition);
+    }
+    .agenda-fc-pet-btn:hover { background: rgba(255, 255, 255, 0.55); }
+    .agenda-fc-pet-btn i { width: 10px; height: 10px; pointer-events: none; }
+    /* Vista Mes (dayGridMonth): la fila de evento es de una sola línea
+       angosta (punto + hora + título) — hasta un badge en la esquina se
+       superpone al texto ahí. En esa vista el atajo solo estorba. */
+    .fc-daygrid-event .agenda-fc-pet-btn { display: none; }
+
     /* Modal Crear/Editar evento — grupo Propietario/Mascota oculto con "Solo reservar espacio" */
     .agenda-owner-pet-group.hidden { display: none; }
     .agenda-hora-wrap.hidden { display: none; }
@@ -9289,6 +9316,11 @@
       { id: 'evs-11', fechaSugeridaISO: '2026-08-10', propietario: 'Carlos Mendoza', petKey: 'luna', tipoEvento: 'consulta_especializada', origen: 'Seguimiento — Luna — Próxima consulta especializada 10/08/2026', estado: 'pendiente', agendaEventoId: null }
     ];
     let agendaModalOrigenEventoSeguimientoId = null;
+    // petKey del evento que disparó abrirAgendaNotifModal() — permite que el
+    // botón "Ver en consultorio" de esa notificación salte al paciente justo
+    // después de agendar, sin tener que volver a abrir el evento desde el
+    // calendario (ver abrirAgendaNotifModal()/abrirPacienteDesdeAgendaNotif()).
+    let agendaNotifModalPetKey = null;
 
     // ── PROTOTIPO: SIMULADOR DE VISTA POR PRIVILEGIOS ──────────
     const ROLES = {
@@ -10832,6 +10864,14 @@
       document.getElementById('agenda-evento-eliminar-btn').style.display = (mode === 'edit') ? 'inline-flex' : 'none';
       document.getElementById('agenda-evento-guardar-btn').style.display = readonly ? 'none' : 'inline-flex';
 
+      // "Ver en consultorio": solo tiene sentido para un evento YA agendado
+      // (edit/view, no create) que tenga una mascota real vinculada — mismo
+      // criterio de rol que abrirPacienteDesdeEventos() (Agenda > Eventos),
+      // para no mostrar un atajo que el botón luego rechace con un toast.
+      const petKeyDelEvento = evento && !soloEspacio ? evento.petKey : null;
+      const puedeVerEnConsultorio = mode !== 'create' && petKeyDelEvento && !!patientData[petKeyDelEvento] && rolPuedeVerTab('consultorio');
+      document.getElementById('agenda-evento-ver-consultorio-btn').style.display = puedeVerEnConsultorio ? 'inline-flex' : 'none';
+
       // Tarea 3 (mock): recordatorio 24h ya calculado al guardar — solo se
       // muestra en el detalle, no dispara nada.
       const recordatorioEl = document.getElementById('ag-recordatorio-info');
@@ -10863,6 +10903,20 @@
       const evento = AGENDA_EVENTOS.find(e => e.id === eventId);
       if (!evento) return;
       abrirAgendaEventoModalInterno(puedeEditarEventoAgenda(evento) ? 'edit' : 'view', evento, null);
+    }
+
+    // Botón "Ver en consultorio" del modal de evento (visible solo en
+    // edit/view, ver abrirAgendaEventoModalInterno): cierra el modal y reusa
+    // abrirPacienteDesdeEventos(), que ya trae el chequeo de rol y el aviso
+    // de tutor sin vincular — así el atajo funciona igual venga del
+    // calendario General, el Personal o la lista de Agenda > Eventos.
+    function abrirPacienteDesdeAgendaEvento() {
+      if (!agendaEditingId) return;
+      const evento = AGENDA_EVENTOS.find(e => e.id === agendaEditingId);
+      if (!evento || !evento.petKey) return;
+      const petKey = evento.petKey;
+      closeAgendaEventoModal();
+      abrirPacienteDesdeEventos(petKey);
     }
 
     // "+ Registrar cita" desde el tab Citas de Historia clínica — mismo
@@ -11048,11 +11102,34 @@
       ];
       document.getElementById('agenda-notif-modal-body').textContent =
         `📧 Notificación enviada a: ${destinatarios.join(' · ')}`;
+
+      // Atajo "Ver en consultorio" justo después de agendar: mismo criterio
+      // de rol/mascota real que en abrirAgendaEventoModalInterno, para no
+      // ofrecer un botón que abrirPacienteDesdeEventos() vaya a rechazar.
+      agendaNotifModalPetKey = (evento.petKey && patientData[evento.petKey] && rolPuedeVerTab('consultorio'))
+        ? evento.petKey : null;
+      document.getElementById('agenda-notif-ver-consultorio-btn').style.display =
+        agendaNotifModalPetKey ? 'inline-flex' : 'none';
+
       document.getElementById('agenda-notif-modal').classList.add('show');
+      lucide.createIcons();
     }
-    function closeAgendaNotifModal() { document.getElementById('agenda-notif-modal').classList.remove('show'); }
+    function closeAgendaNotifModal() {
+      document.getElementById('agenda-notif-modal').classList.remove('show');
+      agendaNotifModalPetKey = null;
+    }
     function handleAgendaNotifModalOverlayClick(e) {
       if (e.target === document.getElementById('agenda-notif-modal')) closeAgendaNotifModal();
+    }
+
+    // Botón "Ver en consultorio" de la notificación mock de correo — el
+    // acceso más directo pedido: justo después de agendar, sin volver a
+    // abrir el evento desde el calendario.
+    function abrirPacienteDesdeAgendaNotif() {
+      const petKey = agendaNotifModalPetKey;
+      if (!petKey) return;
+      closeAgendaNotifModal();
+      abrirPacienteDesdeEventos(petKey);
     }
 
     // ── FullCalendar: instancia y render ────────────────────────────
@@ -11065,8 +11142,48 @@
         allDay: ev.sinHora,
         backgroundColor: AGENDA_TIPO_COLORS[ev.tipo],
         borderColor: AGENDA_TIPO_COLORS[ev.tipo],
-        classNames: [`agenda-event-${ev.tipo}`]
+        classNames: [`agenda-event-${ev.tipo}`],
+        // petKey/soloEspacio viajan como extendedProps para que
+        // agendaFcEventDidMount() pueda pintar el atajo "Ver en consultorio"
+        // sobre la burbuja sin tener que volver a buscar el evento en
+        // AGENDA_EVENTOS (acá ya solo queda el objeto de FullCalendar).
+        extendedProps: { petKey: ev.petKey, soloEspacio: ev.soloEspacio }
       };
+    }
+
+    // Atajo directo al Consultorio sobre la burbuja del evento — mismo
+    // criterio de rol/mascota real que el botón del modal
+    // (abrirAgendaEventoModalInterno) y el de la notificación
+    // (abrirAgendaNotifModal). A propósito NO se usa `eventContent` (que
+    // reemplaza TODO el contenido que pinta FullCalendar): la vista Mes
+    // (dayGridMonth) pinta los eventos distinto a la de Semana/Día (punto de
+    // color + texto vs. barra sólida) y reconstruir las dos a mano es
+    // innecesario y frágil. `eventDidMount` deja el markup por defecto
+    // intacto y solo LE AGREGA el botón al final, así que ambas vistas
+    // siguen viéndose igual que antes salvo por el ícono nuevo. `stopPropagation()`
+    // en el listener evita que el click también dispare el `eventClick` del
+    // calendario (que abriría el modal de detalle) — sin eso, un solo click
+    // haría las dos cosas a la vez.
+    function agendaFcEventDidMount(info) {
+      const petKey = info.event.extendedProps.petKey;
+      const soloEspacio = info.event.extendedProps.soloEspacio;
+      const puedeVerEnConsultorio = !soloEspacio && petKey && !!patientData[petKey] && rolPuedeVerTab('consultorio');
+      if (!puedeVerEnConsultorio) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'agenda-fc-pet-btn';
+      btn.title = 'Ver en consultorio';
+      btn.innerHTML = '<i data-lucide="stethoscope"></i>';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        abrirPacienteDesdeEventos(petKey);
+      });
+      // Hijo directo de `.fc-event` (info.el), NO del contenedor del título:
+      // se posiciona absoluto por CSS (ver .agenda-fc-pet-btn) para no
+      // competir por el ancho angosto de una cita de 30 min — ver el
+      // comentario largo junto a esa regla.
+      info.el.appendChild(btn);
+      lucide.createIcons();
     }
 
     function getAgendaEventosFiltrados() {
@@ -11094,7 +11211,8 @@
         nowIndicator: true,
         buttonText: { today: 'Hoy', month: 'Mes', week: 'Semana', day: 'Día' },
         dateClick: agendaDateClick,
-        eventClick: (info) => abrirEventoAgendaPorId(info.event.id)
+        eventClick: (info) => abrirEventoAgendaPorId(info.event.id),
+        eventDidMount: agendaFcEventDidMount
       });
       agendaCalendar.render();
       refreshAgendaCalendarEvents();
@@ -11165,7 +11283,8 @@
         nowIndicator: true,
         buttonText: { today: 'Hoy' },
         dateClick: (info) => abrirAgendaEventoModalInterno('create', null, info.date),
-        eventClick: (info) => abrirEventoAgendaPorId(info.event.id)
+        eventClick: (info) => abrirEventoAgendaPorId(info.event.id),
+        eventDidMount: agendaFcEventDidMount
       });
       agendaPersonalCalendar.render();
     }
@@ -20813,6 +20932,29 @@
       }
     }
 
+    // Un enlace por archivo adjunto (URL firmada de 1h, bucket `pdfs`
+    // compartido con Exámenes) — mismo criterio que descargarResultadoExamen().
+    // Los adjuntos de registros anteriores a esta migración no tienen
+    // `path` (nunca se subieron a Storage): se listan igual pero sin link.
+    async function descargarSeguimientoAdjunto(petKey, idx, archivoIndex) {
+      const record = patientData[petKey] && patientData[petKey].seguimientos[idx];
+      const archivo = record && (record.adjuntos || [])[archivoIndex];
+      if (!archivo || !archivo.path) { showToast('Este adjunto es de un registro anterior y no quedó guardado en el servidor'); return; }
+      if (!window.supabase) return;
+      const { data, error } = await window.supabase.storage.from('pdfs').createSignedUrl(archivo.path, 3600);
+      if (error) { console.error('[IRIS] Error firmando URL del adjunto de seguimiento:', error); showToast('No se pudo generar el enlace de descarga'); return; }
+      window.open(data.signedUrl, '_blank');
+    }
+
+    function seguimientoAdjuntosLinksHTML(petKey, idx, adjuntos) {
+      if (!adjuntos || !adjuntos.length) return '—';
+      return adjuntos.map((a, ai) =>
+        a.path
+          ? `<a href="#" onclick="event.preventDefault(); descargarSeguimientoAdjunto('${petKey}', ${idx}, ${ai});" class="link-ghost">${escapeHtml(a.nombre || 'Archivo')}</a>`
+          : `<span title="Registro anterior — no quedó guardado en el servidor">${escapeHtml(a.nombre || 'Archivo')}</span>`
+      ).join(', ');
+    }
+
     function construirSeguimientoTimelineDesdeFila(record) {
       return {
         type: 'Seguimiento',
@@ -20860,6 +21002,8 @@
       }
       if (!window.supabase || !record || !record.id) return;
       try {
+        const paths = (record.adjuntos || []).filter(a => a && a.path).map(a => a.path);
+        if (paths.length) await window.supabase.storage.from('pdfs').remove(paths);
         const { error } = await window.supabase.from('seguimientos').delete().eq('id', record.id);
         if (error) throw error;
       } catch (err) {
@@ -21070,7 +21214,27 @@
     let editingSeguimientoContext = null; // { petKey, idx } al editar un seguimiento existente
     let pendingSeguimientoOrigen = null; // { modulo, referenciaId } para el próximo registro creado
     let seguimientoFormPetKey = null; // paciente activo en el form modal (create o edit)
-    let seguimientoAdjuntos = [];
+    // Adjuntos del form modal — mismo criterio de 3 variables que
+    // examenPendingFiles/examenExistingFiles/examenArchivosAEliminar
+    // (Exámenes/Imágenes diagnósticas): los archivos SÍ se suben al bucket
+    // `pdfs` (path `clinica/<establecimiento_id>/seguimientos/<id>/...`),
+    // el borrado real en storage se difiere hasta que el guardado tenga
+    // éxito, así cancelar el modal nunca borra nada.
+    let seguimientoAdjuntosExistentes = []; // [{path, nombre}] ya guardados (al editar)
+    let seguimientoAdjuntosNuevos = [];     // File[] elegidos en esta sesión del modal, todavía sin subir
+    let seguimientoAdjuntosAEliminar = [];  // paths ya guardados que el usuario quitó — se borran del bucket recién al guardar con éxito
+
+    function seguimientoFechaEsValida(value) {
+      // El <input type="datetime-local"> es nativo, pero Chrome/Edge tienen
+      // un quirk conocido: tipear rápido en el selector de año deja
+      // acumular más de 4 dígitos (ya se vio un "202520-02-28" real en
+      // producción). Sin este chequeo ese valor corrupto se guarda tal
+      // cual y después ni siquiera se puede mostrar (Invalid Date).
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return false;
+      const year = Number(value.slice(0, 4));
+      if (year < 1900 || year > 2100) return false;
+      return !isNaN(new Date(value).getTime());
+    }
 
     // Restricción de rol (Parte 2.4): SOLO Médico Veterinario puede activar
     // "Modo programación" (crear/editar/eliminar tratamientos). Marcar horas
@@ -22141,10 +22305,10 @@
 
     function verSeguimiento(petKey, idx) {
       const record = patientData[petKey].seguimientos[idx];
-      openViewModal('Seguimiento', seguimientoViewContentHTML(record));
+      openViewModal('Seguimiento', seguimientoViewContentHTML(record, petKey, idx));
     }
 
-    function seguimientoViewContentHTML(s) {
+    function seguimientoViewContentHTML(s, petKey, idx) {
       return `
         <div class="info-label">Fecha y hora</div>
         <div class="info-value">${s.fecha}</div>
@@ -22155,7 +22319,7 @@
         <div class="info-label">Detalles del seguimiento</div>
         <div class="info-value">${s.detalles || '—'}</div>
         <div class="info-label">Adjuntos</div>
-        <div class="info-value">${s.adjuntos.length ? s.adjuntos.map(a => a.nombre).join(', ') : '—'}</div>
+        <div class="info-value">${seguimientoAdjuntosLinksHTML(petKey, idx, s.adjuntos)}</div>
         <div class="info-label">Próximo control</div>
         <div class="info-value">${s.proximoControl || '—'}</div>
         <div class="info-label">Examen físico general</div>
@@ -22207,7 +22371,15 @@
       document.getElementById('seg-mensaje-enviar').checked = !!(record && record.mensajePropietario && record.mensajePropietario.enviar);
       document.getElementById('seg-mensaje-texto').value = record && record.mensajePropietario ? (record.mensajePropietario.texto || '') : '';
       toggleSeguimientoMensajeTexto();
-      seguimientoAdjuntos = record && record.adjuntos ? [...record.adjuntos] : [];
+      // Registros de antes de esta migración solo tienen {nombre} (sin
+      // path, nunca se subieron a Storage) — se conservan tal cual al
+      // editar, sin link ni botón de quitar por storage (removeSeguimientoAdjuntoExistente
+      // solo encola un remove() de bucket cuando SÍ hay path).
+      seguimientoAdjuntosExistentes = record && Array.isArray(record.adjuntos)
+        ? record.adjuntos.map(a => ({ path: a.path || null, nombre: a.nombre }))
+        : [];
+      seguimientoAdjuntosNuevos = [];
+      seguimientoAdjuntosAEliminar = [];
       renderSeguimientoAdjuntosPreview();
       document.getElementById('seg-adjuntos-input').value = '';
 
@@ -22220,6 +22392,11 @@
       editingSeguimientoContext = null;
       pendingSeguimientoOrigen = null;
       seguimientoFormPetKey = null;
+      // Cancelar no borra nada del bucket — solo se limpian las listas en
+      // memoria (mismo criterio que closeExamenModal()).
+      seguimientoAdjuntosExistentes = [];
+      seguimientoAdjuntosNuevos = [];
+      seguimientoAdjuntosAEliminar = [];
     }
     function handleSeguimientoFormOverlayClick(e) {
       if (e.target === document.getElementById('seguimiento-form-modal')) closeSeguimientoFormModal();
@@ -22232,16 +22409,48 @@
       document.getElementById('seg-mensaje-texto-wrap').style.display = document.getElementById('seg-mensaje-enviar').checked ? 'block' : 'none';
     }
 
+    // Los archivos se ACUMULAN sobre los que ya había elegidos (no se
+    // reemplazan): seleccionar de a tandas es el caso normal. Se limpia el
+    // value del input para que volver a elegir un archivo recién quitado
+    // dispare el change — mismo criterio que handleExamenResultadoFileChange().
     function handleSeguimientoAdjuntos(input) {
-      seguimientoAdjuntos = [...input.files].map(f => ({ nombre: f.name, url: URL.createObjectURL(f) }));
+      const nuevos = [...input.files];
+      input.value = '';
+      if (!nuevos.length) return;
+      seguimientoAdjuntosNuevos = [...seguimientoAdjuntosNuevos, ...nuevos];
+      renderSeguimientoAdjuntosPreview();
+    }
+
+    function removeSeguimientoAdjuntoNuevo(index) {
+      seguimientoAdjuntosNuevos.splice(index, 1);
+      renderSeguimientoAdjuntosPreview();
+    }
+
+    function removeSeguimientoAdjuntoExistente(index) {
+      const quitado = seguimientoAdjuntosExistentes.splice(index, 1)[0];
+      if (quitado && quitado.path) seguimientoAdjuntosAEliminar.push(quitado.path);
       renderSeguimientoAdjuntosPreview();
     }
 
     function renderSeguimientoAdjuntosPreview() {
       const wrap = document.getElementById('seg-adjuntos-preview');
-      wrap.innerHTML = seguimientoAdjuntos.length
-        ? seguimientoAdjuntos.map(a => `<span class="pet-chip-tag" style="display:inline-block;margin:2px 4px 0 0;">${a.nombre}</span>`).join('')
-        : '<span style="font-size:12px;color:var(--text-2);">Sin adjuntos</span>';
+      if (!seguimientoAdjuntosExistentes.length && !seguimientoAdjuntosNuevos.length) {
+        wrap.innerHTML = '<span class="examen-files-empty">Sin adjuntos</span>';
+        lucide.createIcons();
+        return;
+      }
+      const chip = (nombre, onclick) => `
+        <span class="examen-file-chip">
+          <i data-lucide="paperclip"></i>
+          <span class="examen-file-chip-name" title="${escapeHtml(nombre)}">${escapeHtml(nombre)}</span>
+          <button type="button" class="med-block-remove" style="display:inline-flex;" onclick="${onclick}" title="Quitar archivo">
+            <i data-lucide="x" style="width:12px;height:12px;"></i>
+          </button>
+        </span>`;
+      wrap.innerHTML =
+        seguimientoAdjuntosExistentes.map((a, i) => chip(a.nombre || 'Archivo', `removeSeguimientoAdjuntoExistente(${i})`)).join('') +
+        seguimientoAdjuntosNuevos.map((f, i) => chip(f.name, `removeSeguimientoAdjuntoNuevo(${i})`)).join('');
+      lucide.createIcons();
     }
 
     async function guardarSeguimiento() {
@@ -22252,6 +22461,12 @@
       const fechaValue = document.getElementById('seg-fecha').value;
       const mensajeEnviar = document.getElementById('seg-mensaje-enviar').checked;
       const proximoControlValue = document.getElementById('seg-proximo-control').value;
+
+      if (!seguimientoFechaEsValida(fechaValue)) {
+        showToast('La fecha y hora no es válida — revisa el campo "Fecha y hora"');
+        document.getElementById('seg-fecha').focus();
+        return;
+      }
 
       if (!window.supabase || !currentSession || !currentSession.activeMembership || !data.mascotaId) {
         showToast('No hay una clínica activa — no se puede guardar');
@@ -22271,12 +22486,11 @@
         const userId = userData && userData.user ? userData.user.id : null;
 
         const origen = isEdit ? existing.origen : { ...pendingSeguimientoOrigen };
-        const payload = {
+        const payloadBase = {
           fecha: fechaValue,
           tipo: document.getElementById('seg-tipo').value,
           motivo: document.getElementById('seg-motivo').value.trim() || null,
           detalles: document.getElementById('seg-detalles').value.trim() || null,
-          adjuntos: seguimientoAdjuntos.map(a => ({ nombre: a.nombre })),
           proximo_control: proximoControlValue || null,
           examen_fisico: document.getElementById('seg-examen-fisico').value.trim() || null,
           mensaje_enviar: mensajeEnviar,
@@ -22287,17 +22501,45 @@
           registrado_por_nombre: registradoPorUsuario ? registradoPorUsuario.nombre : (isEdit ? existing.registradoPorNombre : null)
         };
 
+        // Metadata sin los archivos nuevos todavía — hace falta el id del
+        // seguimiento para construir la ruta de storage (mismo criterio de
+        // 2 pasos que guardarExamen()).
         let dbId = isEdit ? existing.id : null;
-        if (isEdit) {
-          const { error } = await window.supabase.from('seguimientos')
-            .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
-          if (error) throw error;
-        } else {
+        if (!dbId) {
           const { data: inserted, error } = await window.supabase.from('seguimientos').insert({
-            ...payload, establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
+            ...payloadBase, adjuntos: seguimientoAdjuntosExistentes,
+            establecimiento_id: establecimientoId, mascota_id: data.mascotaId, created_by: userId
           }).select().single();
           if (error) throw error;
           dbId = inserted.id;
+        }
+
+        // Subir los archivos nuevos elegidos en esta sesión del modal — se
+        // suman a los que ya estaban guardados (mismo criterio que
+        // guardarExamen(), bucket `pdfs` compartido con ese módulo).
+        const adjuntosFinal = [...seguimientoAdjuntosExistentes];
+        for (let j = 0; j < seguimientoAdjuntosNuevos.length; j++) {
+          const file = seguimientoAdjuntosNuevos[j];
+          const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+          const path = `clinica/${establecimientoId}/seguimientos/${dbId}/${Date.now()}-${j}.${ext}`;
+          const { error: uploadError } = await window.supabase.storage.from('pdfs')
+            .upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: true });
+          if (uploadError) throw uploadError;
+          adjuntosFinal.push({ path, nombre: file.name });
+        }
+
+        const payload = { ...payloadBase, adjuntos: adjuntosFinal };
+        const { error } = await window.supabase.from('seguimientos')
+          .update({ ...payload, updated_at: new Date().toISOString() }).eq('id', dbId);
+        if (error) throw error;
+
+        // Recién acá se borran del bucket los archivos que el usuario quitó
+        // en esta sesión del modal: cancelar el modal no debe borrar nada,
+        // y si el guardado falla la fila sigue apuntando a ellos.
+        if (seguimientoAdjuntosAEliminar.length) {
+          const { error: removeError } = await window.supabase.storage.from('pdfs').remove(seguimientoAdjuntosAEliminar);
+          if (removeError) console.error('[IRIS] Error eliminando adjuntos de seguimiento en storage:', removeError);
+          seguimientoAdjuntosAEliminar = [];
         }
 
         const record = {
@@ -34208,7 +34450,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         <div class="soap-meta-row">
           <div class="input-group">
             <label class="input-label">Fecha y hora</label>
-            <input type="datetime-local" class="input-control" style="padding-left:12px;" id="seg-fecha">
+            <input type="datetime-local" class="input-control" style="padding-left:12px;" id="seg-fecha" min="1900-01-01T00:00" max="2100-12-31T23:59">
           </div>
           <div class="input-group">
             <label class="input-label">Tipo de seguimiento</label>
@@ -35805,7 +36047,10 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         <div class="agenda-recordatorio-info" id="ag-recordatorio-info" style="display:none;"></div>
       </div>
       <div class="soap-modal-footer" id="agenda-evento-modal-footer">
-        <button class="btn-danger-solid" id="agenda-evento-eliminar-btn" style="margin-right:auto;" onclick="eliminarEventoAgendaClick()">Eliminar</button>
+        <div style="display:flex;gap:8px;margin-right:auto;">
+          <button class="btn-outline" id="agenda-evento-ver-consultorio-btn" onclick="abrirPacienteDesdeAgendaEvento()"><i data-lucide="stethoscope" style="width:14px;height:14px;"></i> Ver en consultorio</button>
+          <button class="btn-danger-solid" id="agenda-evento-eliminar-btn" onclick="eliminarEventoAgendaClick()">Eliminar</button>
+        </div>
         <button class="btn-secondary" onclick="closeAgendaEventoModal()">Cancelar</button>
         <button class="btn-primary" id="agenda-evento-guardar-btn" onclick="guardarEventoAgenda()">Guardar</button>
       </div>
@@ -35820,7 +36065,8 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         <button class="modal-close" onclick="closeAgendaNotifModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
       </div>
       <p style="font-size:13px;color:var(--text-1);line-height:1.6;" id="agenda-notif-modal-body"></p>
-      <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+        <button class="btn-outline" id="agenda-notif-ver-consultorio-btn" onclick="abrirPacienteDesdeAgendaNotif()"><i data-lucide="stethoscope" style="width:14px;height:14px;"></i> Ver en consultorio</button>
         <button class="btn-primary" onclick="closeAgendaNotifModal()">Entendido</button>
       </div>
     </div>

@@ -1266,10 +1266,30 @@ memoria y se perdían al refrescar la página o volver a iniciar sesión.
 objeto `origen` en memoria (`{modulo, referenciaId}`); `referenciaId`
 sigue siendo `${hospId}:${diaIndex}` y `hospId` ya es el uuid real de
 `hospitalizaciones.id`, así que el enlace al Kardex sigue siendo
-válido tras recargar. `seguimientos.adjuntos` solo guarda `{nombre}`
-por elemento (jsonb) — el archivo nunca se sube a Storage, mismo
-criterio que `desparasitaciones.archivo_adjunto_nombre`, así que el
-adjunto no es descargable tras recargar, solo se conserva su nombre.
+válido tras recargar. `seguimientos.adjuntos` (jsonb) SÍ sube el
+archivo real al bucket `pdfs` (compartido con Exámenes/Imágenes
+diagnósticas) — `{path, nombre}` por elemento, mismo criterio de 2
+pasos que `guardarExamen()`: primero un insert sin archivos nuevos
+para tener el `id` del seguimiento (necesario para la ruta
+`clinica/<establecimiento_id>/seguimientos/<id>/...`), después se
+suben los archivos y recién ahí un `update()` con `adjuntos` final.
+`seguimientoAdjuntosExistentes`/`seguimientoAdjuntosNuevos`/
+`seguimientoAdjuntosAEliminar` (form modal) son el mismo patrón de 3
+variables que `examenPendingFiles`/`examenExistingFiles`/
+`examenArchivosAEliminar` — cancelar el modal no borra nada, el
+`remove()` del bucket corre recién tras un guardado exitoso. "Ver"
+pinta cada adjunto como link real (`descargarSeguimientoAdjunto()`,
+URL firmada de 1h) vía `seguimientoAdjuntosLinksHTML()`, y
+`eliminarSeguimientoReal()` también borra los archivos del bucket.
+Registros de antes de esta migración solo tienen `{nombre}` (sin
+`path`, nunca se subieron) — se siguen leyendo y mostrando, pero sin
+link, con un `title` que lo aclara. Antes de esto no había ninguna
+validación sobre `#seg-fecha` (`<input type="datetime-local">`) y un
+quirk de Chrome/Edge (tipear rápido en el selector de año) llegó a
+guardar un año de 6 dígitos en producción; `seguimientoFechaEsValida()`
+bloquea el guardado si el valor no matchea el formato esperado o el
+año es irreal — cualquier otro campo `datetime-local` de este archivo
+sin validación tiene el mismo riesgo latente.
 `registrado_por` (Seguimientos) tiene la misma limitación que
 `responsable_id` (Tareas Pendientes): id LOCAL numérico de
 `USUARIOS_SISTEMA`, no un uuid estable — por eso también guarda
