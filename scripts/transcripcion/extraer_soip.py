@@ -371,8 +371,66 @@ def a_formato_formulario(consulta: ConsultaExtraida, payload: dict, avisos: List
         # ("lo que se oyo -> termino correcto"), para que el veterinario
         # pueda auditar cada nombre que el modelo normalizo.
         "terminos_normalizados": consulta.terminos_normalizados,
-        "revision_requerida": consulta.revision_requerida or bool(avisos),
+        # Viaja como campo propio y no dentro de avisos_automaticos porque el
+        # front lo pinta primero y en rojo: es lo que explica por que el resto
+        # del borrador viene pobre, y perdido entre los demas avisos no se lee.
+        "calidad_audio": payload.get("calidad_audio"),
+        "revision_requerida": consulta.revision_requerida or bool(avisos) or bool(payload.get("calidad_audio")),
         "notas_revision": consulta.notas_revision,
+        "avisos_automaticos": avisos,
+    }
+
+
+def aviso_calidad_audio(payload: dict) -> Optional[str]:
+    """
+    El aviso que vigilante.py dejo en el .json cuando el audio llego casi mudo
+    (celular con la pantalla bloqueada durante la consulta). Viaja hasta
+    'avisos_automaticos', que index.html ya pinta en la previsualizacion: sin
+    esto el veterinario ve un borrador de dos frases y no sabe que el problema
+    fue el microfono y no la consulta.
+    """
+    calidad = payload.get("calidad_audio")
+    if not isinstance(calidad, dict) or not calidad.get("mensaje"):
+        return None
+    # Sin guion largo ni comillas tipograficas: este aviso tambien se imprime
+    # por consola y en Windows sys.stdout es cp1252, donde esos caracteres
+    # revientan con UnicodeEncodeError (y el puente marcaria la fila en error).
+    return (
+        "El microfono capto muy poco: " + calidad["mensaje"] +
+        ". El borrador solo cubre esa parte; revisa toda la consulta antes de guardarla."
+    )
+
+
+def salida_sin_extraccion(payload: dict, avisos: List[str]) -> dict:
+    """
+    Resultado vacio pero VALIDO para un audio del que no hay nada que extraer.
+    Hace falta porque puente_iris.py solo publica lo que encuentra en
+    Consultas/: sin este .json la fila se quedaba en 'transcribiendo' para
+    siempre y el navegador mostraba "Transcribiendo..." sin fin.
+    """
+    return {
+        "origen": {
+            "archivo_audio": payload.get("archivo_audio"),
+            "transcrito_en": payload.get("transcrito_en"),
+            "modelo_transcripcion": payload.get("modelo"),
+        },
+        "extraido_en": datetime.now().isoformat(timespec="seconds"),
+        "modelo_extraccion": None,
+        "paciente_mencionado": None,
+        "propietario_mencionado": None,
+        "campos": {
+            "motivo": "Otro", "s": "", "o": "", "i": "",
+            "diagnosticos_presuntivos": "", "p": "",
+            "vital-temp": None, "vital-fc": None, "vital-fr": None,
+            "vital-crt": None, "vital-pas": None, "vital-pad": None,
+            "vital-pam": None,
+        },
+        "examen_sistemas": [],
+        "evidencia_vitales": {},
+        "terminos_normalizados": [],
+        "calidad_audio": payload.get("calidad_audio"),
+        "revision_requerida": True,
+        "notas_revision": "No se pudo extraer nada del audio.",
         "avisos_automaticos": avisos,
     }
 
@@ -390,10 +448,21 @@ def procesar_archivo(client, ruta: Path, rehacer: bool) -> bool:
     with open(ruta, "r", encoding="utf-8") as f:
         payload = json.load(f)
 
+    aviso_audio = aviso_calidad_audio(payload)
+
     texto = (payload.get("texto") or "").strip()
     if len(texto) < 40:
-        print(f"  [omitido] {ruta.name}: transcripcion demasiado corta ({len(texto)} caracteres)")
-        return False
+        print(f"  [sin contenido] {ruta.name}: transcripcion demasiado corta ({len(texto)} caracteres)")
+        avisos = [] if aviso_audio else [
+            "El audio no trajo palabras suficientes para armar un borrador. "
+            "Revisa que el microfono estuviera captando."
+        ]
+        CARPETA_CONSULTAS.mkdir(parents=True, exist_ok=True)
+        with open(destino, "w", encoding="utf-8") as f:
+            json.dump(salida_sin_extraccion(payload, avisos), f, ensure_ascii=False, indent=2)
+        for a in ([aviso_audio] if aviso_audio else []) + avisos:
+            print(f"    ! {a}")
+        return True
 
     print(f"  Extrayendo SOIP de {ruta.name} ({len(texto)} caracteres)...")
     consulta, avisos = extraer(client, payload)
@@ -401,6 +470,9 @@ def procesar_archivo(client, ruta: Path, rehacer: bool) -> bool:
         for a in avisos:
             print(f"    ! {a}")
         return False
+
+    if aviso_audio:
+        print(f"    ! {aviso_audio}")
 
     salida = a_formato_formulario(consulta, payload, avisos)
     CARPETA_CONSULTAS.mkdir(parents=True, exist_ok=True)

@@ -3224,6 +3224,20 @@
       background: var(--success); border: 2px solid var(--card-bg, var(--surface));
     }
     #tablero-audio-btn.audio-grabando { color: var(--danger); border-color: var(--danger); }
+    /* Micrófono cortado durante la grabación: el mismo punto que .audio-listo
+       pero en rojo y parpadeando. Es la única señal visible con el modal
+       cerrado de que la consulta se está grabando muda. */
+    #tablero-audio-btn.audio-mudo {
+      position: relative; color: var(--danger); border-color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 8%, transparent);
+    }
+    #tablero-audio-btn.audio-mudo::after {
+      content: ''; position: absolute; top: -3px; right: -3px;
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--danger); border: 2px solid var(--card-bg, var(--surface));
+      animation: audioMudoLatido 1s ease-in-out infinite;
+    }
+    @keyframes audioMudoLatido { 50% { opacity: .25; } }
 
     .tablero-vital-ne { position: relative; flex-shrink: 0; }
     /* El .mini-toggle-input base es display:none (no enfocable). Acá se
@@ -14010,12 +14024,39 @@
     let audioSoipPoller = null;
     let audioSoipSubiendo = false;
 
+    // ── Corte de micrófono ──────────────────────────────────────────────
+    // Falla real y medida: dos consultas de 28 y 31 minutos volvieron con
+    // transcripciones de 500 caracteres. Los .webm tenían la duración
+    // completa pero el 97% de las muestras eran CERO EXACTO — silencio
+    // digital, no "sala tranquila": el celular bloqueó la pantalla y el
+    // micrófono dejó de entregar audio mientras MediaRecorder seguía
+    // grabando. No es un problema del pipeline de transcripción (se probó
+    // la cadena de ffmpeg y el umbral del VAD: sobre ese audio conservan
+    // lo mismo que sin limpiar nada, porque no hay habla que rescatar).
+    let audioSoipWakeLock = null;      // screen wake lock mientras graba
+    let audioSoipTrack = null;         // MediaStreamTrack del micrófono (track.muted es LA señal)
+    let audioSoipMudoDesde = null;     // ms del inicio del corte en curso (null = capturando)
+    let audioSoipMsMudos = 0;          // total acumulado sin señal
+    let audioSoipCortes = [];          // [{desde, hasta}] en ms desde el inicio
+    let audioSoipVigia = null;         // setInterval del vigía (NO rAF, ver audioSoipArrancarVigiaMicrofono)
+    let audioSoipSilencioDesde = null; // primer instante bajo el piso del medidor
+    let audioSoipEnvioForzado = false; // el usuario ya confirmó enviar un audio mudo
+
     const AUDIO_SOIP_PENDIENTE_KEY = 'iris_audio_soip_pendiente';
     const AUDIO_SOIP_POLL_MS = 15000;
     // Un pendiente más viejo que esto se descarta al restaurar: si el PC de
     // la oficina estuvo apagado toda la noche, el veterinario ya no está
     // esperando ese borrador y arrastrarlo solo confunde.
     const AUDIO_SOIP_PENDIENTE_TTL_MS = 8 * 60 * 60 * 1000;
+
+    // Cuánto silencio continuo hace falta para llamarlo "corte" cuando la
+    // señal viene del medidor y no de track.muted: una pausa normal de la
+    // conversación dura segundos y no puede disparar la alarma.
+    const AUDIO_SOIP_SILENCIO_MS = 8000;
+    // Piso del medidor por debajo del cual se considera que no entra nada.
+    const AUDIO_SOIP_PISO_RMS = 0.004;
+    // Por debajo de esta fracción con sonido, "Enviar" pide confirmación.
+    const AUDIO_SOIP_COBERTURA_MINIMA = 0.5;
 
     // MediaRecorder no acepta el mismo contenedor en todos los navegadores:
     // Chrome/Edge/Firefox dan webm/opus y Safari solo mp4. Se toma el primero
@@ -14051,6 +14092,20 @@
 
     function audioSoipGrabando() {
       return !!audioSoipRec && (audioSoipRec.state === 'recording' || audioSoipRec.state === 'paused');
+    }
+
+    function audioSoipMicrofonoMudo() {
+      return audioSoipMudoDesde !== null;
+    }
+
+    // Un audio se considera inservible si casi todo su tiempo fue silencio.
+    // El caso medido en producción da 0.026 de cobertura sobre 28 minutos.
+    function audioSoipGrabacionSospechosa() {
+      const total = audioSoipMsAcumulados;
+      if (total <= 0) return false;
+      const conSonido = Math.max(0, total - audioSoipMsMudos);
+      if (conSonido / total < AUDIO_SOIP_COBERTURA_MINIMA) return true;
+      return total > 5 * 60 * 1000 && conSonido < 60 * 1000;
     }
 
     // ── Paso visible del modal ──────────────────────────────────────────
@@ -14136,31 +14191,52 @@
       btn.disabled = audioSoipSubiendo;
       nivel.style.visibility = grabando ? '' : 'hidden';
 
-      let nota = '';
+      const notas = [];
       if (audioSoipPendiente && audioSoipPendiente.estado === 'error' && audioSoipPendiente.petKey === selectedPetKey) {
-        nota = `<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span>El audio anterior de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> no se pudo transcribir. Quedó en la carpeta del equipo de la clínica para revisarlo a mano; acá puedes grabar de nuevo.</span></div>`;
+        notas.push(`<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span>El audio anterior de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> no se pudo transcribir. Quedó en la carpeta del equipo de la clínica para revisarlo a mano; acá puedes grabar de nuevo.</span></div>`);
       } else if (audioSoipPendiente && audioSoipPendiente.petKey !== selectedPetKey) {
-        nota = audioSoipPendiente.resultado
+        notas.push(audioSoipPendiente.resultado
           ? `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>El borrador de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> ya está listo. Ábrelo desde su Tablero.</span></div>`
-          : `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>Hay un audio de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> transcribiéndose. Si envías este, ese borrador se pierde de vista.</span></div>`;
+          : `<div class="audio-soip-alert warn"><i data-lucide="info"></i><span>Hay un audio de <strong>${escapeHtml(audioSoipPendiente.petName)}</strong> transcribiéndose. Si envías este, ese borrador se pierde de vista.</span></div>`);
       }
-      document.getElementById('audio-soip-error').innerHTML = nota;
+      // Aviso de corte de micrófono: mientras graba y también después, sobre
+      // la grabación ya cerrada (ver audioSoipRevisarMicrofono).
+      if (grabando && audioSoipMicrofonoMudo()) {
+        notas.push(`<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span><strong>El micrófono no está captando nada.</strong> No bloquees la pantalla ni cambies de app: el celular corta el micrófono y la grabación queda muda. Desbloquea el equipo y vuelve a esta pantalla.</span></div>`);
+      } else if (grabando) {
+        notas.push(`<div class="audio-soip-alert info"><i data-lucide="info"></i><span>Deja esta pantalla abierta mientras grabas. Si bloqueas el celular o cambias de app, el micrófono se corta y la grabación queda muda.</span></div>`);
+      }
+      if (!grabando && audioSoipBlob && audioSoipMsMudos > 0) {
+        const sospechosa = audioSoipGrabacionSospechosa();
+        notas.push(`<div class="audio-soip-alert ${sospechosa ? 'danger' : 'warn'}"><i data-lucide="${sospechosa ? 'alert-triangle' : 'info'}"></i><span>El micrófono estuvo sin captar <strong>${audioSoipFormatTiempo(audioSoipMsMudos)}</strong> de los ${audioSoipFormatTiempo(audioSoipMsAcumulados)} grabados${audioSoipCortes.length > 1 ? ` (${audioSoipCortes.length} cortes)` : ''}. ${sospechosa ? 'Enviarla así devolvería un borrador casi vacío.' : 'Esa parte llegará en silencio.'}</span></div>`);
+      }
+      document.getElementById('audio-soip-error').innerHTML = notas.join('');
 
       if (audioSoipSubiendo) {
         estado.textContent = 'Enviando el audio…';
         acciones.innerHTML = '';
       } else if (audioSoipRec && audioSoipRec.state === 'recording') {
-        estado.textContent = 'Grabando. Puedes cerrar esta ventana y seguir escribiendo.';
+        estado.textContent = audioSoipMicrofonoMudo()
+          ? 'Grabando, pero sin sonido: el micrófono no está entregando audio.'
+          : 'Grabando. Puedes cerrar esta ventana y seguir escribiendo.';
         acciones.innerHTML = `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()"><i data-lucide="pause" style="width:14px;height:14px;"></i> Pausar</button>`;
       } else if (audioSoipRec && audioSoipRec.state === 'paused') {
         estado.textContent = 'En pausa — el micrófono sigue tomado, nada se está grabando.';
         acciones.innerHTML = `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()"><i data-lucide="play" style="width:14px;height:14px;"></i> Reanudar</button>`;
       } else if (audioSoipBlob) {
         const mb = (audioSoipBlob.size / (1024 * 1024)).toFixed(1);
-        estado.innerHTML = `Grabación de <strong>${audioSoipFormatTiempo(audioSoipMsAcumulados)}</strong> (${mb} MB) lista para enviar.`;
+        // Con cortes se anuncia el tiempo REAL con sonido: decir "31 minutos"
+        // de una grabación que trae uno y medio es lo que hizo que nadie
+        // notara el problema hasta dos días después.
+        const conSonido = audioSoipMsMudos > 0
+          ? ` — solo <strong>${audioSoipFormatTiempo(Math.max(0, audioSoipMsAcumulados - audioSoipMsMudos))}</strong> con sonido`
+          : '';
+        estado.innerHTML = `Grabación de <strong>${audioSoipFormatTiempo(audioSoipMsAcumulados)}</strong> (${mb} MB)${conSonido}, lista para enviar.`;
         acciones.innerHTML = `
           <button class="btn-secondary" onclick="descartarGrabacionAudioSoip()"><i data-lucide="trash-2" style="width:14px;height:14px;"></i> Descartar</button>
           <a class="btn-secondary" href="${URL.createObjectURL(audioSoipBlob)}" download="${escapeHtml(audioSoipNombreArchivo('local'))}" style="text-decoration:none;"><i data-lucide="download" style="width:14px;height:14px;"></i> Guardar copia</a>`;
+        enviar.textContent = (audioSoipEnvioForzado && audioSoipGrabacionSospechosa())
+          ? 'Enviar de todas formas' : 'Enviar a transcribir';
         enviar.style.display = '';
       } else {
         estado.textContent = 'Pulsa para grabar la consulta. Deja el micrófono a 30–50 cm de quien habla.';
@@ -14205,6 +14281,11 @@
       audioSoipChunks = [];
       audioSoipBlob = null;
       audioSoipMsAcumulados = 0;
+      audioSoipMsMudos = 0;
+      audioSoipCortes = [];
+      audioSoipMudoDesde = null;
+      audioSoipSilencioDesde = null;
+      audioSoipEnvioForzado = false;
       try {
         audioSoipRec = new MediaRecorder(audioSoipStream, {
           ...(audioSoipFormato ? { mimeType: audioSoipFormato.mime } : {}),
@@ -14232,8 +14313,11 @@
       audioSoipRec.start(1000);
       audioSoipInicioTramo = Date.now();
       audioSoipArrancarMedidorNivel();
+      audioSoipArrancarVigiaMicrofono();
+      audioSoipPedirWakeLock();
       audioSoipArrancarTicker();
       window.addEventListener('beforeunload', audioSoipAvisoSalida);
+      document.addEventListener('visibilitychange', audioSoipAlCambiarVisibilidad);
       renderAudioSoipGrabador();
       actualizarBotonAudioSoip();
     }
@@ -14264,6 +14348,9 @@
     function descartarGrabacionAudioSoip() {
       audioSoipBlob = null;
       audioSoipMsAcumulados = 0;
+      audioSoipMsMudos = 0;
+      audioSoipCortes = [];
+      audioSoipEnvioForzado = false;
       renderAudioSoipGrabador();
       actualizarBotonAudioSoip();
     }
@@ -14271,6 +14358,17 @@
     // Soltar el MediaStream es obligatorio: sin esto el indicador de
     // micrófono del navegador se queda encendido después de detener.
     function audioSoipSoltarMicrofono() {
+      // Cerrar el corte que estuviera abierto ANTES de soltar el track: si no,
+      // el tiempo mudo final no se suma y la grabación parece mejor de lo que es.
+      audioSoipCerrarCorte();
+      if (audioSoipVigia) { clearInterval(audioSoipVigia); audioSoipVigia = null; }
+      if (audioSoipTrack) {
+        audioSoipTrack.onmute = null;
+        audioSoipTrack.onunmute = null;
+        audioSoipTrack = null;
+      }
+      document.removeEventListener('visibilitychange', audioSoipAlCambiarVisibilidad);
+      audioSoipSoltarWakeLock();
       if (audioSoipStream) {
         audioSoipStream.getTracks().forEach(t => t.stop());
         audioSoipStream = null;
@@ -14338,6 +14436,123 @@
       pintar();
     }
 
+    // ── Corte de micrófono: prevención y detección ───────────────────────
+    // Prevención. El wake lock evita que la pantalla se apague POR
+    // INACTIVIDAD, que es exactamente la falla medida (celular sobre la mesa
+    // durante una consulta de 30 minutos). NO evita un bloqueo manual con el
+    // botón de encendido, ni que otra app tome el micrófono, ni que el
+    // ahorro de batería lo niegue — por eso el vigía de abajo no sobra.
+    async function audioSoipPedirWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      try {
+        const lock = await navigator.wakeLock.request('screen');
+        // Si mientras se resolvía la promesa se dejó de grabar, hay que
+        // soltarlo acá: audioSoipSoltarMicrofono() ya pasó y no lo vio, y la
+        // pantalla del celular se quedaría encendida indefinidamente.
+        if (!audioSoipRec) { try { lock.release(); } catch (e2) { /* ya liberado */ } return; }
+        audioSoipWakeLock = lock;
+        // El navegador lo suelta solo al ocultarse la página; si eso pasa
+        // hay que volver a pedirlo (lo hace audioSoipAlCambiarVisibilidad).
+        audioSoipWakeLock.addEventListener('release', () => { audioSoipWakeLock = null; });
+      } catch (e) {
+        audioSoipWakeLock = null;   // sin soporte o denegado: queda el vigía
+      }
+    }
+
+    function audioSoipSoltarWakeLock() {
+      if (!audioSoipWakeLock) return;
+      try { audioSoipWakeLock.release(); } catch (e) { /* ya liberado */ }
+      audioSoipWakeLock = null;
+    }
+
+    function audioSoipAlCambiarVisibilidad() {
+      if (document.visibilityState !== 'visible') return;
+      // Volver a la pestaña es el momento de re-pedir el lock (el navegador
+      // lo soltó al ocultarse) y de revisar el micrófono sin esperar al
+      // intervalo: con la página oculta los timers van estrangulados.
+      if (audioSoipRec && audioSoipRec.state === 'recording') {
+        audioSoipPedirWakeLock();
+        audioSoipRevisarMicrofono();
+      }
+    }
+
+    // Detección. Dos señales con distinta autoridad:
+    //   - track.muted: LA señal. Es lo que se pone en true cuando el sistema
+    //     deja de entregar audio (pantalla bloqueada, otra app tomó el
+    //     micrófono). Se escuchan los eventos Y se consulta en cada vuelta,
+    //     porque con la pestaña oculta un evento puede llegar tarde.
+    //   - RMS del medidor: secundaria, para el caso "no está muted pero no
+    //     entra nada" (micrófono equivocado, ganancia en cero). Solo cuenta
+    //     con la página VISIBLE: oculta, el AudioContext puede estar
+    //     suspendido en móvil y daría un falso positivo permanente.
+    // No puede vivir en requestAnimationFrame: el rAF del medidor se detiene
+    // justo cuando la página se oculta, que es cuando ocurre el corte.
+    function audioSoipArrancarVigiaMicrofono() {
+      if (audioSoipVigia) clearInterval(audioSoipVigia);
+      audioSoipTrack = (audioSoipStream && audioSoipStream.getAudioTracks()[0]) || null;
+      if (audioSoipTrack) {
+        audioSoipTrack.onmute = () => audioSoipRevisarMicrofono();
+        audioSoipTrack.onunmute = () => audioSoipRevisarMicrofono();
+      }
+      audioSoipVigia = setInterval(audioSoipRevisarMicrofono, 1000);
+    }
+
+    function audioSoipRevisarMicrofono() {
+      // En pausa el micrófono sigue tomado pero no se graba nada: contar ese
+      // tiempo como "corte" marcaría como sospechosa una grabación sana.
+      if (!audioSoipRec || audioSoipRec.state !== 'recording') {
+        audioSoipCerrarCorte();
+        audioSoipSilencioDesde = null;
+        return;
+      }
+
+      let sinSenal = !!(audioSoipTrack && audioSoipTrack.muted);
+
+      if (!sinSenal && audioSoipAnalyser && document.visibilityState === 'visible') {
+        const datos = new Uint8Array(audioSoipAnalyser.fftSize);
+        audioSoipAnalyser.getByteTimeDomainData(datos);
+        let suma = 0;
+        for (let i = 0; i < datos.length; i++) {
+          const v = (datos[i] - 128) / 128;
+          suma += v * v;
+        }
+        const rms = Math.sqrt(suma / datos.length);
+        if (rms < AUDIO_SOIP_PISO_RMS) {
+          if (audioSoipSilencioDesde === null) audioSoipSilencioDesde = Date.now();
+          // Una pausa de la conversación no es un corte: hacen falta varios
+          // segundos seguidos por debajo del piso.
+          if (Date.now() - audioSoipSilencioDesde >= AUDIO_SOIP_SILENCIO_MS) sinSenal = true;
+        } else {
+          audioSoipSilencioDesde = null;
+        }
+      }
+
+      if (sinSenal) audioSoipAbrirCorte();
+      else audioSoipCerrarCorte();
+    }
+
+    function audioSoipAbrirCorte() {
+      if (audioSoipMudoDesde !== null) return;   // ya estaba abierto
+      audioSoipMudoDesde = Date.now();
+      // El celular está sobre la mesa y puede tener la pantalla apagada: la
+      // vibración es lo único que se nota en ese estado.
+      try { if (navigator.vibrate) navigator.vibrate([300, 120, 300]); } catch (e) { /* no soportado */ }
+      showToast('⚠ El micrófono dejó de captar — no bloquees la pantalla');
+      if (document.getElementById('audio-soip-modal').classList.contains('show')) renderAudioSoipGrabador();
+      actualizarBotonAudioSoip();
+    }
+
+    function audioSoipCerrarCorte() {
+      if (audioSoipMudoDesde === null) return;
+      const duracion = Date.now() - audioSoipMudoDesde;
+      audioSoipCortes.push({ desde: audioSoipMudoDesde, hasta: Date.now() });
+      audioSoipMsMudos += duracion;
+      audioSoipMudoDesde = null;
+      audioSoipSilencioDesde = null;
+      if (document.getElementById('audio-soip-modal').classList.contains('show')) renderAudioSoipGrabador();
+      actualizarBotonAudioSoip();
+    }
+
     function audioSoipNombreArchivo(id) {
       const data = patientData[selectedPetKey] || {};
       const hoy = new Date();
@@ -14350,6 +14565,18 @@
     // ── Envío ───────────────────────────────────────────────────────────
     async function enviarAudioSoip() {
       if (!audioSoipBlob || audioSoipSubiendo) return;
+
+      // Guarda antes de subir: un audio mayormente mudo no sirve para nada y
+      // hoy igual se sube, ocupa el bucket, viaja al PC de la oficina, se
+      // transcribe varios minutos y vuelve como un SOIP de 500 caracteres que
+      // parece legítimo. El primer click solo avisa; el segundo envía.
+      if (!audioSoipEnvioForzado && audioSoipGrabacionSospechosa()) {
+        audioSoipEnvioForzado = true;
+        renderAudioSoipGrabador();
+        showToast('Revisa el aviso: la grabación casi no tiene sonido');
+        return;
+      }
+
       const petKey = selectedPetKey;
       const data = patientData[petKey];
       if (!window.supabase || !currentSession || !currentSession.activeMembership || !data || !data.mascotaId) {
@@ -14413,6 +14640,9 @@
         audioSoipGuardarPendiente();
         audioSoipBlob = null;
         audioSoipMsAcumulados = 0;
+        audioSoipMsMudos = 0;
+        audioSoipCortes = [];
+        audioSoipEnvioForzado = false;
         audioSoipSubiendo = false;
         arrancarPollAudioSoip();
         actualizarBotonAudioSoip();
@@ -14548,9 +14778,15 @@
       if (!btn || !label) return;
       const grabando = audioSoipGrabando();
       const listo = !!(audioSoipPendiente && audioSoipPendiente.resultado);
-      btn.classList.toggle('audio-grabando', grabando);
+      // Con el modal cerrado —el modo de uso normal— este botón es lo ÚNICO
+      // que se ve. Si el micrófono se cortó tiene que gritarlo desde acá.
+      const mudo = grabando && audioSoipMicrofonoMudo();
+      btn.classList.toggle('audio-grabando', grabando && !mudo);
+      btn.classList.toggle('audio-mudo', mudo);
       btn.classList.toggle('audio-listo', listo && !grabando);
-      if (grabando) {
+      if (mudo) {
+        label.textContent = 'Sin micrófono';
+      } else if (grabando) {
         label.textContent = (audioSoipRec.state === 'paused' ? 'Pausa ' : '● ') + audioSoipFormatTiempo(audioSoipMsGrabados());
       } else if (audioSoipBlob) {
         label.textContent = 'Audio sin enviar';
@@ -14616,6 +14852,17 @@
       const c = d.campos || {};
       const data = patientData[selectedPetKey];
       const avisos = [];
+
+      // Va primero y en rojo: es lo que explica por qué el borrador viene
+      // pobre. Lo escribe vigilante.py cuando el micrófono estuvo mudo casi
+      // toda la consulta (pantalla del celular bloqueada) — sin este aviso el
+      // veterinario ve dos frases y cree que el modelo entendió mal.
+      if (d.calidad_audio && d.calidad_audio.mensaje) {
+        avisos.push({
+          tono: 'danger',
+          texto: `<strong>El micrófono captó muy poco:</strong> ${escapeHtml(d.calidad_audio.mensaje)}. El borrador solo cubre esa parte — el resto de la consulta no quedó grabado.`
+        });
+      }
 
       // Guard más importante de todo el flujo: cargar el audio de un
       // paciente en la ficha de otro escribiría una historia clínica
@@ -15344,7 +15591,7 @@
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].formulas[Number(idx)];
         if (!record) return null;
-        return { title: 'Fórmula médica', html: formulaViewContentHTML(record) };
+        return { title: 'Fórmula médica', html: formulaViewContentHTML(record, petKey) };
       } else if (moduleKey === 'vacunacion') {
         const [petKey, idx] = recordId.split(':');
         const record = patientData[petKey].vacunaciones[Number(idx)];
@@ -15570,6 +15817,21 @@
       return slug || 'registro';
     }
 
+    // Si recordId viene en formato "petKey:resto" (el que usan casi todos los
+    // modulos de patientData, ver getRegistroViewData), devuelve el nombre de
+    // la mascota + el de su tutor para que el nombre del PDF descargado
+    // identifique al paciente ("formula-medica-max-hoyos-0") en vez de solo el
+    // petKey/indice interno. null si el recordId no tiene ese formato o el
+    // petKey no resuelve contra patientData (ventas/inventario, por ejemplo).
+    function datosIdentidadDesdeRecordId(recordId) {
+      if (typeof recordId !== 'string') return null;
+      const i = recordId.indexOf(':');
+      if (i === -1) return null;
+      const data = patientData[recordId.slice(0, i)];
+      if (!data) return null;
+      return { partes: [data.name, data.owner].filter(Boolean), sufijo: recordId.slice(i + 1) };
+    }
+
     // Asset local del logo de IRIS (brand/Iris_Prototype1.png, junto a
     // index.html) — fijo, no editable por ningún usuario, a diferencia del
     // logo de la clínica (CLINIC_INFO.logoUrl). Se usa tanto en el header
@@ -15579,30 +15841,55 @@
     let irisLogoDataUrlPromise = null;
 
     // jsPDF.addImage() necesita los bytes de la imagen (Data URL), no una
-    // URL — sirve tanto para el asset local de IRIS (mismo origen, sin
-    // problema de CORS) como para el logo de la clínica (bucket público
-    // `logos-clinica` de Supabase Storage). Si falla (red, CORS, etc.) el
-    // llamador debe seguir sin logo en vez de romper la generación del PDF.
+    // URL. Antes se usaba fetch()+blob, pero fetch() falla para el asset
+    // local de IRIS cuando la pagina se abre como file:// (el protocolo no
+    // soporta fetch de recursos locales) y puede fallar por CORS con el
+    // logo de la clinica (bucket publico `logos-clinica` de Supabase
+    // Storage) segun el navegador — en la practica los dos logos del
+    // encabezado quedaban ausentes de TODO PDF generado, mientras el mismo
+    // logo de la clinica se veia bien en un <img> normal (el header del
+    // shell, por ejemplo), que no tiene esa restriccion. Cargarla como
+    // <img> + <canvas> es mas tolerante en los dos casos: <img> si carga
+    // recursos locales desde file://, y solo se pide crossOrigin para URLs
+    // remotas (pedirlo en el asset local, mismo origen, puede bloquear el
+    // canvas sin necesidad). Si falla (red, CORS, etc.) el llamador debe
+    // seguir sin logo en vez de romper la generacion del PDF.
     function imageUrlToDataURL(url) {
-      return fetch(url)
-        .then(res => res.blob())
-        .then(blob => new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        }));
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        if (/^https?:\/\//i.test(url)) img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth || img.width;
+            canvas.height = img.naturalHeight || img.height;
+            canvas.getContext('2d').drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+          } catch (err) { reject(err); }
+        };
+        img.onerror = () => reject(new Error('No se pudo cargar la imagen: ' + url));
+        img.src = url;
+      });
     }
 
+    // No cachea un fallo de forma permanente: un fallo transitorio (red
+    // lenta, bucket momentaneamente inalcanzable) no debe dejar el logo de
+    // IRIS ausente del resto de la sesion — el proximo PDF vuelve a
+    // intentarlo.
     function getIrisLogoDataURL() {
-      if (!irisLogoDataUrlPromise) irisLogoDataUrlPromise = imageUrlToDataURL(IRIS_LOGO_URL).catch(() => null);
+      if (!irisLogoDataUrlPromise) {
+        irisLogoDataUrlPromise = imageUrlToDataURL(IRIS_LOGO_URL).catch(() => {
+          irisLogoDataUrlPromise = null;
+          return null;
+        });
+      }
       return irisLogoDataUrlPromise;
     }
 
-    // jsPDF.addImage() exige el formato como 2º argumento — el logo de la
-    // clínica puede ser PNG o JPEG según lo que suba cada usuario (a
-    // diferencia del logo de IRIS, siempre PNG), así que se detecta desde
-    // el propio Data URL en vez de asumir un formato fijo.
+    // jsPDF.addImage() exige el formato como 2º argumento. imageUrlToDataURL
+    // normaliza cualquier logo (PNG o JPEG original) a PNG via canvas, pero
+    // se detecta desde el propio Data URL en vez de asumir 'PNG' a mano por
+    // si algún llamador futuro pasa un Data URL que no pasó por esa función.
     function jspdfImageFormatFromDataURL(dataUrl) {
       const m = /^data:image\/(\w+);/.exec(dataUrl || '');
       if (!m) return 'PNG';
@@ -15747,7 +16034,10 @@
           firstSlice = false;
         }
 
-        const nombreArchivo = `${slugificarIrisPdf(titulo)}-${slugificarIrisPdf(recordId)}.pdf`;
+        const identidad = datosIdentidadDesdeRecordId(recordId);
+        const nombreArchivo = identidad
+          ? [slugificarIrisPdf(titulo), ...identidad.partes.map(slugificarIrisPdf), slugificarIrisPdf(identidad.sufijo)].join('-') + '.pdf'
+          : `${slugificarIrisPdf(titulo)}-${slugificarIrisPdf(recordId)}.pdf`;
         doc.save(nombreArchivo);
         showToast('PDF descargado');
       } catch (err) {
@@ -16205,7 +16495,35 @@
       return out;
     }
 
-    function formulaViewContentHTML(record) {
+    function formulaViewContentHTML(record, petKey) {
+      const petData = petKey ? patientData[petKey] : null;
+      // Fila horizontal (flex-wrap) en vez de los pares info-label/
+      // info-value apilados que usa el resto del documento: son 5 datos
+      // cortos y apilarlos ocuparia el doble de alto sin necesidad.
+      const pacienteHTML = petData ? `
+        <div style="display:flex;flex-wrap:wrap;gap:10px 22px;margin-bottom:14px;">
+          <div style="flex:1 1 140px;min-width:110px;">
+            <div class="info-label" style="margin-bottom:2px;">Tutor</div>
+            <div class="info-value" style="margin-bottom:0;">${petData.owner || '—'}</div>
+          </div>
+          <div style="flex:1 1 90px;min-width:80px;">
+            <div class="info-label" style="margin-bottom:2px;">Paciente</div>
+            <div class="info-value" style="margin-bottom:0;">${petData.name || '—'}</div>
+          </div>
+          <div style="flex:1 1 130px;min-width:110px;">
+            <div class="info-label" style="margin-bottom:2px;">Edad</div>
+            <div class="info-value" style="margin-bottom:0;">${edadTextoParaMostrar(petData)}</div>
+          </div>
+          <div style="flex:1 1 80px;min-width:70px;">
+            <div class="info-label" style="margin-bottom:2px;">Especie</div>
+            <div class="info-value" style="margin-bottom:0;">${petData.species || '—'}</div>
+          </div>
+          <div style="flex:1 1 90px;min-width:80px;">
+            <div class="info-label" style="margin-bottom:2px;">Raza</div>
+            <div class="info-value" style="margin-bottom:0;">${petData.breed || '—'}</div>
+          </div>
+        </div>
+      ` : '';
       const medsHTML = record.medicamentos.map((m, i) => `
         <div style="padding:6px 0;margin-bottom:4px;">
           <div style="font-size:13px;font-weight:600;">${numeroRomano(i + 1)}. ${m.nombre} (${m.presentacion || ''})--- #${m.cantidad || ''}</div>
@@ -16226,6 +16544,7 @@
       const indicacionesHTML = record.indicaciones
         ? `<div class="info-label">Indicaciones</div><div class="info-value">${record.indicaciones}</div>` : '';
       return `
+        ${pacienteHTML}
         <div class="info-label">Fecha fórmula</div>
         <div class="info-value">${record.fecha}</div>
         <div class="info-label">Diagnóstico presuntivo y/o final</div>
@@ -26704,7 +27023,8 @@
       doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
       doc.text(`VALOR A PAGAR: ${formatCOP(factura.total)}`, pageWidth / 2, y, { align: 'center' });
 
-      doc.save(`estado-cuenta-${slugificarIrisPdf(factura.numero)}.pdf`);
+      const nombreArchivoFactura = ['estado-cuenta', ...[cliente.nombre, factura.numero].filter(Boolean).map(slugificarIrisPdf)].join('-') + '.pdf';
+      doc.save(nombreArchivoFactura);
       showToast('PDF descargado');
     }
 

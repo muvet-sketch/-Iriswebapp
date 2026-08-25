@@ -249,7 +249,7 @@ no hay GPU utilizable y sigue en CPU.
 
 ## Por qué el script hace lo que hace
 
-Tres decisiones que no son obvias y que conviene no deshacer:
+Cinco decisiones que no son obvias y que conviene no deshacer:
 
 1. **Escucha `on_moved`, no solo `on_created`.** Drive para escritorio baja el
    archivo dentro de `.tmp.drivedownload` y después lo *renombra* a su lugar
@@ -275,6 +275,39 @@ Tres decisiones que no son obvias y que conviene no deshacer:
    pruebas, con el rescaneo cayendo 4 s después del evento de watchdog. Ahora
    ambos solo encolan (con deduplicación por ruta) y un único trabajador consume
    de a un audio por vez. Verificado bajando `IRIS_RESCAN_SEG` a 2 segundos.
+
+5. **Avisa cuando el audio llegó mudo, y NO toca los filtros por eso.** Dos
+   consultas reales de 28 y 31 minutos volvieron con transcripciones de 500
+   caracteres. Medido sobre los `.webm` originales: **el 97 % de las muestras
+   era cero exacto** — silencio digital, no "sala tranquila". El celular
+   bloqueó la pantalla y el micrófono dejó de entregar audio mientras el
+   navegador seguía grabando; en `bonnie` solo hay sonido en 0-11 s, 935-985 s
+   y 1631-1642 s de 1707.
+
+   Antes de tocar nada se midió si el pipeline tenía la culpa, y **no la
+   tiene**. Sobre los primeros 600 s de ese audio, el VAD conserva los mismos
+   **10,5 s** con la cadena actual, con `speechnorm`, con `dynaudnorm`, con
+   `acompressor` y **sin limpiar nada**; `afftdn` tampoco destruye la voz
+   (−32,0 → −32,3 dB en la ventana con habla), y bajar el umbral del VAD de
+   0.5 a 0.2 lo mueve a 10,7 s. No hay habla que rescatar: no fue grabada.
+   **Si aparece otra transcripción demasiado corta, medí el audio antes de
+   cambiar `FILTROS_FFMPEG` o `vad_parameters`** — es casi seguro el
+   micrófono, no el modelo.
+
+   Lo que sí se agregó: `duracion_habla_seg` / `cobertura_habla` en el `.json`
+   (de `info.duration_after_vad`, no de la suma de segmentos, que sobreestima
+   porque Whisper estira el `end` sobre el silencio), un `WARNING` bien visible
+   por debajo de `COBERTURA_HABLA_MINIMA`, y `calidad_audio`, que
+   `extraer_soip.py` copia al `.json` de `Consultas\` y el Tablero pinta en
+   rojo arriba de la previsualización. También se descartan los segmentos con
+   `no_speech_prob` alto **y** `avg_logprob` bajo: es lo que produjo el texto
+   inventado ("Estic Dustomor, cre en vez de pensar que la casita…") sobre los
+   tramos casi mudos del segundo audio.
+
+   Del lado del navegador (`index.html`) el problema se ataca en origen: wake
+   lock de pantalla mientras graba, detección de corte por `track.muted` con
+   alarma en el botón del Tablero, y confirmación antes de subir una grabación
+   mayormente muda.
 
 ## Lo que más mejoraría el resultado
 

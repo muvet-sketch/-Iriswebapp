@@ -125,6 +125,25 @@ from vocabulario_clinico import PROMPT_WHISPER as PROMPT_INICIAL
 #   loudnorm        empareja el volumen: es lo que mas mejora el resultado
 FILTROS_FFMPEG = "highpass=f=80,afftdn=nf=-25,loudnorm=I=-16:TP=-1.5:LRA=11"
 
+# Calidad del audio recibido. Dos consultas reales de 28 y 31 minutos llegaron
+# con el 97% de las muestras en CERO EXACTO: el celular bloqueo la pantalla y el
+# microfono dejo de entregar audio mientras el navegador seguia grabando. La
+# transcripcion salio de 500 caracteres y NADA en el pipeline lo dijo — parecia
+# una consulta corta. Estas constantes son lo que hace que se note.
+#
+# OJO: no se toca la cadena de ffmpeg ni el umbral del VAD por este motivo. Se
+# midio sobre ese audio: con la cadena actual, con speechnorm, con dynaudnorm,
+# con acompressor y SIN limpiar nada, el VAD conserva los mismos 10,5 s de 600;
+# bajar el umbral de 0.5 a 0.2 lo mueve a 10,7 s. No hay habla que rescatar,
+# no fue grabada. Ver README, "Por que el script hace lo que hace".
+COBERTURA_HABLA_MINIMA = 0.15     # fraccion del audio que el VAD da por habla
+DURACION_MINIMA_AVISO_SEG = 300   # por debajo de 5 min una cobertura baja es normal
+
+# Descarte de segmentos alucinados (ver _transcribir_con). Hacen falta las dos
+# condiciones a la vez: cualquiera de ellas sola tumba habla real.
+NO_SPEECH_PROB_MAXIMA = 0.8
+AVG_LOGPROB_MINIMO = -1.0
+
 # Cuanto esperar a que el tamano del archivo deje de cambiar antes de darlo por completo.
 ESPERA_ENTRE_CHEQUEOS_SEG = 3
 CHEQUEOS_ESTABLES_REQUERIDOS = 3
@@ -437,22 +456,78 @@ def _transcribir_con(ruta: Path, nombre_modelo: str, dispositivo: str) -> dict:
         vad_parameters=dict(min_silence_duration_ms=500),
         beam_size=beam,
         condition_on_previous_text=False,  # un error no se propaga al resto
+        # Segunda linea de defensa contra la alucinacion, y no es teorica: un
+        # audio real que quedo casi mudo (ver COBERTURA_HABLA_MINIMA) devolvio
+        # "Estic Dustomor, cre en vez de pensar que la casita..." sobre los
+        # tramos sin voz. El VAD solo no alcanza cuando lo poco que sobrevive
+        # es ruido.
+        hallucination_silence_threshold=2.0,
     )
     # transcribe() devuelve un generador perezoso: el trabajo ocurre al recorrerlo,
     # asi que un error de VRAM aparece ACA y no en la llamada de arriba.
-    segmentos = [
-        {"inicio": round(s.start, 2), "fin": round(s.end, 2), "texto": s.text.strip()}
-        for s in segmentos_gen
-    ]
+    segmentos = []
+    descartados = 0
+    for s in segmentos_gen:
+        texto = s.text.strip()
+        if not texto:
+            continue
+        # Segmento que el propio modelo cree que no es habla Y ademas decodifico
+        # con baja confianza: es texto inventado sobre ruido. Hacen falta las
+        # dos condiciones — habla real y baja pero clara no se descarta.
+        if s.no_speech_prob > NO_SPEECH_PROB_MAXIMA and s.avg_logprob < AVG_LOGPROB_MINIMO:
+            descartados += 1
+            continue
+        segmentos.append({"inicio": round(s.start, 2), "fin": round(s.end, 2), "texto": texto})
+    if descartados:
+        log.warning("Se descartaron %d segmento(s) por parecer texto inventado sobre ruido.", descartados)
+
+    # duration_after_vad es el tiempo que el VAD dio por habla. Es la medida
+    # correcta de "cuanto audio util traia el archivo": sumar las duraciones de
+    # los segmentos sobreestima, porque Whisper estira el `end` de un segmento
+    # sobre el silencio que le sigue (medido: un segmento de 9,97 s a 940,35 s).
+    duracion = info.duration or 0
+    habla = getattr(info, "duration_after_vad", None)
+    if habla is None:
+        habla = duracion
     return {
         "modelo": nombre_modelo,
         "dispositivo": dispositivo,
         "beam_size": beam,
         "texto": " ".join(s["texto"] for s in segmentos).strip(),
         "segmentos": segmentos,
+        "segmentos_descartados": descartados,
         "idioma": info.language,
-        "duracion_audio_seg": round(info.duration, 1),
+        "duracion_audio_seg": round(duracion, 1),
+        "duracion_habla_seg": round(habla, 1),
+        "cobertura_habla": round(habla / duracion, 4) if duracion else 0.0,
         "duracion_proceso_seg": round(time.time() - t0, 1),
+    }
+
+
+def _mmss(segundos: float) -> str:
+    total = int(segundos)
+    return f"{total // 60} min {total % 60:02d} s" if total >= 60 else f"{total} s"
+
+
+def evaluar_calidad_audio(resultado: dict):
+    """
+    None si el audio traia habla suficiente; si no, el dict que viaja en el
+    .json y que extraer_soip.py convierte en un aviso para el veterinario.
+    """
+    duracion = resultado.get("duracion_audio_seg") or 0
+    habla = resultado.get("duracion_habla_seg") or 0
+    cobertura = resultado.get("cobertura_habla") or 0.0
+    if duracion < DURACION_MINIMA_AVISO_SEG or cobertura >= COBERTURA_HABLA_MINIMA:
+        return None
+    return {
+        "nivel": "bajo",
+        "cobertura_habla": cobertura,
+        "duracion_audio_seg": duracion,
+        "duracion_habla_seg": habla,
+        "mensaje": (
+            f"el audio dura {_mmss(duracion)} pero solo {_mmss(habla)} tienen sonido "
+            f"({cobertura * 100:.0f}%): el microfono estuvo mudo casi todo el tiempo"
+        ),
     }
 
 
@@ -513,6 +588,8 @@ def procesar_audio(ruta: Path, estado: dict, nombre_modelo: str, limpiar: bool =
 
     ruta_txt.write_text(texto, encoding="utf-8")
 
+    calidad = evaluar_calidad_audio(resultado)
+
     # El JSON es lo que consumira el paso siguiente (LLM -> formulario IRIS).
     payload = {
         "archivo_audio": ruta.name,
@@ -526,6 +603,10 @@ def procesar_audio(ruta: Path, estado: dict, nombre_modelo: str, limpiar: bool =
         "audio_limpiado": temporal is not None or (limpiar and fuente is not ruta),
         "idioma": resultado["idioma"],
         "duracion_audio_seg": resultado["duracion_audio_seg"],
+        "duracion_habla_seg": resultado["duracion_habla_seg"],
+        "cobertura_habla": resultado["cobertura_habla"],
+        "segmentos_descartados": resultado["segmentos_descartados"],
+        "calidad_audio": calidad,
         "duracion_proceso_seg": resultado["duracion_proceso_seg"],
         "texto": texto,
         "segmentos": resultado["segmentos"],
@@ -539,6 +620,16 @@ def procesar_audio(ruta: Path, estado: dict, nombre_modelo: str, limpiar: bool =
              dur_audio, dur_proc, dur_audio / dur_proc,
              resultado["modelo"], resultado["dispositivo"], ruta_txt.name,
              len(texto), len(resultado["segmentos"]))
+
+    if calidad:
+        # Bien visible: sin esto una consulta de 28 minutos que llego muda se
+        # ve igual que una consulta corta, y el veterinario confia en el
+        # borrador. No se manda a Fallidos: los segundos que hay son reales.
+        log.warning("=" * 64)
+        log.warning("AUDIO CASI MUDO: %s", calidad["mensaje"])
+        log.warning("Casi siempre es la pantalla del celular bloqueandose durante")
+        log.warning("la consulta. El audio en si no se puede recuperar.")
+        log.warning("=" * 64)
 
     vista = texto[:300] + ("..." if len(texto) > 300 else "")
     log.info("Vista previa: %s", vista or "(vacio)")

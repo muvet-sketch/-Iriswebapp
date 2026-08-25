@@ -605,6 +605,46 @@ del modal, para cuando el equipo de la oficina está apagado.
   medido nº 1 de los audios reales es el micrófono lejos (ver "Lo que más
   mejoraría el resultado" en el README del pipeline), y ver la barra es lo
   único que avisa antes de grabar 40 minutos inservibles.
+- **El celular corta el micrófono al bloquear la pantalla, y eso ya arruinó
+  dos consultas reales.** Los `.webm` tenían la duración completa (28 y 31
+  min) pero el **97 % de las muestras era cero exacto**: silencio digital, no
+  "sala tranquila". `MediaRecorder` sigue grabando y nada falla — la
+  transcripción salía de 500 caracteres y parecía una consulta corta. **No es
+  un problema del pipeline**: se midió que la cadena de ffmpeg y el umbral del
+  VAD conservan lo mismo que sin limpiar nada sobre ese audio (números en el
+  README de `scripts/transcripcion/`). Antes de tocar `FILTROS_FFMPEG` o
+  `vad_parameters` por una transcripción corta, medí el audio. Hay tres
+  guardas y las tres hacen falta, porque ninguna cubre sola todos los casos:
+  - **Wake lock de pantalla** mientras graba (`audioSoipPedirWakeLock()`), que
+    se vuelve a pedir en `visibilitychange` porque el navegador lo suelta al
+    ocultarse la página. Evita el apagado por INACTIVIDAD, que es el caso
+    real; no evita un bloqueo manual ni que otra app tome el micrófono.
+  - **Vigía de corte** (`audioSoipRevisarMicrofono()`, `setInterval` de 1 s —
+    NO `requestAnimationFrame`, que se detiene justo cuando la página se
+    oculta, que es cuando ocurre el corte). La señal buena es `track.muted`;
+    el RMS del medidor es secundaria y solo cuenta con la página VISIBLE
+    (oculta, el `AudioContext` puede estar suspendido en móvil y daría un
+    falso positivo permanente) y tras 8 s seguidos bajo el piso, para que una
+    pausa normal de la conversación no dispare la alarma. Tampoco cuenta en
+    pausa, donde el micrófono sigue tomado a propósito. Al cortarse: toast,
+    vibración y el botón del Tablero en `.audio-mudo` — con el modal cerrado
+    ese botón es lo único que se ve.
+  - **Confirmación antes de subir** (`audioSoipGrabacionSospechosa()`): con
+    menos de la mitad del tiempo con sonido, el primer click en "Enviar" solo
+    avisa con los minutos reales. Sin esto un audio inservible se sube, viaja
+    al PC de la oficina, se transcribe varios minutos y vuelve como un SOIP
+    vacío.
+  Del otro lado, `vigilante.py` mide `cobertura_habla` (de
+  `info.duration_after_vad`, no de la suma de duraciones de segmento, que
+  sobreestima porque Whisper estira el `end` sobre el silencio) y escribe
+  `calidad_audio` en el `.json`; `extraer_soip.py` lo copia tal cual al
+  `.json` de `Consultas/` —campo propio, **NO** dentro de
+  `avisos_automaticos`— y `renderAudioSoipPreview()` lo pinta primero y en
+  rojo, porque es lo que explica por qué el borrador viene pobre y perdido
+  entre los demás avisos no se lee. Un audio del que no se puede extraer nada
+  ahora igual produce un `.json` válido (`salida_sin_extraccion()`): sin él la
+  fila se quedaba en `transcribiendo` para siempre y el navegador mostraba
+  "Transcribiendo…" sin fin.
 - `vigilante.py` tuvo que sumar `.webm` a `EXTENSIONES_AUDIO`: es lo que
   graba Chrome/Edge. Safari da `.m4a` y Firefox puede dar `.ogg`, los tres
   ya estaban o se agregaron.
