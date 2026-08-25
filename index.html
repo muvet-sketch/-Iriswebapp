@@ -15665,7 +15665,15 @@
       } else if (moduleKey === 'cotizacion' || moduleKey === 'factura' || moduleKey === 'notacredito' || moduleKey === 'docsoporte') {
         const record = getDocVentaArray(moduleKey).find(d => d.id === recordId);
         if (!record) return null;
-        return { title: record.numero, html: docVentaViewContentHTML(moduleKey, record) };
+        // recordId es un uuid interno, no identifica al cliente para el
+        // nombre del PDF (ver datosIdentidadDesdeRecordId) -- se arma la
+        // identidad a mano con el nombre del cliente en vez de eso.
+        const clienteDoc = record.clienteId ? ventasClienteById(record.clienteId) : null;
+        return {
+          title: record.numero,
+          html: docVentaViewContentHTML(moduleKey, record),
+          identidad: { partes: [clienteDoc && clienteDoc.nombre].filter(Boolean), sufijo: null }
+        };
       } else if (moduleKey === 'movimiento') {
         const m = VENTAS_MOVIMIENTOS.find(x => x.id === recordId);
         if (!m) return null;
@@ -15952,9 +15960,13 @@
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(110, 110, 110);
-      doc.text(String(tituloDocumento || ''), rightEdge, top + 30, { align: 'right', maxWidth: 220 });
+      // Mismo margen que evita el logo de IRIS en la línea "IRIS" de arriba
+      // (irisTextRight) — estas dos líneas usaban rightEdge a secas y el
+      // texto quedaba dibujado debajo del logo cuando el título era corto
+      // (ej. "COT-501").
+      doc.text(String(tituloDocumento || ''), irisTextRight, top + 30, { align: 'right', maxWidth: 220 });
       const fechaGeneracion = new Date().toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
-      doc.text(`Generado el ${fechaGeneracion}`, rightEdge, top + 42, { align: 'right' });
+      doc.text(`Generado el ${fechaGeneracion}`, irisTextRight, top + 42, { align: 'right' });
 
       const dividerY = top + logoSize + 14;
       doc.setDrawColor(225, 225, 225);
@@ -15974,7 +15986,7 @@
     // la UI) el texto termina dibujado fuera del área imprimible de la
     // página — el PDF sale con el encabezado pero el cuerpo en blanco.
     // Rasterizar nosotros mismos evita ese desfase de coordenadas.
-    async function generarPdfRegistroImpresion(titulo, contenidoHTML, recordId) {
+    async function generarPdfRegistroImpresion(titulo, contenidoHTML, recordId, identidadOverride) {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -16034,9 +16046,9 @@
           firstSlice = false;
         }
 
-        const identidad = datosIdentidadDesdeRecordId(recordId);
+        const identidad = identidadOverride !== undefined ? identidadOverride : datosIdentidadDesdeRecordId(recordId);
         const nombreArchivo = identidad
-          ? [slugificarIrisPdf(titulo), ...identidad.partes.map(slugificarIrisPdf), slugificarIrisPdf(identidad.sufijo)].join('-') + '.pdf'
+          ? [slugificarIrisPdf(titulo), ...identidad.partes.map(slugificarIrisPdf), ...(identidad.sufijo ? [slugificarIrisPdf(identidad.sufijo)] : [])].join('-') + '.pdf'
           : `${slugificarIrisPdf(titulo)}-${slugificarIrisPdf(recordId)}.pdf`;
         doc.save(nombreArchivo);
         showToast('PDF descargado');
@@ -16066,7 +16078,7 @@
         return;
       }
       showToast('Generando PDF...');
-      generarPdfRegistroImpresion(data.title, data.html, recordId);
+      generarPdfRegistroImpresion(data.title, data.html, recordId, data.identidad);
     }
 
     function rowActionEmail(moduleKey, recordId) {
@@ -24823,6 +24835,7 @@
     function handleClinicLogoInputChange(input) {
       if (!input.files || !input.files[0]) return;
       const file = input.files[0];
+      const logoUrlPrevio = CLINIC_INFO.logoUrl;
       const reader = new FileReader();
       reader.onload = e => {
         CLINIC_INFO.logoUrl = e.target.result;
@@ -24833,8 +24846,16 @@
 
       subirLogoClinicaReal(file).catch(err => {
         console.error('[IRIS] Error subiendo el logo de la clínica:', err);
+        // Si la subida real no se pudo guardar, el preview local que se
+        // acaba de pintar arriba miente (se ve en esta pantalla pero
+        // desaparece de todos los PDF y de cualquier otra sesión/recarga
+        // porque establecimientos.logo_path nunca cambió) -- se revierte
+        // para que la pantalla refleje lo que en verdad quedó guardado.
+        CLINIC_INFO.logoUrl = logoUrlPrevio;
+        renderVetConfigLogoPreview();
+        renderHeaderClinicLogo();
         const detalle = (err && err.message) ? err.message : 'error desconocido';
-        showToast(`El logo se ve localmente, pero no se pudo guardar en el servidor: ${detalle}`);
+        showToast(`No se pudo guardar el logo: ${detalle}`);
       });
     }
 
@@ -24850,7 +24871,21 @@
         .upload(path, file, { contentType: file.type || 'image/png', upsert: true });
       if (uploadError) throw uploadError;
 
-      await window.supabase.from('establecimientos').update({ logo_path: path }).eq('id', establecimientoId);
+      // La policy de storage (logos_clinica_insert_member) deja subir el
+      // archivo a CUALQUIER miembro, pero la de establecimientos
+      // (establecimientos_update_admin) exige ser admin -- un médico/
+      // auxiliar/ventas puede completar el upload de arriba y aun así este
+      // update no tocar ninguna fila (RLS lo filtra en silencio: 0 filas,
+      // sin error). Sin el .select() de abajo eso quedaba indetectado: el
+      // logo se veía localmente (preview de FileReader) pero
+      // establecimientos.logo_path nunca se actualizaba, y el logo
+      // desaparecía de todos los PDF y de cualquier otra sesión/recarga.
+      const { data: updateRows, error: updateError } = await window.supabase
+        .from('establecimientos').update({ logo_path: path }).eq('id', establecimientoId).select('id');
+      if (updateError) throw updateError;
+      if (!updateRows || !updateRows.length) {
+        throw new Error('Solo un administrador puede cambiar el logo del establecimiento');
+      }
 
       // Refleja el cambio en el objeto de sesión en memoria (además de
       // CLINIC_INFO) para que un siguiente renderHeaderFromSession() (ej.
