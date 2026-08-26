@@ -807,6 +807,50 @@
     .mini-toggle-input:checked + .mini-toggle-slider::before { transform: translateX(13px); }
     .mini-toggle-text { font-size: 11px; font-weight: 600; color: var(--text-2); }
 
+    /* Estilos para gestión de Privilegios y Preferencias por Rol (según capturas) */
+    .permisos-role-selector {
+      display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
+    }
+    .permisos-role-pill {
+      padding: 7px 16px; border-radius: 20px; font-size: 13px; font-weight: 500; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); cursor: pointer; transition: var(--transition);
+    }
+    .permisos-role-pill:hover { background: #F3F4F6; color: var(--text-1); }
+    .permisos-role-pill.active { background: #EEF2FF; color: #4F46E5; border-color: #C7D2FE; font-weight: 600; }
+
+    .permisos-subtab-bar {
+      display: flex; gap: 28px; border-bottom: 1px solid var(--border); width: 100%; margin-top: 4px; padding-left: 2px;
+    }
+    .permisos-subtab-btn {
+      padding: 10px 4px 12px; font-size: 14px; font-weight: 500; color: var(--text-2); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: var(--transition);
+    }
+    .permisos-subtab-btn:hover { color: var(--text-1); }
+    .permisos-subtab-btn.active { color: #4F46E5; border-bottom-color: #4F46E5; font-weight: 600; }
+
+    .permisos-section-group { margin-bottom: 26px; }
+    .permisos-section-title { font-size: 14px; font-weight: 700; color: #374151; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .permisos-items-list { display: flex; flex-direction: column; gap: 10px; }
+    .permisos-item-row {
+      display: flex; align-items: center; gap: 16px; padding: 10px 14px; border-radius: 8px; background-color: #FFFFFF; border: 1px solid #F1F5F9; transition: var(--transition);
+    }
+    .permisos-item-row:hover { background-color: #F8FAFC; border-color: #E2E8F0; }
+    .permisos-item-label { width: 220px; flex-shrink: 0; font-size: 13px; font-weight: 500; color: #374151; display: flex; align-items: center; gap: 6px; }
+    .permisos-item-control { flex-shrink: 0; display: flex; align-items: center; min-width: 50px; }
+    .permisos-item-desc { font-size: 12.5px; color: #6B7280; line-height: 1.4; flex: 1; }
+
+    /* Selector de color de eventos (Preferencias) */
+    .color-picker-wrapper { display: flex; align-items: center; gap: 10px; position: relative; }
+    .color-picker-box {
+      width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 1px 2px rgba(0,0,0,0.06); transition: var(--transition);
+    }
+    .color-picker-box:hover { transform: scale(1.05); }
+    .color-picker-label { font-size: 13px; font-style: italic; color: #6B7280; }
+    .color-picker-label.has-value { font-style: normal; font-weight: 600; color: #1F2937; }
+    .color-palette-popover {
+      position: absolute; top: 42px; left: 0; background: #FFFFFF; border: 1px solid var(--border); border-radius: 8px; padding: 10px; box-shadow: var(--shadow-md); z-index: 100; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 190px;
+    }
+    .color-palette-item { width: 26px; height: 26px; border-radius: 6px; cursor: pointer; border: 1px solid rgba(0,0,0,0.12); transition: transform 0.15s; }
+    .color-palette-item:hover { transform: scale(1.18); }
+
     /* Dropdown buscable reutilizable (detalle de orden / prioridad) */
     .searchable-select { position: relative; }
     .ss-control {
@@ -7810,29 +7854,46 @@
             </div>
           </div>
 
-          <!-- Vista B: Privilegios (matriz de referencia, solo lectura por ahora) -->
+          <!-- Vista B: Privilegios y Preferencias por Rol -->
           <div class="admin-subview" id="admin-view-privilegios">
             <div class="card">
-              <div class="card-header">
-                <span class="card-title"><i data-lucide="shield-check" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Matriz de privilegios por rol</span>
+              <div class="card-header" style="flex-direction:column;align-items:flex-start;gap:12px;padding:20px 20px 0;">
+                <div style="display:flex;justify-content:space-between;width:100%;align-items:center;">
+                  <span class="card-title"><i data-lucide="shield-check" style="width: 18px; height: 18px; color: var(--clinic-accent);"></i> Configuración de Permisos y Preferencias por Rol</span>
+                  <button class="btn-outline" onclick="togglePrivilegiosMatrixModal()" style="font-size:12px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;">
+                    <i data-lucide="table" style="width:14px;height:14px;"></i> Matriz de referencia
+                  </button>
+                </div>
+                
+                <!-- Selector de Rol (Pills) -->
+                <div class="permisos-role-selector" id="admin-permisos-role-selector" style="margin-bottom:8px;">
+                  <button type="button" class="permisos-role-pill active" data-role="admin" onclick="switchAdminRoleView('admin')">Administrador</button>
+                  <button type="button" class="permisos-role-pill" data-role="medico" onclick="switchAdminRoleView('medico')">Médico Veterinario</button>
+                  <button type="button" class="permisos-role-pill" data-role="auxiliar" onclick="switchAdminRoleView('auxiliar')">Auxiliar</button>
+                  <button type="button" class="permisos-role-pill" data-role="ventas" onclick="switchAdminRoleView('ventas')">Ventas</button>
+                </div>
+
+                <!-- Sub-pestañas (Imagen 2 style) -->
+                <div class="permisos-subtab-bar">
+                  <button type="button" class="permisos-subtab-btn active" data-admin-subtab="privilegios" onclick="switchAdminRoleSubtab('privilegios')">
+                    <i data-lucide="shield" style="width:16px;height:16px;"></i> Privilegios
+                  </button>
+                  <button type="button" class="permisos-subtab-btn" data-admin-subtab="preferencias" onclick="switchAdminRoleSubtab('preferencias')">
+                    <i data-lucide="sliders" style="width:16px;height:16px;"></i> Preferencias
+                  </button>
+                </div>
               </div>
-              <p style="font-size:12.5px;color:var(--text-2);padding:14px 20px 0;line-height:1.5;">
-                Vista de referencia por rol (solo lectura). La edición individual por usuario está disponible desde el detalle de cada usuario (Ver/Editar → Rol y privilegios).
-              </p>
-              <table class="results-table">
-                <thead>
-                  <tr>
-                    <th>Dominio</th>
-                    <th>Administrador</th>
-                    <th>Médico Veterinario</th>
-                    <th>Auxiliar</th>
-                    <th>Ventas</th>
-                  </tr>
-                </thead>
-                <tbody id="privilegios-matrix-body">
-                  <!-- Dinámico por JS -->
-                </tbody>
-              </table>
+
+              <!-- Contenedor dinámico de permisos y preferencias -->
+              <div style="padding: 20px;" id="admin-role-permisos-body">
+                <!-- Se llena dinámicamente desde JS -->
+              </div>
+
+              <div style="padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; background: #FAFBFD; border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius);">
+                <button type="button" class="btn-primary" onclick="guardarAdminRolePermisosConfig()">
+                  <i data-lucide="save" style="width:14px;height:14px;"></i> Guardar cambios del rol
+                </button>
+              </div>
             </div>
           </div>
 
@@ -9413,10 +9474,73 @@
       'Cardiología', 'Diagnóstico por imagen', 'Odontología'
     ];
 
-    // VISTA B — Matriz de privilegios por rol (solo lectura por ahora).
-    // TODO: ITERACIÓN FUTURA — hacer esta matriz editable por celda
-    // (select/input por combinación Dominio x Rol) y persistir los
-    // cambios; hoy es únicamente una vista de referencia visual.
+    // ── ESQUEMA Y GESTIÓN DE PRIVILEGIOS Y PREFERENCIAS (Imagen 1 y 2) ──
+    const PRIVILEGES_SCHEMA = [
+      {
+        categoryKey: 'generales',
+        categoryTitle: 'Privilegios generales',
+        items: [
+          { id: 'acceso_consultorio', label: 'Acceso al consultorio', desc: 'El usuario puede buscar propietarios/mascotas y acceder a la historia clínica.', defaultRoles: ['admin', 'medico', 'auxiliar'] },
+          { id: 'hosp_amb', label: 'Hosp./Amb.', desc: 'El usuario puede acceder al módulo de hospitalizaciones/ambulatorio (Kardex).', defaultRoles: ['admin', 'medico', 'auxiliar'] },
+          { id: 'entrega_turno', label: 'Entrega de turno', desc: 'El usuario puede acceder al módulo de entrega de turno hospitalario.', defaultRoles: ['admin', 'medico', 'auxiliar'] },
+          { id: 'info_tutores', label: 'Información de tutores', desc: 'Acceso completo a la información de los tutores.', defaultRoles: ['admin', 'medico', 'auxiliar', 'ventas'] },
+          { id: 'autorizar_historias', label: 'Autorizar historias', desc: 'Habilita al usuario para aprobar las solicitudes de historia clínica.', defaultRoles: ['admin'] }
+        ]
+      },
+      {
+        categoryKey: 'agenda',
+        categoryTitle: 'Privilegios de agenda',
+        items: [
+          { id: 'admin_agenda', label: 'Administrador de agenda', desc: 'El usuario podrá gestionar la agenda de la veterinaria no sólo los eventos propios.', defaultRoles: ['admin'] },
+          { id: 'admin_disponibilidad', label: 'Administrador de disponibilidad', desc: 'El usuario podrá gestionar disponibilidad de la agenda de la veterinaria.', defaultRoles: ['admin'] },
+          { id: 'agenda_personal', label: 'Agenda personal', desc: 'El usuario estará disponible para vincularle eventos como responsable y éste podrá consultar la agenda visualizando sus eventos.', defaultRoles: ['admin', 'medico', 'auxiliar'] },
+          {
+            id: 'servicios_relacionados',
+            label: 'Servicios relacionados',
+            type: 'select',
+            infoText: 'Restringe la visibilidad de los eventos en la agenda según los servicios asociados.',
+            options: [
+              { value: 'Sin restricción', label: 'Sin restricción' },
+              { value: 'Servicios asignados', label: 'Servicios asignados' },
+              { value: 'Sólo lectura', label: 'Sólo lectura' },
+              { value: 'Deshabilitado', label: 'Deshabilitado' }
+            ],
+            defaultRoleValues: { admin: 'Sin restricción', medico: 'Sin restricción', auxiliar: 'Servicios asignados', ventas: 'Sólo lectura' }
+          }
+        ]
+      },
+      {
+        categoryKey: 'ventas',
+        categoryTitle: 'Privilegios en ventas',
+        items: [
+          { id: 'acceso_ventas', label: 'Acceso a ventas', desc: 'Acceso general al módulo', defaultRoles: ['admin', 'ventas'] },
+          { id: 'config_avanzada_ventas', label: 'Configuración avanzada', desc: 'Gestión de proveedores, clientes, listas de precios, margenes de compra e impuestos.', defaultRoles: ['admin', 'ventas'] },
+          { id: 'admin_ventas', label: 'Administrar ventas', desc: 'Controles avanzado en el recibo: listas de precios, forma de pago, nuevos productos, descuentos, ajustar precios.', defaultRoles: ['admin', 'ventas'] },
+          { id: 'aplicar_descuentos', label: 'Aplicar descuentos', desc: 'Permite establecer descuentos en el recibo', defaultRoles: ['admin', 'ventas'] },
+          { id: 'gestionar_inventario', label: 'Gestionar inventario', desc: 'Configuración manual del inventario e importación.', defaultRoles: ['admin', 'ventas'] },
+          { id: 'registrar_compras', label: 'Registrar compras', desc: 'Registro de compras y órdenes de compra.', defaultRoles: ['admin', 'ventas'] },
+          { id: 'dashboard_ventas', label: 'Dashboard de ventas', desc: 'Acceso al dashboard de ventas y reportes de facturación.', defaultRoles: ['admin', 'ventas'] }
+        ]
+      }
+    ];
+
+    const PREFERENCES_SCHEMA = [
+      {
+        categoryKey: 'notificaciones',
+        categoryTitle: 'Notificaciones por email',
+        items: [
+          { id: 'notif_email_actividad', label: 'Actividad de la cuenta', desc: 'Recibir notificaciones por correo electrónico sobre la actividad relevante de la cuenta.', type: 'toggle', defaultRoles: ['admin', 'medico', 'auxiliar', 'ventas'] }
+        ]
+      },
+      {
+        categoryKey: 'agenda_pref',
+        categoryTitle: 'Agenda',
+        items: [
+          { id: 'agenda_color_eventos', label: 'Color de eventos', desc: 'Color asignado para identificar los eventos en la agenda.', type: 'color', defaultRoleValues: { admin: '#3B82F6', medico: '#10B981', auxiliar: '#F59E0B', ventas: '' } }
+        ]
+      }
+    ];
+
     const MATRIZ_PRIVILEGIOS = [
       { dominio: 'Agenda', admin: 'Ver/crear/editar/cancelar todas', medico: 'Propia', auxiliar: 'Ver/crear/editar todas', ventas: 'Ver' },
       { dominio: 'Consultorio', admin: 'Ver todo, crear/editar consulta, firmar doc', medico: 'Ver todo, crear/editar propia, firmar doc', auxiliar: 'Ver todo, crear básico (sin SOIP completo)', ventas: 'Ver ficha' },
@@ -9435,20 +9559,50 @@
       { id: 5, nombre: 'Dra. Valentina Torres', email: 'valentina@muvet.com', telefono: '+57 304 567 8901', rol: 'medico', especialidad: 'Cirugía', estado: 'activo' }
     ];
 
-    // Privilegios individuales por usuario (Parte A.2) — MATRIZ_PRIVILEGIOS
-    // descompuesta en toggles booleanos por dominio, inicializados desde
-    // los defaults del rol de cada usuario pero editables después sin
-    // afectar la matriz de referencia por rol (que sigue siendo de solo
-    // lectura). Se recalculan a los defaults del rol solo cuando el
-    // selector de Rol cambia dentro del modal de detalle (ver
-    // handleUsuarioDetalleRolChange), nunca automáticamente.
-    function getDefaultPrivilegiosParaRol(rol) {
-      const result = {};
-      MATRIZ_PRIVILEGIOS.forEach(fila => { result[fila.dominio] = fila[rol] !== 'Sin acceso'; });
-      return result;
+    function getDefaultPrivilegiosParaRol(rolKey) {
+      const stored = localStorage.getItem(`iris_role_privileges_${rolKey}`);
+      if (stored) {
+        try { return JSON.parse(stored); } catch (e) {}
+      }
+      const privs = {};
+      PRIVILEGES_SCHEMA.forEach(cat => {
+        cat.items.forEach(item => {
+          if (item.type === 'select') {
+            privs[item.id] = (item.defaultRoleValues && item.defaultRoleValues[rolKey]) || item.options[0].value;
+          } else {
+            privs[item.id] = item.defaultRoles.includes(rolKey);
+          }
+        });
+      });
+      return privs;
     }
+
+    function getDefaultPreferenciasParaRol(rolKey) {
+      const stored = localStorage.getItem(`iris_role_preferences_${rolKey}`);
+      if (stored) {
+        try { return JSON.parse(stored); } catch (e) {}
+      }
+      const prefs = {};
+      PREFERENCES_SCHEMA.forEach(cat => {
+        cat.items.forEach(item => {
+          if (item.type === 'color') {
+            prefs[item.id] = (item.defaultRoleValues && item.defaultRoleValues[rolKey]) || '';
+          } else {
+            prefs[item.id] = item.defaultRoles ? item.defaultRoles.includes(rolKey) : true;
+          }
+        });
+      });
+      return prefs;
+    }
+
     let USUARIO_PRIVILEGIOS = {};
-    USUARIOS_SISTEMA.forEach(u => { USUARIO_PRIVILEGIOS[u.id] = getDefaultPrivilegiosParaRol(u.rol); });
+    let USUARIO_PREFERENCIAS = {};
+    USUARIOS_SISTEMA.forEach(u => {
+      const storedPrivs = localStorage.getItem(`iris_user_privileges_${u.id}`);
+      USUARIO_PRIVILEGIOS[u.id] = storedPrivs ? JSON.parse(storedPrivs) : getDefaultPrivilegiosParaRol(u.rol);
+      const storedPrefs = localStorage.getItem(`iris_user_preferences_${u.id}`);
+      USUARIO_PREFERENCIAS[u.id] = storedPrefs ? JSON.parse(storedPrefs) : getDefaultPreferenciasParaRol(u.rol);
+    });
 
     let currentSimRole = 'medico';
     // "Usuario actual simulado" para el módulo Agenda cuando currentSimRole
@@ -24313,6 +24467,7 @@
         pane.classList.toggle('active', pane.id === `admin-view-${viewName}`);
       });
       if (viewName === 'solicitudes') renderSolicitudesTable();
+      if (viewName === 'privilegios') renderAdminRolePermisosContent();
     }
 
     // ── SOLICITUDES DE VINCULACIÓN (Tarea 5) ────────────────────────
@@ -24695,9 +24850,33 @@
       document.getElementById('vetconfig-view-general').classList.toggle('active', isGeneral);
       document.getElementById('vetconfig-view-sedes').classList.toggle('active', isSedes);
       const showPlaceholder = !isGeneral && !isSedes;
-      document.getElementById('vetconfig-view-placeholder').classList.toggle('active', showPlaceholder);
+      const placeholderEl = document.getElementById('vetconfig-view-placeholder');
+      placeholderEl.classList.toggle('active', showPlaceholder);
       if (showPlaceholder) {
-        document.getElementById('vetconfig-placeholder-text').textContent = `${VETCONFIG_PLACEHOLDER_LABELS[tabKey]} — Pendiente de definición`;
+        if (tabKey === 'preferencias') {
+          placeholderEl.innerHTML = `
+            <div class="card" style="margin-top:0;">
+              <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);">
+                <span class="card-title" style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;">
+                  <i data-lucide="sliders" style="width:18px;height:18px;color:var(--clinic-accent);"></i> Preferencias Generales del Establecimiento
+                </span>
+              </div>
+              <div style="padding:20px;">
+                ${renderPreferencesHTML(getDefaultPreferenciasParaRol('admin'), 'vetConfig')}
+              </div>
+              <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;background:#FAFBFD;">
+                <button type="button" class="btn-primary" onclick="showToast('Preferencias del establecimiento guardadas')">Guardar preferencias</button>
+              </div>
+            </div>
+          `;
+          lucide.createIcons();
+        } else {
+          placeholderEl.innerHTML = `<div class="placeholder-content" style="padding:48px 0;">
+            <div class="placeholder-icon"><i data-lucide="settings" style="width:28px;height:28px;"></i></div>
+            <p class="placeholder-text" id="vetconfig-placeholder-text">${VETCONFIG_PLACEHOLDER_LABELS[tabKey]} — Pendiente de definición</p>
+          </div>`;
+          lucide.createIcons();
+        }
       }
     }
 
@@ -25235,6 +25414,7 @@
     // ── A.2 — DETALLE DE USUARIO (Ver/Editar → 3 tabs) ──────────────
     let editingUsuarioDetalleId = null;
     let usuarioDetalleWorkingPrivilegios = {};
+    let usuarioDetalleWorkingPreferencias = {};
 
     function openUsuarioDetalleModal(userId) {
       const id = Number(userId);
@@ -25242,16 +25422,13 @@
       if (!user) return;
       editingUsuarioDetalleId = id;
       usuarioDetalleWorkingPrivilegios = { ...(USUARIO_PRIVILEGIOS[id] || getDefaultPrivilegiosParaRol(user.rol)) };
+      usuarioDetalleWorkingPreferencias = { ...(USUARIO_PREFERENCIAS[id] || getDefaultPreferenciasParaRol(user.rol)) };
 
       document.getElementById('usuario-detalle-modal-title').textContent = `Usuario — ${user.nombre}`;
       document.getElementById('usuario-detalle-nombre').value = user.nombre;
       document.getElementById('usuario-detalle-email').value = user.email;
       document.getElementById('usuario-detalle-telefono').value = user.telefono;
-      // Usuario real (cargado desde list_establecimiento_members): nombre/
-      // email/teléfono son del propio perfil de esa persona -- RLS
-      // ("profiles_update_own") solo deja que cada quien edite el suyo, así
-      // que desde acá quedan de solo lectura; únicamente el rol es editable
-      // (persiste en memberships vía guardarUsuarioDetalle()).
+
       const isRealMember = !!user.membershipId;
       ['usuario-detalle-nombre', 'usuario-detalle-email', 'usuario-detalle-telefono'].forEach(fieldId => {
         document.getElementById(fieldId).disabled = isRealMember;
@@ -25263,6 +25440,7 @@
 
       switchUsuarioDetalleTab('info');
       renderUsuarioDetallePrivilegios();
+      renderUsuarioDetallePreferencias();
 
       document.getElementById('usuario-detalle-modal').classList.add('show');
       lucide.createIcons();
@@ -25286,31 +25464,29 @@
       });
     }
 
-    // Cambiar el Rol resetea los toggles a los defaults de ese rol (solo en
-    // memoria de trabajo del modal); quedan editables después y no se
-    // persisten hasta "Guardar cambios".
     function handleUsuarioDetalleRolChange() {
       const rol = document.getElementById('usuario-detalle-rol-select').value;
       document.getElementById('usuario-detalle-especialidad-wrap').style.display = rol === 'medico' ? '' : 'none';
       usuarioDetalleWorkingPrivilegios = getDefaultPrivilegiosParaRol(rol);
+      usuarioDetalleWorkingPreferencias = getDefaultPreferenciasParaRol(rol);
       renderUsuarioDetallePrivilegios();
+      renderUsuarioDetallePreferencias();
     }
 
     function renderUsuarioDetallePrivilegios() {
       const body = document.getElementById('usuario-detalle-privilegios-body');
-      body.innerHTML = MATRIZ_PRIVILEGIOS.map(fila => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);">
-          <span style="font-size:12.5px;color:var(--text-1);font-weight:500;">${fila.dominio}</span>
-          <label class="mini-toggle">
-            <input type="checkbox" class="mini-toggle-input" ${usuarioDetalleWorkingPrivilegios[fila.dominio] ? 'checked' : ''} onchange="toggleUsuarioDetallePrivilegio('${fila.dominio}', this.checked)">
-            <span class="mini-toggle-slider"></span>
-          </label>
-        </div>
-      `).join('');
+      if (body) {
+        body.innerHTML = renderPrivilegesHTML(usuarioDetalleWorkingPrivilegios, 'usuarioDetalle');
+        lucide.createIcons();
+      }
     }
 
-    function toggleUsuarioDetallePrivilegio(dominio, checked) {
-      usuarioDetalleWorkingPrivilegios[dominio] = checked;
+    function renderUsuarioDetallePreferencias() {
+      const body = document.getElementById('usuario-detalle-preferencias-body');
+      if (body) {
+        body.innerHTML = renderPreferencesHTML(usuarioDetalleWorkingPreferencias, 'usuarioDetalle');
+        lucide.createIcons();
+      }
     }
 
     async function guardarUsuarioDetalle() {
@@ -25320,8 +25496,6 @@
       const nuevaEspecialidad = nuevoRol === 'medico' ? document.getElementById('usuario-detalle-especialidad-select').value : null;
 
       if (user.membershipId) {
-        // Usuario real -- nombre/email/teléfono quedaron de solo lectura
-        // (ver openUsuarioDetalleModal), solo se persiste el rol.
         const saveBtn = document.querySelector('#usuario-detalle-modal .btn-primary');
         if (saveBtn) saveBtn.disabled = true;
         const { error } = await window.supabase.from('memberships').update({ rol: nuevoRol }).eq('id', user.membershipId);
@@ -25339,18 +25513,215 @@
       user.rol = nuevoRol;
       user.especialidad = nuevaEspecialidad;
       USUARIO_PRIVILEGIOS[user.id] = { ...usuarioDetalleWorkingPrivilegios };
+      USUARIO_PREFERENCIAS[user.id] = { ...usuarioDetalleWorkingPreferencias };
+
+      localStorage.setItem(`iris_user_privileges_${user.id}`, JSON.stringify(usuarioDetalleWorkingPrivilegios));
+      localStorage.setItem(`iris_user_preferences_${user.id}`, JSON.stringify(usuarioDetalleWorkingPreferencias));
 
       renderUsuariosTable();
       closeUsuarioDetalleModal();
       showToast('Usuario actualizado');
     }
 
-    // Vista B — Privilegios (matriz de referencia, solo lectura)
-    // TODO: ITERACIÓN FUTURA — reemplazar las celdas de texto por
-    // controles editables (select/checkbox) una vez se defina el modelo
-    // de permisos granular por establecimiento.
+    // ── GESTIÓN DE VISTAS DE ROLES, PRIVILEGIOS Y PREFERENCIAS (Imagen 1 & 2) ──
+    let adminActiveRole = 'admin';
+    let adminActiveSubtab = 'privilegios';
+    let adminWorkingRolePrivilegios = {};
+    let adminWorkingRolePreferencias = {};
+
+    function switchAdminRoleView(roleKey) {
+      adminActiveRole = roleKey;
+      document.querySelectorAll('#admin-permisos-role-selector .permisos-role-pill').forEach(pill => {
+        pill.classList.toggle('active', pill.getAttribute('data-role') === roleKey);
+      });
+      adminWorkingRolePrivilegios = getDefaultPrivilegiosParaRol(roleKey);
+      adminWorkingRolePreferencias = getDefaultPreferenciasParaRol(roleKey);
+      renderAdminRolePermisosContent();
+    }
+
+    function switchAdminRoleSubtab(subtabKey) {
+      adminActiveSubtab = subtabKey;
+      document.querySelectorAll('#admin-view-privilegios .permisos-subtab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-admin-subtab') === subtabKey);
+      });
+      renderAdminRolePermisosContent();
+    }
+
+    function renderAdminRolePermisosContent() {
+      const container = document.getElementById('admin-role-permisos-body');
+      if (!container) return;
+
+      if (!adminWorkingRolePrivilegios[PRIVILEGES_SCHEMA[0].items[0].id]) {
+        adminWorkingRolePrivilegios = getDefaultPrivilegiosParaRol(adminActiveRole);
+      }
+      if (adminWorkingRolePreferencias.notif_email_actividad === undefined) {
+        adminWorkingRolePreferencias = getDefaultPreferenciasParaRol(adminActiveRole);
+      }
+
+      if (adminActiveSubtab === 'privilegios') {
+        container.innerHTML = renderPrivilegesHTML(adminWorkingRolePrivilegios, 'adminRole');
+      } else {
+        container.innerHTML = renderPreferencesHTML(adminWorkingRolePreferencias, 'adminRole');
+      }
+      lucide.createIcons();
+    }
+
+    function guardarAdminRolePermisosConfig() {
+      localStorage.setItem(`iris_role_privileges_${adminActiveRole}`, JSON.stringify(adminWorkingRolePrivilegios));
+      localStorage.setItem(`iris_role_preferences_${adminActiveRole}`, JSON.stringify(adminWorkingRolePreferencias));
+      
+      const roleLabel = (ROLES[adminActiveRole] || {}).label || adminActiveRole;
+      showToast(`Privilegios y preferencias del rol ${roleLabel} guardados`);
+    }
+
+    function togglePrivilegiosMatrixModal(show = true) {
+      const modal = document.getElementById('privilegios-matrix-modal');
+      if (modal) {
+        modal.classList.toggle('show', show);
+        if (show) renderPrivilegiosMatrix();
+      }
+    }
+
+    // ── RENDERIZADO DE PRIVILEGIOS Y PREFERENCIAS (HELPERS) ───────
+    const COLOR_PALETTE_PRESETS = [
+      '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+      '#EC4899', '#6B7280', '#059669', '#0F766E', '#D97706'
+    ];
+
+    function renderPrivilegesHTML(privsObj, scopePrefix) {
+      return PRIVILEGES_SCHEMA.map(cat => `
+        <div class="permisos-section-group">
+          <div class="permisos-section-title">${cat.categoryTitle}</div>
+          <div class="permisos-items-list">
+            ${cat.items.map(item => {
+              if (item.type === 'select') {
+                const currentVal = privsObj[item.id] || item.options[0].value;
+                return `
+                  <div class="permisos-item-row">
+                    <span class="permisos-item-label">
+                      ${item.label}
+                      ${item.infoText ? `<i data-lucide="info" style="width:14px;height:14px;color:var(--text-2);cursor:pointer;" title="${item.infoText}"></i>` : ''}
+                    </span>
+                    <div class="permisos-item-control" style="min-width:160px;">
+                      <select class="soap-select-control" style="padding:4px 8px;font-size:12.5px;" onchange="updateWorkingPrivilege('${scopePrefix}', '${item.id}', this.value)">
+                        ${item.options.map(opt => `<option value="${opt.value}" ${opt.value === currentVal ? 'selected' : ''}>${opt.label}</option>`).join('')}
+                      </select>
+                    </div>
+                    <span class="permisos-item-desc">${item.infoText || 'Restringe los eventos en la agenda según los servicios asociados.'}</span>
+                  </div>
+                `;
+              } else {
+                const isChecked = !!privsObj[item.id];
+                return `
+                  <div class="permisos-item-row">
+                    <span class="permisos-item-label">${item.label}</span>
+                    <div class="permisos-item-control">
+                      <label class="mini-toggle">
+                        <input type="checkbox" class="mini-toggle-input" ${isChecked ? 'checked' : ''} onchange="updateWorkingPrivilege('${scopePrefix}', '${item.id}', this.checked)">
+                        <span class="mini-toggle-slider"></span>
+                      </label>
+                    </div>
+                    <span class="permisos-item-desc">${item.desc}</span>
+                  </div>
+                `;
+              }
+            }).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderPreferencesHTML(prefsObj, scopePrefix) {
+      return PREFERENCES_SCHEMA.map(cat => `
+        <div class="permisos-section-group">
+          <div class="permisos-section-title">${cat.categoryTitle}</div>
+          <div class="permisos-items-list">
+            ${cat.items.map(item => {
+              if (item.type === 'color') {
+                const currentColor = prefsObj[item.id] || '';
+                return `
+                  <div class="permisos-item-row">
+                    <span class="permisos-item-label">${item.label}</span>
+                    <div class="permisos-item-control" style="min-width:200px;">
+                      <div class="color-picker-wrapper">
+                        <div class="color-picker-box" id="cpbox-${scopePrefix}-${item.id}" style="background-color: ${currentColor || '#FFFFFF'};" onclick="toggleColorPickerPopover(this, '${scopePrefix}', '${item.id}')">
+                          ${!currentColor ? '<i data-lucide="palette" style="width:14px;height:14px;color:var(--text-2);"></i>' : ''}
+                        </div>
+                        <span class="color-picker-label ${currentColor ? 'has-value' : ''}" id="cplabel-${scopePrefix}-${item.id}">${currentColor ? currentColor : 'Sin definir'}</span>
+                        ${currentColor ? `<button type="button" class="btn-outline" style="padding:2px 6px;font-size:11px;border:none;color:var(--text-2);margin-left:4px;" onclick="clearWorkingColor('${scopePrefix}', '${item.id}')">Limpiar</button>` : ''}
+                        <div class="color-palette-popover" id="cppopover-${scopePrefix}-${item.id}" style="display:none;">
+                          ${COLOR_PALETTE_PRESETS.map(c => `<div class="color-palette-item" style="background-color:${c};" onclick="selectWorkingColor('${scopePrefix}', '${item.id}', '${c}')"></div>`).join('')}
+                        </div>
+                      </div>
+                    </div>
+                    <span class="permisos-item-desc">${item.desc}</span>
+                  </div>
+                `;
+              } else {
+                const isChecked = !!prefsObj[item.id];
+                return `
+                  <div class="permisos-item-row">
+                    <span class="permisos-item-label">${item.label}</span>
+                    <div class="permisos-item-control">
+                      <label class="mini-toggle">
+                        <input type="checkbox" class="mini-toggle-input" ${isChecked ? 'checked' : ''} onchange="updateWorkingPreference('${scopePrefix}', '${item.id}', this.checked)">
+                        <span class="mini-toggle-slider"></span>
+                      </label>
+                    </div>
+                    <span class="permisos-item-desc">${item.desc}</span>
+                  </div>
+                `;
+              }
+            }).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function updateWorkingPrivilege(scopePrefix, key, val) {
+      if (scopePrefix === 'adminRole') {
+        adminWorkingRolePrivilegios[key] = val;
+      } else if (scopePrefix === 'usuarioDetalle') {
+        usuarioDetalleWorkingPrivilegios[key] = val;
+      }
+    }
+
+    function updateWorkingPreference(scopePrefix, key, val) {
+      if (scopePrefix === 'adminRole') {
+        adminWorkingRolePreferencias[key] = val;
+      } else if (scopePrefix === 'usuarioDetalle') {
+        usuarioDetalleWorkingPreferencias[key] = val;
+      } else if (scopePrefix === 'vetConfig') {
+        localStorage.setItem(`iris_vet_pref_${key}`, val);
+      }
+    }
+
+    function toggleColorPickerPopover(boxEl, scopePrefix, key) {
+      const popover = document.getElementById(`cppopover-${scopePrefix}-${key}`);
+      if (!popover) return;
+      const isOpen = popover.style.display !== 'none';
+      document.querySelectorAll('.color-palette-popover').forEach(p => p.style.display = 'none');
+      if (!isOpen) popover.style.display = 'grid';
+    }
+
+    function selectWorkingColor(scopePrefix, key, colorHex) {
+      updateWorkingPreference(scopePrefix, key, colorHex);
+      const popover = document.getElementById(`cppopover-${scopePrefix}-${key}`);
+      if (popover) popover.style.display = 'none';
+      
+      if (scopePrefix === 'adminRole') renderAdminRolePermisosContent();
+      else if (scopePrefix === 'usuarioDetalle') renderUsuarioDetallePreferencias();
+      else if (scopePrefix === 'vetConfig') renderVetConfigPreferencias();
+    }
+
+    function clearWorkingColor(scopePrefix, key) {
+      selectWorkingColor(scopePrefix, key, '');
+    }
+
+    // Vista B — Privilegios (matriz de referencia)
     function renderPrivilegiosMatrix() {
       const tbody = document.getElementById('privilegios-matrix-body');
+      if (!tbody) return;
       tbody.innerHTML = MATRIZ_PRIVILEGIOS.map(fila => `
         <tr>
           <td style="font-weight:600;">${fila.dominio}</td>
@@ -35766,7 +36137,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
 
   <!-- Modal: Detalle de usuario (Ver/Editar) — Parte A.2 -->
   <div class="modal-overlay" id="usuario-detalle-modal" onclick="handleUsuarioDetalleModalOverlayClick(event)">
-    <div class="modal-card" onclick="event.stopPropagation()" style="width:560px;">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:660px;">
       <div class="modal-header">
         <span class="modal-title" id="usuario-detalle-modal-title">Usuario</span>
         <button class="modal-close" onclick="closeUsuarioDetalleModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
@@ -35819,20 +36190,47 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
             <option value="Odontología">Odontología</option>
           </select>
         </div>
-        <p style="font-size:12px;color:var(--text-2);margin-bottom:8px;">Privilegios por dominio — se restablecen a los valores por defecto del rol al cambiarlo, y quedan editables después.</p>
+        <p style="font-size:12px;color:var(--text-2);margin-bottom:12px;">Privilegios del usuario — organizados por categoría. Se restablecen a las opciones por defecto del rol si cambia el rol arriba, y se pueden personalizar de forma independiente.</p>
         <div id="usuario-detalle-privilegios-body"></div>
       </div>
 
       <div class="prod-modal-tab-pane" id="usuario-detalle-tab-preferencias">
-        <div class="placeholder-content" style="padding:32px 0;background:transparent;">
-          <div class="placeholder-icon"><i data-lucide="settings" style="width:22px;height:22px;"></i></div>
-          <p class="placeholder-text" style="font-size:12px;">Pendiente de definición</p>
-        </div>
+        <div id="usuario-detalle-preferencias-body"></div>
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
         <button class="btn-secondary" onclick="closeUsuarioDetalleModal()">Cancelar</button>
         <button class="btn-primary" onclick="guardarUsuarioDetalle()">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Matriz de Privilegios de Referencia -->
+  <div class="modal-overlay" id="privilegios-matrix-modal" onclick="if(event.target===this) togglePrivilegiosMatrixModal(false)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:720px;">
+      <div class="modal-header">
+        <span class="modal-title"><i data-lucide="table" style="width:18px;height:18px;color:var(--clinic-accent);"></i> Matriz de Referencia de Privilegios por Rol</span>
+        <button class="modal-close" onclick="togglePrivilegiosMatrixModal(false)"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-2);margin-bottom:14px;line-height:1.5;">
+        Resumen general del alcance de cada rol dentro del sistema veterinario:
+      </p>
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Dominio</th>
+            <th>Administrador</th>
+            <th>Médico Veterinario</th>
+            <th>Auxiliar</th>
+            <th>Ventas</th>
+          </tr>
+        </thead>
+        <tbody id="privilegios-matrix-body">
+          <!-- Dinámico por JS -->
+        </tbody>
+      </table>
+      <div style="display:flex;justify-content:flex-end;margin-top:18px;">
+        <button class="btn-secondary" onclick="togglePrivilegiosMatrixModal(false)">Cerrar</button>
       </div>
     </div>
   </div>
