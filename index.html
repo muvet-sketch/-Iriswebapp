@@ -15474,9 +15474,9 @@
 
     function getRowActionsForRole() {
       const role = ROLES[currentSimRole];
-      if (role.sidebarMode === 'full') return ['ver', 'editar', 'imprimir', 'email', 'eliminar'];
-      if (role.sidebarMode === 'readonly') return ['ver', 'imprimir'];
-      return ['ver']; // 'restricted' (Ventas) — solo en los módulos a los que sí tiene acceso
+      if (role.sidebarMode === 'full') return ['editar', 'imprimir', 'email', 'eliminar'];
+      if (role.sidebarMode === 'readonly') return ['imprimir'];
+      return []; // 'restricted' (Ventas) — solo en los módulos a los que sí tiene acceso
     }
 
     function renderRowActionsMenu(moduleKey, recordId, extraActions, actionsOverride) {
@@ -15484,34 +15484,15 @@
       // Registro que vive en otra clínica y solo se está leyendo por una
       // solicitud aprobada de la Red IRIS: acá es de solo lectura (las
       // policies de update/delete siguen siendo del establecimiento
-      // dueño), así que el menú se recorta a Ver/Imprimir y se descartan
+      // dueño), así que el menú se recorta a Imprimir y se descartan
       // las acciones extra del módulo (firmar, registrar resultado, etc.).
       if (registroCompartidoDeFila(moduleKey, recordId)) {
-        actions = actions.filter(a => a === 'ver' || a === 'imprimir');
+        actions = actions.filter(a => a === 'imprimir');
         extraActions = [];
       }
-      if (!actions.length) return '';
+      if (!actions.length && (!extraActions || !extraActions.length)) return '';
       extraActions = extraActions || [];
-      const menuId = `row-menu-${moduleKey}-${String(recordId).replace(/[^a-zA-Z0-9]/g, '_')}`;
-      const items = actions.map(key => {
-        const def = ROW_ACTION_DEFS[key];
-        return `<div class="row-actions-item ${def.danger ? 'danger' : ''}" onclick="event.stopPropagation(); rowAction${key.charAt(0).toUpperCase() + key.slice(1)}('${moduleKey}','${recordId}')">
-          <i data-lucide="${def.icon}"></i> ${def.label}
-        </div>`;
-      }).join('');
-      const extraItems = extraActions.map(ea => `
-        <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); ${ea.onclick}">
-          <i data-lucide="${ea.icon}"></i> ${ea.label}
-        </div>
-      `).join('');
-      return `
-        <div class="row-actions-wrap">
-          <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones">
-            <i data-lucide="more-vertical" style="width:16px;height:16px;"></i>
-          </button>
-          <div class="row-actions-menu" id="${menuId}">${items}${extraItems}</div>
-        </div>
-      `;
+      return renderRowActionButtons(moduleKey, recordId, actions, extraActions);
     }
 
     // Variante de renderRowActionsMenu con botones de ícono siempre
@@ -18888,43 +18869,21 @@
     // únicamente cuando el procedimiento está En curso o Realizado — ver
     // guardarCirugia()/applyCirugiaRoleLock() para el resto de la restricción).
     function getCirugiaRowActions(record) {
-      if (currentSimRole === 'admin') return ['ver', 'editar', 'imprimir', 'email', 'eliminar'];
-      if (currentSimRole === 'medico') return ['ver', 'editar', 'imprimir', 'email'];
+      if (currentSimRole === 'admin') return ['editar', 'imprimir', 'email', 'eliminar'];
+      if (currentSimRole === 'medico') return ['editar', 'imprimir', 'email'];
       if (currentSimRole === 'auxiliar') {
         const puedeEditarNotas = record.estado === 'en-curso' || record.estado === 'realizado';
-        return puedeEditarNotas ? ['ver', 'editar'] : ['ver'];
+        return puedeEditarNotas ? ['editar'] : [];
       }
       return []; // Ventas — la tab ya está bloqueada por VENTAS_ALLOWED_SUBTABS
     }
 
-    // Clon local de renderRowActionsMenu (este módulo tiene sus propias
-    // reglas por rol, ver getCirugiaRowActions). `extraActions` sigue el
-    // mismo formato {icon, label, onclick} de la función genérica — se
-    // agregó para colgar acá "Seguimiento de anestesia".
+    // Módulos con botones de ícono siempre visibles en la fila (en línea)
     function renderCirugiaRowActionsMenu(record, recordId, extraActions) {
       const actions = getCirugiaRowActions(record);
       extraActions = extraActions || [];
-      if (!actions.length) return '';
-      const menuId = `row-menu-cirugia-${String(recordId).replace(/[^a-zA-Z0-9]/g, '_')}`;
-      const items = actions.map(key => {
-        const def = ROW_ACTION_DEFS[key];
-        return `<div class="row-actions-item ${def.danger ? 'danger' : ''}" onclick="event.stopPropagation(); rowAction${key.charAt(0).toUpperCase() + key.slice(1)}('cirugia','${recordId}')">
-          <i data-lucide="${def.icon}"></i> ${def.label}
-        </div>`;
-      }).join('');
-      const extraItems = extraActions.map(ea => `
-        <div class="row-actions-item" onclick="event.stopPropagation(); closeAllRowMenus(); ${ea.onclick}">
-          <i data-lucide="${ea.icon}"></i> ${ea.label}
-        </div>
-      `).join('');
-      return `
-        <div class="row-actions-wrap">
-          <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones">
-            <i data-lucide="more-vertical" style="width:16px;height:16px;"></i>
-          </button>
-          <div class="row-actions-menu" id="${menuId}">${items}${extraItems}</div>
-        </div>
-      `;
+      if (!actions.length && !extraActions.length) return '';
+      return renderRowActionButtons('cirugia', recordId, actions, extraActions);
     }
 
     function cirugiaEstadoBadgeHTML(estado) {
@@ -19380,30 +19339,16 @@
     // y auxiliar solo lo propio, y el auxiliar nunca elimina.
     function getAnestesiaRowActions(record) {
       const esPropio = record.registradoPor === getCurrentSimUserId();
-      if (currentSimRole === 'admin') return ['ver', 'editar', 'eliminar'];
-      if (currentSimRole === 'medico') return esPropio ? ['ver', 'editar', 'eliminar'] : ['ver'];
-      if (currentSimRole === 'auxiliar') return esPropio ? ['ver', 'editar'] : ['ver'];
+      if (currentSimRole === 'admin') return ['editar', 'imprimir', 'email', 'eliminar'];
+      if (currentSimRole === 'medico') return esPropio ? ['editar', 'imprimir', 'email', 'eliminar'] : ['editar', 'imprimir', 'email'];
+      if (currentSimRole === 'auxiliar') return esPropio ? ['editar'] : [];
       return []; // Ventas — el subtab ya está bloqueado por VENTAS_ALLOWED_SUBTABS
     }
 
     function renderAnestesiaRowActionsMenu(record, recordId) {
       const actions = getAnestesiaRowActions(record);
       if (!actions.length) return '';
-      const menuId = `row-menu-anestesia-${String(recordId).replace(/[^a-zA-Z0-9]/g, '_')}`;
-      const items = actions.map(key => {
-        const def = ROW_ACTION_DEFS[key];
-        return `<div class="row-actions-item ${def.danger ? 'danger' : ''}" onclick="event.stopPropagation(); rowAction${key.charAt(0).toUpperCase() + key.slice(1)}('anestesia','${recordId}')">
-          <i data-lucide="${def.icon}"></i> ${def.label}
-        </div>`;
-      }).join('');
-      return `
-        <div class="row-actions-wrap">
-          <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones">
-            <i data-lucide="more-vertical" style="width:16px;height:16px;"></i>
-          </button>
-          <div class="row-actions-menu" id="${menuId}">${items}</div>
-        </div>
-      `;
+      return renderRowActionButtons('anestesia', recordId, actions);
     }
 
     function anestesiaUsuarioNombre(record) {
@@ -21460,8 +21405,6 @@
 
     function renderExamenesTable(petKey) {
       const data = patientData[petKey];
-      const canEdit = getRowActionsForRole().includes('editar');
-      const menuActions = getRowActionsForRole().filter(a => a !== 'editar');
       EXAMENES_TABLE_TARGETS.forEach(target => {
         const tbody = document.getElementById(target.tbodyId);
         if (!tbody) return;
@@ -21482,10 +21425,7 @@
             return `
               <tr data-examen-row="${i}">
                 <td style="white-space:nowrap;">
-                  <div style="display:flex;align-items:center;gap:2px;">
-                    ${canEdit ? `<button class="row-actions-btn" title="Editar" onclick="rowActionEditar('examen', '${petKey}:${i}')"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>` : ''}
-                    ${renderRowActionsMenu('examen', `${petKey}:${i}`, extraActions, menuActions)}
-                  </div>
+                  ${renderRowActionsMenu('examen', `${petKey}:${i}`, extraActions)}
                 </td>
                 <td>${e.fecha}</td>
                 <td>${e.diagnosticoPresuntivo || '—'}</td>
@@ -21592,12 +21532,7 @@
             <td>${h.razon}</td>
             <td>${h.usuario}</td>
             <td style="text-align: right;">
-              <div style="display:inline-flex;align-items:center;gap:2px;">
-                <button class="tt-row-action-btn" title="Trazabilidad" onclick="abrirKardex('${petKey}', ${i})">
-                  <i data-lucide="route" style="width:16px;height:16px;"></i>
-                </button>
-                ${renderRowActionsMenu('hospitalizacion', `${petKey}:${i}`)}
-              </div>
+              ${renderRowActionsMenu('hospitalizacion', `${petKey}:${i}`, [{ icon: 'route', label: 'Trazabilidad', onclick: `abrirKardex('${petKey}', ${i})` }])}
             </td>
           </tr>
         `).join('');
@@ -22572,30 +22507,16 @@
     // (VENTAS_ALLOWED_SUBTABS).
     function getSeguimientoRowActions(record) {
       const esPropio = record.registradoPor === getCurrentSimUserId();
-      if (currentSimRole === 'admin') return ['ver', 'editar', 'eliminar'];
-      if (currentSimRole === 'medico') return esPropio ? ['ver', 'editar', 'eliminar'] : ['ver'];
-      if (currentSimRole === 'auxiliar') return esPropio ? ['ver', 'editar'] : ['ver'];
+      if (currentSimRole === 'admin') return ['editar', 'imprimir', 'email', 'eliminar'];
+      if (currentSimRole === 'medico') return esPropio ? ['editar', 'imprimir', 'email', 'eliminar'] : ['editar', 'imprimir', 'email'];
+      if (currentSimRole === 'auxiliar') return esPropio ? ['editar'] : [];
       return []; // Ventas
     }
 
     function renderSeguimientoRowActionsMenu(record, recordId) {
       const actions = getSeguimientoRowActions(record);
       if (!actions.length) return '';
-      const menuId = `row-menu-seguimiento-${String(recordId).replace(/[^a-zA-Z0-9]/g, '_')}`;
-      const items = actions.map(key => {
-        const def = ROW_ACTION_DEFS[key];
-        return `<div class="row-actions-item ${def.danger ? 'danger' : ''}" onclick="event.stopPropagation(); rowAction${key.charAt(0).toUpperCase() + key.slice(1)}('seguimiento','${recordId}')">
-          <i data-lucide="${def.icon}"></i> ${def.label}
-        </div>`;
-      }).join('');
-      return `
-        <div class="row-actions-wrap">
-          <button class="row-actions-btn" onclick="toggleRowMenu(event, '${menuId}')" title="Acciones">
-            <i data-lucide="more-vertical" style="width:16px;height:16px;"></i>
-          </button>
-          <div class="row-actions-menu" id="${menuId}">${items}</div>
-        </div>
-      `;
+      return renderRowActionButtons('seguimiento', recordId, actions);
     }
 
     function seguimientoUsuarioNombre(record) {
@@ -27057,6 +26978,24 @@
       doc.rect(marginX, y - 17, pageWidth - marginX * 2, 26, 'F');
       doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
       doc.text(`VALOR A PAGAR: ${formatCOP(factura.total)}`, pageWidth / 2, y, { align: 'center' });
+
+      // Observaciones anotadas en el formulario de la factura — este PDF se
+      // dibuja a mano con jsPDF (no reusa docVentaViewContentHTML), así que
+      // el campo hay que pintarlo explícitamente o no queda en el archivo.
+      if (factura.observaciones && String(factura.observaciones).trim()) {
+        y += 34;
+        if (y > pageHeight - 90) { doc.addPage(); y = 50; }
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(20, 20, 20);
+        doc.text('Observaciones', marginX, y);
+        y += 14;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(60, 60, 60);
+        const obsLineas = doc.splitTextToSize(String(factura.observaciones).trim(), pageWidth - marginX * 2);
+        obsLineas.forEach(linea => {
+          if (y > pageHeight - 50) { doc.addPage(); y = 50; }
+          doc.text(linea, marginX, y);
+          y += 13;
+        });
+      }
 
       const nombreArchivoFactura = ['estado-cuenta', ...[cliente.nombre, factura.numero].filter(Boolean).map(slugificarIrisPdf)].join('-') + '.pdf';
       doc.save(nombreArchivoFactura);
