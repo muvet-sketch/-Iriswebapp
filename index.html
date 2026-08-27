@@ -8905,9 +8905,11 @@
         // propietarioEstaVinculado().
         const vinculado = p.redVinculado !== false;
         const mascotas = getMascotasRelacionadasDePropietario(p.id);
+        const firstPetKey = (mascotas && mascotas.length) ? mascotas[0][0] : null;
+
         const chips = mascotas.length
           ? mascotas.map(([petKey, d, esContacto]) => `
-              <span class="pet-chip-badge ${d.avatarClass}${vinculado ? '' : ' pet-chip-locked'}">
+              <span class="pet-chip-badge ${d.avatarClass}${vinculado ? '' : ' pet-chip-locked'}" ${vinculado ? `style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')"` : ''}>
                 <span class="pet-chip-photo" ${vinculado ? `style="cursor:pointer;" onclick="event.stopPropagation(); selectPet('${petKey}')" title="Ver historia clínica"` : 'title="Requiere vincular al tutor"'}>
                   ${d.fotoUrl ? `<img src="${d.fotoUrl}" alt="${d.name}">` : `<i data-lucide="${d.avatarClass === 'cat' ? 'cat' : 'dog'}" style="width: 11px; height: 11px;"></i>`}
                 </span>
@@ -8927,8 +8929,18 @@
         const origenTag = p.origen === 'autorregistro'
           ? '<span class="owner-origen-tag" title="El tutor llenó estos datos desde el link de registro">Autorregistro</span>'
           : '';
+
+        let rowOnClick = '';
+        if (!vinculado) {
+          rowOnClick = `onclick="abrirRedVincularModalManual()"`;
+        } else if (firstPetKey) {
+          rowOnClick = `onclick="selectPet('${firstPetKey}')"`;
+        } else {
+          rowOnClick = `onclick="abrirPerfilPropietario('${p.id}')"`;
+        }
+
         return `
-          <tr${vinculado ? '' : ' class="owner-row-locked"'}>
+          <tr ${vinculado ? '' : 'class="owner-row-locked"'} ${rowOnClick} style="cursor:pointer;">
             <td>
               ${vinculado ? `<button class="row-actions-btn" title="Estado de cuenta / Facturación" onclick="event.stopPropagation(); abrirFacturacionPropietario('${p.id}')">
                 <i data-lucide="credit-card" style="width:16px;height:16px;"></i>
@@ -8938,7 +8950,7 @@
               <div class="owner-cell">
                 <div class="owner-avatar-placeholder">${initials || '—'}</div>
                 ${vinculado
-                  ? `<span class="owner-name" style="cursor:pointer;" onclick="abrirPerfilPropietario('${p.id}')">${p.nombre}${origenTag}</span>`
+                  ? `<span class="owner-name" style="cursor:pointer;" onclick="${firstPetKey ? `event.stopPropagation(); selectPet('${firstPetKey}')` : `event.stopPropagation(); abrirPerfilPropietario('${p.id}')`}">${p.nombre}${origenTag}</span>`
                   : `<span class="owner-name owner-name-locked" title="Verifica la identidad del tutor para poder abrir su ficha">${p.nombre}<span class="owner-locked-tag">Sin vincular</span>${origenTag}</span>`}
               </div>
             </td>
