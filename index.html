@@ -25345,6 +25345,21 @@
       localStorage.setItem(obsDefaultFacturaStorageKey(), valor);
       showToast('Mensaje predeterminado guardado');
     }
+    function guardarObsDefaultDesdeDocVenta() {
+      const valor = document.getElementById('doc-venta-observaciones').value.trim();
+      localStorage.setItem(obsDefaultFacturaStorageKey(), valor);
+      renderConfigObservacionesDefault();
+      showToast('Texto predeterminado guardado para futuras facturas');
+    }
+    function insertarObsDefaultEnDocVenta() {
+      const def = getObsDefaultFactura();
+      document.getElementById('doc-venta-observaciones').value = def;
+      if (def) {
+        showToast('Texto predeterminado cargado');
+      } else {
+        showToast('No hay un texto predeterminado configurado');
+      }
+    }
 
     // Botón "Cierre de caja" del Dashboard de ventas: atajo directo al
     // arqueo del día (Ingresos y Egresos > Cierre de caja), sin pasar por
@@ -35539,8 +35554,18 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       </div>
 
       <div class="input-group" style="margin:14px 0;">
-        <label class="input-label" for="doc-venta-observaciones">Observaciones</label>
-        <textarea id="doc-venta-observaciones" class="input-control" style="padding-left:12px;min-height:60px;resize:vertical;"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <label class="input-label" for="doc-venta-observaciones" style="margin-bottom:0;">Observaciones</label>
+          <div style="display:flex;gap:12px;font-size:12px;">
+            <button type="button" class="btn-text-link" onclick="insertarObsDefaultEnDocVenta()" style="background:none;border:none;color:var(--clinic-accent);cursor:pointer;padding:0;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="Cargar el texto predeterminado guardado">
+              <i data-lucide="rotate-ccw" style="width:13px;height:13px;"></i> Cargar predeterminado
+            </button>
+            <button type="button" class="btn-text-link" onclick="guardarObsDefaultDesdeDocVenta()" style="background:none;border:none;color:var(--clinic-accent);cursor:pointer;padding:0;font-size:12px;display:inline-flex;align-items:center;gap:4px;" title="Guardar este texto como el predeterminado para futuras facturas">
+              <i data-lucide="bookmark" style="width:13px;height:13px;"></i> Guardar como predeterminado
+            </button>
+          </div>
+        </div>
+        <textarea id="doc-venta-observaciones" class="input-control" placeholder="Observaciones o notas del documento..." style="padding-left:12px;min-height:65px;resize:vertical;"></textarea>
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
