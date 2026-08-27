@@ -807,15 +807,22 @@
     .mini-toggle-input:checked + .mini-toggle-slider::before { transform: translateX(13px); }
     .mini-toggle-text { font-size: 11px; font-weight: 600; color: var(--text-2); }
 
-    /* Estilos para gestión de Privilegios y Preferencias por Rol (según capturas) */
+    /* Gestión de Privilegios y Preferencias por Rol (Admin > Privilegios).
+       Los estados activos van con el acento del tema del usuario
+       (--clinic-accent, reescrito por aplicarTemaClinica) y sus derivados
+       con rgba(var(--clinic-accent-rgb), α) — nunca un hex fijo, o esta
+       pantalla queda de otro color que el resto de la app. */
     .permisos-role-selector {
       display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
     }
     .permisos-role-pill {
       padding: 7px 16px; border-radius: 20px; font-size: 13px; font-weight: 500; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); cursor: pointer; transition: var(--transition);
     }
-    .permisos-role-pill:hover { background: #F3F4F6; color: var(--text-1); }
-    .permisos-role-pill.active { background: #EEF2FF; color: #4F46E5; border-color: #C7D2FE; font-weight: 600; }
+    .permisos-role-pill:hover { background: var(--surface-base); color: var(--text-1); }
+    .permisos-role-pill.active {
+      background: rgba(var(--clinic-accent-rgb), 0.10); color: var(--clinic-accent);
+      border-color: rgba(var(--clinic-accent-rgb), 0.35); font-weight: 600;
+    }
 
     .permisos-subtab-bar {
       display: flex; gap: 28px; border-bottom: 1px solid var(--border); width: 100%; margin-top: 4px; padding-left: 2px;
@@ -824,29 +831,29 @@
       padding: 10px 4px 12px; font-size: 14px; font-weight: 500; color: var(--text-2); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: var(--transition);
     }
     .permisos-subtab-btn:hover { color: var(--text-1); }
-    .permisos-subtab-btn.active { color: #4F46E5; border-bottom-color: #4F46E5; font-weight: 600; }
+    .permisos-subtab-btn.active { color: var(--clinic-accent); border-bottom-color: var(--clinic-accent); font-weight: 600; }
 
     .permisos-section-group { margin-bottom: 26px; }
-    .permisos-section-title { font-size: 14px; font-weight: 700; color: #374151; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .permisos-section-title { font-size: 14px; font-weight: 700; color: var(--text-1); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
     .permisos-items-list { display: flex; flex-direction: column; gap: 10px; }
     .permisos-item-row {
-      display: flex; align-items: center; gap: 16px; padding: 10px 14px; border-radius: 8px; background-color: #FFFFFF; border: 1px solid #F1F5F9; transition: var(--transition);
+      display: flex; align-items: center; gap: 16px; padding: 10px 14px; border-radius: var(--radius-sm); background-color: var(--surface); border: 1px solid var(--border); transition: var(--transition);
     }
-    .permisos-item-row:hover { background-color: #F8FAFC; border-color: #E2E8F0; }
-    .permisos-item-label { width: 220px; flex-shrink: 0; font-size: 13px; font-weight: 500; color: #374151; display: flex; align-items: center; gap: 6px; }
+    .permisos-item-row:hover { background-color: var(--surface-base); border-color: var(--border-solid); }
+    .permisos-item-label { width: 220px; flex-shrink: 0; font-size: 13px; font-weight: 500; color: var(--text-1); display: flex; align-items: center; gap: 6px; }
     .permisos-item-control { flex-shrink: 0; display: flex; align-items: center; min-width: 50px; }
-    .permisos-item-desc { font-size: 12.5px; color: #6B7280; line-height: 1.4; flex: 1; }
+    .permisos-item-desc { font-size: 12.5px; color: var(--text-2); line-height: 1.4; flex: 1; }
 
     /* Selector de color de eventos (Preferencias) */
     .color-picker-wrapper { display: flex; align-items: center; gap: 10px; position: relative; }
     .color-picker-box {
-      width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 1px 2px rgba(0,0,0,0.06); transition: var(--transition);
+      width: 34px; height: 34px; border-radius: var(--radius-sm); border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 1px 2px rgba(0,0,0,0.06); transition: var(--transition);
     }
     .color-picker-box:hover { transform: scale(1.05); }
-    .color-picker-label { font-size: 13px; font-style: italic; color: #6B7280; }
-    .color-picker-label.has-value { font-style: normal; font-weight: 600; color: #1F2937; }
+    .color-picker-label { font-size: 13px; font-style: italic; color: var(--text-2); }
+    .color-picker-label.has-value { font-style: normal; font-weight: 600; color: var(--text-1); }
     .color-palette-popover {
-      position: absolute; top: 42px; left: 0; background: #FFFFFF; border: 1px solid var(--border); border-radius: 8px; padding: 10px; box-shadow: var(--shadow-md); z-index: 100; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 190px;
+      position: absolute; top: 42px; left: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; box-shadow: var(--shadow-md); z-index: 100; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 190px;
     }
     .color-palette-item { width: 26px; height: 26px; border-radius: 6px; cursor: pointer; border: 1px solid rgba(0,0,0,0.12); transition: transform 0.15s; }
     .color-palette-item:hover { transform: scale(1.18); }
@@ -9559,11 +9566,57 @@
       { id: 5, nombre: 'Dra. Valentina Torres', email: 'valentina@muvet.com', telefono: '+57 304 567 8901', rol: 'medico', especialidad: 'Cirugía', estado: 'activo' }
     ];
 
-    function getDefaultPrivilegiosParaRol(rolKey) {
-      const stored = localStorage.getItem(`iris_role_privileges_${rolKey}`);
-      if (stored) {
-        try { return JSON.parse(stored); } catch (e) {}
+    // ── ÁMBITO DE PERSISTENCIA DE PRIVILEGIOS/PREFERENCIAS ──────────
+    // Estas claves NO se derivan de `currentSession`: este bloque corre en
+    // el nivel superior del script, mucho antes de que ese `let` se
+    // ejecute, y leerlo desde acá sería un acceso en temporal dead zone —
+    // el mismo error que ya tumbó el script entero dos veces (ver la nota
+    // de mostrarShellSegunSesion en CLAUDE.md). El id real lo fija
+    // fijarAmbitoPermisos() al resolver el establecimiento activo; hasta
+    // entonces todo cae bajo 'sin-estab'.
+    let permisosEstablecimientoId = 'sin-estab';
+    function fijarAmbitoPermisos(estabId) {
+      permisosEstablecimientoId = estabId || 'sin-estab';
+    }
+    function claveRolPermisos(tipo, rolKey) {
+      return `iris_${tipo}_${permisosEstablecimientoId}_${rolKey}`;
+    }
+    // Los ids de USUARIOS_SISTEMA se regeneran 1..N en cada sesión (ver la
+    // nota de cargarUsuariosRealesDesdeSupabase), así que no sirven como
+    // clave estable: el usuario 1 de una clínica heredaría lo configurado
+    // para el usuario 1 de otra. Para un miembro real se usa el uuid de su
+    // membresía; el roster mock de la demo queda bajo su propio prefijo,
+    // ya scopeado por establecimiento.
+    function claveUsuarioPermisos(tipo, user) {
+      const ident = user && user.membershipId
+        ? user.membershipId
+        : `mock-${permisosEstablecimientoId}-${user ? user.id : '0'}`;
+      return `iris_${tipo}_usuario_${ident}`;
+    }
+    // Un valor corrupto en localStorage no puede tumbar el script: varias
+    // de estas lecturas ocurren en el nivel superior, donde una excepción
+    // aborta todo lo que se inicializa después sin ningún mensaje visible.
+    function leerPermisosGuardados(clave) {
+      try {
+        const raw = localStorage.getItem(clave);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        console.warn(`leerPermisosGuardados(): valor inválido en ${clave}, se ignora —`, e);
+        return null;
       }
+    }
+    // Lo guardado se MEZCLA sobre los defaults del esquema en vez de
+    // reemplazarlos: si se agrega un privilegio nuevo a PRIVILEGES_SCHEMA,
+    // un objeto guardado antes no puede dejar esa clave en undefined.
+    function fusionarConEsquema(defaults, guardado) {
+      if (!guardado || typeof guardado !== 'object') return defaults;
+      Object.keys(defaults).forEach(key => {
+        if (guardado[key] !== undefined) defaults[key] = guardado[key];
+      });
+      return defaults;
+    }
+
+    function getDefaultPrivilegiosParaRol(rolKey) {
       const privs = {};
       PRIVILEGES_SCHEMA.forEach(cat => {
         cat.items.forEach(item => {
@@ -9574,14 +9627,10 @@
           }
         });
       });
-      return privs;
+      return fusionarConEsquema(privs, leerPermisosGuardados(claveRolPermisos('role_privileges', rolKey)));
     }
 
     function getDefaultPreferenciasParaRol(rolKey) {
-      const stored = localStorage.getItem(`iris_role_preferences_${rolKey}`);
-      if (stored) {
-        try { return JSON.parse(stored); } catch (e) {}
-      }
       const prefs = {};
       PREFERENCES_SCHEMA.forEach(cat => {
         cat.items.forEach(item => {
@@ -9592,17 +9641,22 @@
           }
         });
       });
-      return prefs;
+      return fusionarConEsquema(prefs, leerPermisosGuardados(claveRolPermisos('role_preferences', rolKey)));
     }
 
     let USUARIO_PRIVILEGIOS = {};
     let USUARIO_PREFERENCIAS = {};
-    USUARIOS_SISTEMA.forEach(u => {
-      const storedPrivs = localStorage.getItem(`iris_user_privileges_${u.id}`);
-      USUARIO_PRIVILEGIOS[u.id] = storedPrivs ? JSON.parse(storedPrivs) : getDefaultPrivilegiosParaRol(u.rol);
-      const storedPrefs = localStorage.getItem(`iris_user_preferences_${u.id}`);
-      USUARIO_PREFERENCIAS[u.id] = storedPrefs ? JSON.parse(storedPrefs) : getDefaultPreferenciasParaRol(u.rol);
-    });
+    function hidratarPermisosDeUsuario(user) {
+      USUARIO_PRIVILEGIOS[user.id] = fusionarConEsquema(
+        getDefaultPrivilegiosParaRol(user.rol),
+        leerPermisosGuardados(claveUsuarioPermisos('user_privileges', user))
+      );
+      USUARIO_PREFERENCIAS[user.id] = fusionarConEsquema(
+        getDefaultPreferenciasParaRol(user.rol),
+        leerPermisosGuardados(claveUsuarioPermisos('user_preferences', user))
+      );
+    }
+    USUARIOS_SISTEMA.forEach(hidratarPermisosDeUsuario);
 
     let currentSimRole = 'medico';
     // "Usuario actual simulado" para el módulo Agenda cuando currentSimRole
@@ -9690,6 +9744,7 @@
     async function cerrarSesion() {
       if (window.supabase) await window.supabase.auth.signOut();
       currentSession = null;
+      fijarAmbitoPermisos(null);
       localStorage.removeItem('iris_session_active');
       localStorage.removeItem('iris_sim_role');
       localStorage.removeItem('iris_active_estab_id');
@@ -24854,22 +24909,12 @@
       placeholderEl.classList.toggle('active', showPlaceholder);
       if (showPlaceholder) {
         if (tabKey === 'preferencias') {
-          placeholderEl.innerHTML = `
-            <div class="card" style="margin-top:0;">
-              <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);">
-                <span class="card-title" style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;">
-                  <i data-lucide="sliders" style="width:18px;height:18px;color:var(--clinic-accent);"></i> Preferencias Generales del Establecimiento
-                </span>
-              </div>
-              <div style="padding:20px;">
-                ${renderPreferencesHTML(getDefaultPreferenciasParaRol('admin'), 'vetConfig')}
-              </div>
-              <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;background:#FAFBFD;">
-                <button type="button" class="btn-primary" onclick="showToast('Preferencias del establecimiento guardadas')">Guardar preferencias</button>
-              </div>
-            </div>
-          `;
-          lucide.createIcons();
+          // Las preferencias del ESTABLECIMIENTO son su propio ámbito: no
+          // son las del rol Administrador (pintarlas con
+          // getDefaultPreferenciasParaRol('admin') mezclaba las dos cosas
+          // y hacía que lo editado acá nunca se volviera a ver).
+          vetConfigWorkingPreferencias = getPreferenciasEstablecimiento();
+          renderVetConfigPreferencias();
         } else {
           placeholderEl.innerHTML = `<div class="placeholder-content" style="padding:48px 0;">
             <div class="placeholder-icon"><i data-lucide="settings" style="width:28px;height:28px;"></i></div>
@@ -24878,6 +24923,53 @@
           lucide.createIcons();
         }
       }
+    }
+
+    // ── Preferencias generales del establecimiento (VetConfig) ───────
+    // Mismo esquema (PREFERENCES_SCHEMA) que las de rol y usuario, pero
+    // con su propia clave por establecimiento. Antes se escribía una clave
+    // `iris_vet_pref_<campo>` por campo que nadie leía nunca, así que los
+    // valores volvían a los del rol admin en cada visita a la pestaña.
+    let vetConfigWorkingPreferencias = {};
+
+    function claveVetConfigPreferencias() {
+      return `iris_vet_preferencias_${permisosEstablecimientoId}`;
+    }
+
+    function getPreferenciasEstablecimiento() {
+      const prefs = {};
+      PREFERENCES_SCHEMA.forEach(cat => {
+        cat.items.forEach(item => {
+          prefs[item.id] = item.type === 'color' ? '' : true;
+        });
+      });
+      return fusionarConEsquema(prefs, leerPermisosGuardados(claveVetConfigPreferencias()));
+    }
+
+    function renderVetConfigPreferencias() {
+      const placeholderEl = document.getElementById('vetconfig-view-placeholder');
+      if (!placeholderEl) return;
+      placeholderEl.innerHTML = `
+        <div class="card" style="margin-top:0;">
+          <div class="card-header" style="padding:16px 20px;border-bottom:1px solid var(--border);">
+            <span class="card-title" style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;">
+              <i data-lucide="sliders" style="width:18px;height:18px;color:var(--clinic-accent);"></i> Preferencias generales del establecimiento
+            </span>
+          </div>
+          <div style="padding:20px;">
+            ${renderPreferencesHTML(vetConfigWorkingPreferencias, 'vetConfig')}
+          </div>
+          <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;background:#FAFBFD;">
+            <button type="button" class="btn-primary" onclick="guardarVetConfigPreferencias()">Guardar preferencias</button>
+          </div>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    function guardarVetConfigPreferencias() {
+      localStorage.setItem(claveVetConfigPreferencias(), JSON.stringify(vetConfigWorkingPreferencias));
+      showToast('Preferencias del establecimiento guardadas');
     }
 
     function renderVetConfigLogoPreview() {
@@ -25390,6 +25482,7 @@
           id: newId, nombre, email, telefono, rol, especialidad, estado: 'activo'
         });
         USUARIO_PRIVILEGIOS[newId] = getDefaultPrivilegiosParaRol(rol);
+        USUARIO_PREFERENCIAS[newId] = getDefaultPreferenciasParaRol(rol);
       }
 
       renderUsuariosTable();
@@ -25428,7 +25521,11 @@
       document.getElementById('usuario-detalle-nombre').value = user.nombre;
       document.getElementById('usuario-detalle-email').value = user.email;
       document.getElementById('usuario-detalle-telefono').value = user.telefono;
-
+      // Usuario real (cargado desde list_establecimiento_members): nombre/
+      // email/teléfono son del propio perfil de esa persona -- RLS
+      // ("profiles_update_own") solo deja que cada quien edite el suyo, así
+      // que desde acá quedan de solo lectura; únicamente el rol es editable
+      // (persiste en memberships vía guardarUsuarioDetalle()).
       const isRealMember = !!user.membershipId;
       ['usuario-detalle-nombre', 'usuario-detalle-email', 'usuario-detalle-telefono'].forEach(fieldId => {
         document.getElementById(fieldId).disabled = isRealMember;
@@ -25464,6 +25561,9 @@
       });
     }
 
+    // Cambiar el Rol resetea privilegios y preferencias a los defaults de
+    // ese rol (solo en memoria de trabajo del modal); quedan editables
+    // después y no se persisten hasta "Guardar cambios".
     function handleUsuarioDetalleRolChange() {
       const rol = document.getElementById('usuario-detalle-rol-select').value;
       document.getElementById('usuario-detalle-especialidad-wrap').style.display = rol === 'medico' ? '' : 'none';
@@ -25496,6 +25596,8 @@
       const nuevaEspecialidad = nuevoRol === 'medico' ? document.getElementById('usuario-detalle-especialidad-select').value : null;
 
       if (user.membershipId) {
+        // Usuario real -- nombre/email/teléfono quedaron de solo lectura
+        // (ver openUsuarioDetalleModal), solo se persiste el rol.
         const saveBtn = document.querySelector('#usuario-detalle-modal .btn-primary');
         if (saveBtn) saveBtn.disabled = true;
         const { error } = await window.supabase.from('memberships').update({ rol: nuevoRol }).eq('id', user.membershipId);
@@ -25515,8 +25617,8 @@
       USUARIO_PRIVILEGIOS[user.id] = { ...usuarioDetalleWorkingPrivilegios };
       USUARIO_PREFERENCIAS[user.id] = { ...usuarioDetalleWorkingPreferencias };
 
-      localStorage.setItem(`iris_user_privileges_${user.id}`, JSON.stringify(usuarioDetalleWorkingPrivilegios));
-      localStorage.setItem(`iris_user_preferences_${user.id}`, JSON.stringify(usuarioDetalleWorkingPreferencias));
+      localStorage.setItem(claveUsuarioPermisos('user_privileges', user), JSON.stringify(usuarioDetalleWorkingPrivilegios));
+      localStorage.setItem(claveUsuarioPermisos('user_preferences', user), JSON.stringify(usuarioDetalleWorkingPreferencias));
 
       renderUsuariosTable();
       closeUsuarioDetalleModal();
@@ -25551,10 +25653,15 @@
       const container = document.getElementById('admin-role-permisos-body');
       if (!container) return;
 
-      if (!adminWorkingRolePrivilegios[PRIVILEGES_SCHEMA[0].items[0].id]) {
+      // Solo se re-derivan los defaults cuando el objeto de trabajo está
+      // VACÍO (primer render). Comprobar el valor del primer privilegio
+      // sería un error: `acceso_consultorio` es false de verdad para
+      // Ventas, así que ese guard reseteaba los cambios sin guardar cada
+      // vez que se cambiaba de sub-pestaña.
+      if (!Object.keys(adminWorkingRolePrivilegios).length) {
         adminWorkingRolePrivilegios = getDefaultPrivilegiosParaRol(adminActiveRole);
       }
-      if (adminWorkingRolePreferencias.notif_email_actividad === undefined) {
+      if (!Object.keys(adminWorkingRolePreferencias).length) {
         adminWorkingRolePreferencias = getDefaultPreferenciasParaRol(adminActiveRole);
       }
 
@@ -25567,9 +25674,8 @@
     }
 
     function guardarAdminRolePermisosConfig() {
-      localStorage.setItem(`iris_role_privileges_${adminActiveRole}`, JSON.stringify(adminWorkingRolePrivilegios));
-      localStorage.setItem(`iris_role_preferences_${adminActiveRole}`, JSON.stringify(adminWorkingRolePreferencias));
-      
+      localStorage.setItem(claveRolPermisos('role_privileges', adminActiveRole), JSON.stringify(adminWorkingRolePrivilegios));
+      localStorage.setItem(claveRolPermisos('role_preferences', adminActiveRole), JSON.stringify(adminWorkingRolePreferencias));
       const roleLabel = (ROLES[adminActiveRole] || {}).label || adminActiveRole;
       showToast(`Privilegios y preferencias del rol ${roleLabel} guardados`);
     }
@@ -25692,7 +25798,7 @@
       } else if (scopePrefix === 'usuarioDetalle') {
         usuarioDetalleWorkingPreferencias[key] = val;
       } else if (scopePrefix === 'vetConfig') {
-        localStorage.setItem(`iris_vet_pref_${key}`, val);
+        vetConfigWorkingPreferencias[key] = val;
       }
     }
 
@@ -31780,7 +31886,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
     // sigue viendo los datos correctos después de un reset).
     const DEMO_SEED = structuredClone({
       patientData, propietarios,
-      USUARIOS_SISTEMA, usuarioIdCounter, USUARIO_PRIVILEGIOS,
+      USUARIOS_SISTEMA, usuarioIdCounter, USUARIO_PRIVILEGIOS, USUARIO_PREFERENCIAS,
       EVENTOS_SEGUIMIENTO, DISPONIBILIDAD_MEDICOS,
       AGENDA_EVENTOS, SIIGO_RESOLUCIONES, siigoResolucionSeq,
       SIIGO_DISPOSITIVOS, siigoDispositivoSeq,
@@ -31813,6 +31919,13 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
 
       Object.keys(USUARIO_PRIVILEGIOS).forEach(k => delete USUARIO_PRIVILEGIOS[k]);
       if (seed) Object.assign(USUARIO_PRIVILEGIOS, seed.USUARIO_PRIVILEGIOS);
+
+      // USUARIO_PREFERENCIAS va junto a USUARIO_PRIVILEGIOS: los ids de
+      // USUARIOS_SISTEMA se regeneran por clínica, así que dejar las
+      // preferencias de la clínica anterior en memoria se las aplicaría a
+      // otra persona con el mismo id local.
+      Object.keys(USUARIO_PREFERENCIAS).forEach(k => delete USUARIO_PREFERENCIAS[k]);
+      if (seed) Object.assign(USUARIO_PREFERENCIAS, seed.USUARIO_PREFERENCIAS);
 
       Object.keys(DISPONIBILIDAD_MEDICOS).forEach(k => delete DISPONIBILIDAD_MEDICOS[k]);
       if (seed) Object.assign(DISPONIBILIDAD_MEDICOS, seed.DISPONIBILIDAD_MEDICOS);
@@ -32693,6 +32806,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
     // para persistir cambios (rol/estado) queda aparte, en `membershipId`.
     async function cargarUsuariosRealesDesdeSupabase(estabId) {
       if (!window.supabase || !estabId || !currentSession) return;
+      fijarAmbitoPermisos(estabId);
       const { data, error } = await window.supabase.rpc('list_establecimiento_members', { p_establecimiento_id: estabId });
       if (error) {
         console.error('cargarUsuariosRealesDesdeSupabase(): no se pudo cargar el roster —', error);
@@ -32713,7 +32827,9 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           esUsuarioActual: row.user_id === currentSession.user.id,
           membershipId: row.membership_id
         });
-        USUARIO_PRIVILEGIOS[id] = getDefaultPrivilegiosParaRol(row.rol);
+        // Hidrata privilegios Y preferencias desde la clave estable de la
+        // membresía (uuid), no desde el id local recién asignado.
+        hidratarPermisosDeUsuario(USUARIOS_SISTEMA[USUARIOS_SISTEMA.length - 1]);
       });
       usuarioIdCounter = Math.max(usuarioIdCounter, 100);
     }
@@ -33047,6 +33163,10 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         // entrar nunca.
         localStorage.setItem('iris_session_active', '1');
         const estabIdParaMockData = activeMembership ? activeMembership.establecimientoId : null;
+        // Ámbito de las claves de privilegios/preferencias en localStorage:
+        // se fija acá porque el bloque que las declara corre en el nivel
+        // superior del script, antes de que exista `currentSession`.
+        fijarAmbitoPermisos(estabIdParaMockData);
         try {
           if (estabIdParaMockData !== mockDataInitializedEstabId) {
             const seedDemo = !!(activeMembership && activeMembership.establecimiento && activeMembership.establecimiento.nit === DEMO_ESTABLISHMENT_NIT);
