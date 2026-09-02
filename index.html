@@ -11595,6 +11595,76 @@
       if (!agendaCalendar) return;
       agendaCalendar.removeAllEvents();
       getAgendaEventosFiltrados().forEach(ev => agendaCalendar.addEvent(agendaEventoToFcEvent(ev)));
+      aplicarHorarioAgendaACalendarios();
+    }
+
+    // -- Horario de atencion -> calendarios de Agenda ------------------
+    // El rango de la grilla (slotMinTime/slotMaxTime) y el sombreado de
+    // "fuera de horario" salen de Configuracion de la veterinaria > Agenda y
+    // disponibilidad, la MISMA fuente que ya usaba la grilla de
+    // Disponibilidad (getRangoHorarioAtencion()). Antes ambos calendarios
+    // tenian 07:00-20:00 clavado, asi que configurar el horario no cambiaba
+    // nada en Agenda.
+    const AGENDA_DIA_A_FC = { dom: 0, lun: 1, mar: 2, mie: 3, jue: 4, vie: 5, sab: 6 };
+
+    // Rango VISIBLE: el horario configurado, ENSANCHADO para cubrir cualquier
+    // evento ya agendado que caiga fuera. En las vistas timeGrid FullCalendar
+    // no dibuja lo que queda fuera de slotMinTime/slotMaxTime, asi que sin
+    // esto poner la apertura a las 08:00 haria desaparecer sin ningun aviso
+    // una cita de las 06:30 que sigue existiendo.
+    function getRangoCalendarioAgenda() {
+      let { desdeH, hastaH } = getRangoHorarioAtencion();
+      (AGENDA_EVENTOS || []).forEach(ev => {
+        if (!ev || ev.sinHora) return;
+        const hi = String(ev.startISO || '').split('T')[1] || '';
+        const hf = String(ev.endISO || '').split('T')[1] || '';
+        const h1 = parseInt(hi, 10);
+        if (isFinite(h1)) desdeH = Math.min(desdeH, h1);
+        const h2 = parseInt(hf, 10), m2 = parseInt(hf.split(':')[1], 10) || 0;
+        if (isFinite(h2)) hastaH = Math.max(hastaH, m2 > 0 ? h2 + 1 : h2);
+      });
+      desdeH = Math.max(0, Math.min(23, desdeH));
+      hastaH = Math.min(24, Math.max(hastaH, desdeH + 1));
+      return { desdeH, hastaH };
+    }
+
+    function agendaSlotTimes() {
+      const { desdeH, hastaH } = getRangoCalendarioAgenda();
+      return {
+        slotMinTime: `${String(desdeH).padStart(2, '0')}:00:00`,
+        slotMaxTime: `${String(hastaH).padStart(2, '0')}:00:00`
+      };
+    }
+
+    // Sombreado de horas habiles por dia. Sin bloques configurados devuelve
+    // false (FullCalendar no sombrea nada) en vez de su default lun-vie
+    // 09:00-17:00, que seria un horario inventado.
+    function agendaBusinessHours() {
+      const bloques = (ESTABLECIMIENTO_CONFIG && ESTABLECIMIENTO_CONFIG.horarioAtencion) || [];
+      const bh = bloques
+        .filter(b => b && Array.isArray(b.dias) && b.dias.length && b.apertura && b.cierre)
+        .map(b => ({
+          daysOfWeek: b.dias.map(d => AGENDA_DIA_A_FC[d]).filter(n => n !== undefined),
+          startTime: b.apertura,
+          endTime: b.cierre
+        }))
+        .filter(b => b.daysOfWeek.length);
+      return bh.length ? bh : false;
+    }
+
+    // Reaplica el horario a los dos calendarios ya montados. Se llama al
+    // guardar la configuracion y cada vez que se repintan los eventos (un
+    // evento nuevo fuera de horario ensancha el rango, ver arriba).
+    function aplicarHorarioAgendaACalendarios() {
+      const { slotMinTime, slotMaxTime } = agendaSlotTimes();
+      const bh = agendaBusinessHours();
+      [agendaCalendar, agendaPersonalCalendar].forEach(cal => {
+        if (!cal) return;
+        cal.setOption('slotMinTime', slotMinTime);
+        cal.setOption('slotMaxTime', slotMaxTime);
+        cal.setOption('businessHours', bh);
+        cal.updateSize();
+      });
     }
 
     function initAgendaCalendar() {
@@ -11606,8 +11676,8 @@
         firstDay: 1,
         headerToolbar: { left: 'prev,next today', center: 'title', right: 'timeGridDay,timeGridWeek,dayGridMonth' },
         height: 'auto',
-        slotMinTime: '07:00:00',
-        slotMaxTime: '20:00:00',
+        ...agendaSlotTimes(),
+        businessHours: agendaBusinessHours(),
         nowIndicator: true,
         buttonText: { today: 'Hoy', month: 'Mes', week: 'Semana', day: 'Día' },
         dateClick: agendaDateClick,
@@ -11678,8 +11748,8 @@
         firstDay: 1,
         headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
         height: 'auto',
-        slotMinTime: '07:00:00',
-        slotMaxTime: '20:00:00',
+        ...agendaSlotTimes(),
+        businessHours: agendaBusinessHours(),
         nowIndicator: true,
         buttonText: { today: 'Hoy' },
         dateClick: (info) => abrirAgendaEventoModalInterno('create', null, info.date),
@@ -11693,6 +11763,7 @@
       if (!agendaPersonalCalendar) return;
       agendaPersonalCalendar.removeAllEvents();
       getAgendaEventosPersonales().forEach(ev => agendaPersonalCalendar.addEvent(agendaEventoToFcEvent(ev)));
+      aplicarHorarioAgendaACalendarios();
     }
 
     const AGENDA_DIA_SEMANA_LABELS = ['DOMINGO', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO'];
@@ -11760,16 +11831,20 @@
       return slots;
     }
 
+    // Completa los slots FALTANTES de cada encargado, no solo los de un
+    // encargado nuevo: al ampliar el horario de atencion aparecen slots que
+    // el mapa ya existente no tiene, y esas celdas se pintaban con
+    // DISPONIBILIDAD_COLORS[undefined] (fondo transparente, sin estado) --
+    // el horario nuevo salia en blanco en la grilla.
     function seedDisponibilidadMedicos() {
       const slots = getDisponibilidadSlots();
       getMedicosActivos().forEach(u => {
-        if (DISPONIBILIDAD_MEDICOS[u.id]) return;
-        const porSlot = {};
+        const porSlot = DISPONIBILIDAD_MEDICOS[u.id] || (DISPONIBILIDAD_MEDICOS[u.id] = {});
         slots.forEach(s => {
+          if (porSlot[s]) return;
           const hora = Number(s.split(':')[0]);
           porSlot[s] = (hora === 12) ? 'no_disponible' : (hora === 19 ? 'bloqueado' : 'disponible');
         });
-        DISPONIBILIDAD_MEDICOS[u.id] = porSlot;
       });
     }
 
@@ -26287,6 +26362,9 @@
       if (ok) {
         renderVetConfigAgenda();
         if (document.getElementById('disponibilidad-grid-table')) renderDisponibilidadGrid();
+        // Los calendarios de Agenda ya montados no se reconstruyen solos:
+        // hay que reaplicarles el rango y el sombreado del horario nuevo.
+        aplicarHorarioAgendaACalendarios();
       }
     }
 

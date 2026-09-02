@@ -1011,9 +1011,27 @@ módulo y hay que mantenerlo:
 
 - **Agenda y disponibilidad** → `getDuracionCitaMin()` fija la "Hora de
   fin" por defecto del modal de evento; `getRangoHorarioAtencion()` define
-  el rango de la grilla de Disponibilidad; `prevenirSolapamientos` hace
+  el rango de la grilla de Disponibilidad **y el de los dos calendarios de
+  Agenda** (general y personal); `prevenirSolapamientos` hace
   que `guardarEventoAgenda()` BLOQUEE (no solo advierta) vía
   `haySolapamientoAgenda()`.
+  - Los calendarios lo toman vía `agendaSlotTimes()` (rango de la grilla)
+    y `agendaBusinessHours()` (sombreado de horas hábiles por día, con
+    `AGENDA_DIA_A_FC` mapeando `lun|mar|...` a los días de FullCalendar).
+    Tenían `07:00–20:00` clavado, así que configurar el horario no cambiaba
+    nada en Agenda. **Un calendario ya montado no se reconstruye solo**: hay
+    que llamar a `aplicarHorarioAgendaACalendarios()` (lo hacen
+    `guardarVetConfigAgenda()` y los dos `refresh*CalendarEvents()`).
+  - **`getRangoCalendarioAgenda()` ENSANCHA ese rango para cubrir los
+    eventos ya agendados fuera de él, y eso no es un detalle**: en las
+    vistas timeGrid FullCalendar no dibuja nada fuera de
+    `slotMinTime`/`slotMaxTime`, así que poner la apertura a las 08:00 haría
+    desaparecer sin ningún aviso una cita de las 06:30 que sigue existiendo.
+  - Por lo mismo, `seedDisponibilidadMedicos()` completa los slots
+    FALTANTES de cada encargado y no solo los de un encargado nuevo: al
+    ampliar el horario, los slots que el mapa viejo no tenía se pintaban con
+    `DISPONIBILIDAD_COLORS[undefined]` (celda transparente) y el horario
+    nuevo salía en blanco.
 - **Perfil fiscal** → `sincronizarDatosFiscalesFacturacion()` llena
   "Datos fiscales de la clínica" de Ventas > Configuración de facturación
   (razón social, NIT+DV, dirección), con `CLINIC_INFO` de respaldo
