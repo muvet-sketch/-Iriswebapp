@@ -23,19 +23,29 @@ function esTutor(rol) {
   return rol === 'tutor';
 }
 
-function filasAgenda(p) {
+// Ojo con dos etiquetas que ya causaron confusión:
+//   · "Responsable" NO es el tutor. Es quién agendó la cita (o el nombre de
+//     la clínica cuando la agendó un administrador, ver `agendadoPor` en
+//     agenda-notificar.js). La versión anterior ponía ahí al tutor y se leía
+//     como si el dueño de la mascota hubiera hecho la reserva.
+//   · El tutor solo se lista en el correo del EQUIPO. En el del tutor sería
+//     decirle su propio nombre.
+// "Termina" se quitó a pedido del cliente: la hora de fin no le aporta nada a
+// quien recibe la cita y alargaba la tabla. El .ics sí la conserva, que es
+// donde de verdad importa (el bloque en el calendario).
+function filasAgenda(p, rol) {
   return [
     ['Motivo', p.titulo],
     ['Tipo', p.tipoLabel],
     ['Paciente', p.mascota],
-    ['Responsable', p.propietario],
+    esTutor(rol) ? null : ['Tutor', p.propietario],
     [p.sinHora ? 'Día' : 'Fecha y hora', fechaHumana(p.inicioLocal, { sinHora: p.sinHora })],
-    ['Termina', p.sinHora ? null : fechaHumana(p.finLocal, {}).split(', ').slice(1).join(', ')],
     ['Profesional', p.encargadoNombre],
     ['Lugar', p.lugar],
     ['Estado', p.estadoLabel],
+    ['Agendado por', p.agendadoPor],
     ['Notas', p.descripcion]
-  ];
+  ].filter(Boolean);
 }
 
 function introAgenda(tipo, rol, p) {
@@ -69,10 +79,15 @@ function plantillaAgenda(fila) {
 
   const base = {
     clinica: p.clinica,
+    logoUrl: p.logoUrl,
+    ciudadClinica: p.ciudadClinica,
+    direccionClinica: p.direccionClinica,
+    telefonoClinica: p.telefonoClinica,
+    correoClinica: p.correoClinica,
     acento: p.acento,
     titulo,
     intro: introAgenda(tipo, rol, p),
-    filas: filasAgenda(p),
+    filas: filasAgenda(p, rol),
     aviso: tipo === 'agenda_evento_cancelado'
       ? 'Si tenías esta cita en tu calendario, el archivo adjunto la marca como cancelada.'
       : null,
@@ -111,6 +126,11 @@ function plantillaGenerica(fila) {
   const p = fila.payload || {};
   const base = {
     clinica: p.clinica,
+    logoUrl: p.logoUrl,
+    ciudadClinica: p.ciudadClinica,
+    direccionClinica: p.direccionClinica,
+    telefonoClinica: p.telefonoClinica,
+    correoClinica: p.correoClinica,
     acento: p.acento,
     titulo: p.titulo || fila.asunto,
     intro: p.intro,

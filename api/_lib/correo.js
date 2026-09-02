@@ -37,10 +37,33 @@ function emailValido(valor) {
 // ── Plantilla base ───────────────────────────────────────────────
 // Un solo layout para todo. `acento` llega desde el tema de la clínica
 // cuando quien dispara el correo lo conoce; el verde de IRIS es el default.
+//
+// Quien lee tiene que saber DE QUÉ CLÍNICA le escriben antes que ninguna otra
+// cosa: un tutor puede atenderse en más de una, y "IRIS" no le dice nada
+// porque es el software, no el remitente real. Por eso el nombre de la
+// clínica es el título del encabezado (antes iba en chiquito bajo un "IRIS"
+// grande) y el logo va a su lado.
 function layoutIris(opts) {
   const o = opts || {};
   const acento = /^#[0-9a-f]{6}$/i.test(o.acento || '') ? o.acento : '#0F766E';
   const clinica = escapeHtml(o.clinica || 'IRIS');
+
+  // Muchos clientes de correo bloquean las imágenes remotas por defecto, así
+  // que el logo NO puede ser el único portador del nombre: va como <img> con
+  // alt, al lado del nombre en texto, que siempre se ve.
+  const logo = o.logoUrl
+    ? `<td style="width:52px;padding:0 14px 0 0;vertical-align:middle;">
+         <img src="${escapeHtml(o.logoUrl)}" alt="${clinica}" width="52"
+              style="width:52px;height:52px;border-radius:8px;object-fit:cover;display:block;background:rgba(255,255,255,.15);">
+       </td>`
+    : '';
+
+  const subtituloCabecera = [o.ciudadClinica, o.telefonoClinica].filter(Boolean).join(' · ');
+  // Pie con los datos de contacto reales: a quién llamar si hay que
+  // reprogramar. Un correo de cita sin teléfono obliga a buscar la clínica
+  // por fuera.
+  const datosContacto = [o.direccionClinica, o.telefonoClinica, o.correoClinica]
+    .filter(Boolean).join(' · ');
   const filas = (o.filas || [])
     .filter(([, valor]) => valor !== undefined && valor !== null && String(valor).trim() !== '')
     .map(([etiqueta, valor]) => `
@@ -68,9 +91,18 @@ function layoutIris(opts) {
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:24px 12px;background:#F3F4F6;">
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #E5E7EB;">
-    <div style="background:${acento};padding:22px 28px;">
-      <span style="color:#ffffff;font-size:19px;font-weight:700;letter-spacing:.5px;">IRIS</span>
-      <p style="color:rgba(255,255,255,.82);font-size:13px;margin:4px 0 0;">${clinica}</p>
+    <div style="background:${acento};padding:20px 28px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <tr>
+          ${logo}
+          <td style="vertical-align:middle;">
+            <div style="color:#ffffff;font-size:19px;font-weight:700;line-height:1.25;">${clinica}</div>
+            ${subtituloCabecera
+              ? `<div style="color:rgba(255,255,255,.85);font-size:12px;margin-top:3px;">${escapeHtml(subtituloCabecera)}</div>`
+              : ''}
+          </td>
+        </tr>
+      </table>
     </div>
     <div style="padding:26px 28px;">
       <h1 style="font-size:17px;color:#111827;margin:0 0 10px;line-height:1.35;">${escapeHtml(o.titulo || '')}</h1>
@@ -81,6 +113,10 @@ function layoutIris(opts) {
       ${aviso}
     </div>
     <div style="padding:16px 28px 22px;border-top:1px solid #E5E7EB;background:#FAFAFA;">
+      ${datosContacto
+        ? `<p style="font-size:12px;color:#4B5563;margin:0 0 8px;line-height:1.6;font-weight:600;">${clinica}</p>
+           <p style="font-size:12px;color:#6B7280;margin:0 0 10px;line-height:1.6;">${escapeHtml(datosContacto)}</p>`
+        : ''}
       <p style="font-size:11px;color:#9CA3AF;margin:0;line-height:1.6;">
         ${escapeHtml(o.pie || `Este mensaje fue enviado automáticamente por ${o.clinica || 'tu clínica veterinaria'} a través de IRIS.`)}
       </p>

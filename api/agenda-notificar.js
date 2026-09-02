@@ -17,7 +17,7 @@
 // navegador tiene que llamar a este endpoint ANTES de borrar la fila cuando la
 // acción es 'eliminado'.
 
-const { autorizar, sbSelect } = require('./_lib/supabase');
+const { autorizar, sbSelect, SUPABASE_URL } = require('./_lib/supabase');
 const { encolar, cancelarPendientesDe, procesarPendientes } = require('./_lib/bandeja');
 const { instanteDesdeLocal, fechaHumana, zonaValida } = require('./_lib/fechas');
 const { emailValido } = require('./_lib/correo');
@@ -43,6 +43,45 @@ const TIPO_POR_ACCION = {
   actualizado: 'agenda_evento_actualizado',
   eliminado: 'agenda_evento_cancelado'
 };
+
+// Quién agendó la cita. Sale de `agenda_eventos.created_by`, no de quien esté
+// llamando ahora: editar una cita no cambia quién la reservó.
+//
+// **Si quien agendó es un administrador se muestra el nombre de la CLÍNICA**,
+// no su nombre personal — pedido explícito del cliente y además lo correcto de
+// cara al tutor: cuando reserva la clínica, el interlocutor es la clínica, no
+// la persona detrás del mostrador. Para médico/auxiliar/ventas sí va el nombre
+// propio, que es con quien el tutor va a hablar.
+async function resolverAgendadoPor(evento, establecimientoId, nombreClinica) {
+  if (!evento.created_by) return nombreClinica;
+  try {
+    const membresias = await sbSelect(
+      'memberships',
+      `select=rol&user_id=eq.${encodeURIComponent(evento.created_by)}&establecimiento_id=eq.${encodeURIComponent(establecimientoId)}&limit=1`
+    );
+    const rol = membresias && membresias[0] ? membresias[0].rol : null;
+    if (rol === 'admin' || !rol) return nombreClinica;
+
+    const perfiles = await sbSelect(
+      'profiles',
+      `select=nombre&id=eq.${encodeURIComponent(evento.created_by)}&limit=1`
+    );
+    const nombre = perfiles && perfiles[0] ? (perfiles[0].nombre || '').trim() : '';
+    return nombre || nombreClinica;
+  } catch (_) {
+    // Un fallo acá no puede tumbar la notificación: el nombre de la clínica
+    // es un valor por defecto correcto, no un relleno.
+    return nombreClinica;
+  }
+}
+
+// El bucket `logos-clinica` es público (getPublicUrl en index.html), así que la
+// URL sirve tal cual dentro de un correo. Se arma a mano en vez de usar el
+// cliente de Supabase para no traer el SDK a la función.
+function urlLogoClinica(logoPath) {
+  if (!logoPath) return null;
+  return `${SUPABASE_URL}/storage/v1/object/public/logos-clinica/${logoPath.split('/').map(encodeURIComponent).join('/')}`;
+}
 
 function asuntoDe(tipo, p, rol) {
   const cuando = fechaHumana(p.inicioLocal, { sinHora: p.sinHora });
@@ -116,11 +155,23 @@ module.exports = async function handler(req, res) {
       secuencia = (previos || []).length;
     } catch (_) { /* el .ics sale con SEQUENCE:0, no vale la pena abortar */ }
 
+    const nombreClinica = estab.nombre || 'IRIS';
+    const agendadoPor = await resolverAgendadoPor(ev, establecimientoId, nombreClinica);
+    const direccionClinica = [estab.direccion, estab.ciudad].filter(Boolean).join(', ');
+
     const payloadBase = {
       eventoId,
       secuencia,
-      clinica: estab.nombre || 'IRIS',
+      clinica: nombreClinica,
+      // Identidad de la clínica en el correo: quien lo lee tiene que saber
+      // quién le escribe (puede atenderse en más de una veterinaria) y a
+      // dónde llamar si necesita reprogramar.
+      logoUrl: urlLogoClinica(estab.logo_path),
+      ciudadClinica: estab.ciudad || null,
+      direccionClinica: direccionClinica || null,
+      telefonoClinica: estab.telefono || null,
       correoClinica: emailValido(estab.correo_contacto) ? estab.correo_contacto.trim() : null,
+      agendadoPor,
       acento: (req.body && req.body.acento) || null,
       zona,
       titulo: ev.titulo,
@@ -129,7 +180,11 @@ module.exports = async function handler(req, res) {
       inicioLocal: ev.start_iso,
       finLocal: ev.end_iso,
       sinHora: !!ev.sin_hora,
-      lugar: ev.lugar || null,
+      // Sin lugar explícito se asume la sede: es lo que pasa en la inmensa
+      // mayoría de las citas, y "Lugar: —" obligaría al tutor a preguntar. Un
+      // servicio a domicilio siempre trae el campo lleno (los atajos del modal
+      // de Agenda ponen ahí la dirección del tutor).
+      lugar: ev.lugar || direccionClinica || null,
       descripcion: ev.descripcion || null,
       mascota: ev.mascota_nombre || null,
       propietario: nombreTutor,

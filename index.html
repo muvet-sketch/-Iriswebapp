@@ -11217,6 +11217,45 @@
     // muestre un evento que desaparece al recargar (que era justo el bug: los
     // eventos vivían solo en memoria). El id ya no sale de `agendaEventSeq`
     // sino del uuid que devuelve Supabase.
+    // Atajos del campo "Lugar": una cita puede ser en la sede o a domicilio, y
+    // escribir la dirección a mano cada vez es donde aparecen los errores de
+    // digitación que después el tutor lee en su correo. Rellenan el input, no
+    // lo bloquean: sigue siendo texto libre ("Consultorio 2", "Quirófano").
+    function usarDireccionEnLugarAgenda(origen) {
+      const input = document.getElementById('ag-lugar');
+      if (!input) return;
+
+      if (origen === 'clinica') {
+        const dir = [ESTABLECIMIENTO_CONFIG.direccion, ESTABLECIMIENTO_CONFIG.ciudad].filter(Boolean).join(', ');
+        if (!dir) {
+          showToast('La clínica no tiene dirección registrada — agrégala en Configuración de la veterinaria > Localización y servicios');
+          return;
+        }
+        input.value = dir;
+        showToast('Lugar: sede de la clínica');
+        return;
+      }
+
+      // Mismo criterio de resolución del tutor que datosNotificacionEventoAgenda():
+      // primero por la mascota (FK real) y, si no hay, por el nombre elegido.
+      const petKey = document.getElementById('ag-mascota').value;
+      const campoProp = document.querySelector('#ag-propietario-ss-slot [data-ss-field]');
+      const nombreProp = campoProp ? campoProp.value : '';
+      let prop = petKey ? getPropietarioDeMascota(petKey) : null;
+      if (!prop && nombreProp) prop = propietarios.find(x => x.nombre === nombreProp) || null;
+      if (!prop) {
+        showToast('Selecciona primero al propietario para usar su dirección');
+        return;
+      }
+      const dir = [prop.direccion, prop.ciudad].filter(Boolean).join(', ');
+      if (!dir) {
+        showToast(`${prop.nombre} no tiene dirección registrada en su ficha`);
+        return;
+      }
+      input.value = dir;
+      showToast('Lugar: domicilio del tutor');
+    }
+
     async function guardarEventoAgenda() {
       const soloEspacio = document.getElementById('ag-solo-espacio').checked;
       const sinHora = document.getElementById('ag-sin-hora').checked;
@@ -39591,7 +39630,15 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
 
         <div class="input-group">
           <label class="input-label" for="ag-lugar">Lugar</label>
-          <input type="text" class="input-control" style="padding-left:12px;" id="ag-lugar" placeholder="Ej: Consultorio 1, Quirófano...">
+          <input type="text" class="input-control" style="padding-left:12px;" id="ag-lugar" placeholder="Ej: Consultorio 1, Quirófano, o una dirección a domicilio">
+          <div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap;">
+            <button type="button" class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="usarDireccionEnLugarAgenda('clinica')">
+              <i data-lucide="building-2" style="width:13px;height:13px;"></i> Sede de la clínica
+            </button>
+            <button type="button" class="btn-outline" style="padding:5px 10px;font-size:12px;" onclick="usarDireccionEnLugarAgenda('tutor')">
+              <i data-lucide="home" style="width:13px;height:13px;"></i> Domicilio del tutor
+            </button>
+          </div>
         </div>
 
         <div class="input-group">

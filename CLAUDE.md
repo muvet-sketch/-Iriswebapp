@@ -1284,6 +1284,36 @@ no un `if` en el navegador.
   moverla. El `UID` es el id del evento, por el mismo motivo. Las horas van
   en UTC (sufijo `Z`) para no adjuntar un `VTIMEZONE`, que es donde fallan
   los clientes estrictos.
+- **Identidad de la clínica en el correo.** El encabezado lleva el LOGO y el
+  nombre de la clínica como título (antes era "IRIS" grande con la clínica en
+  chiquito debajo): quien recibe puede atenderse en más de una veterinaria, y
+  "IRIS" es el software, no el remitente. El logo sale de
+  `establecimientos.logo_path` armando la URL pública del bucket
+  `logos-clinica` a mano — no se trae el SDK de Supabase a la función. **El
+  logo nunca es el único portador del nombre**: muchos clientes de correo
+  bloquean imágenes remotas, así que va con `alt` al lado del nombre en texto.
+  El pie repite nombre + dirección + teléfono + correo: sin eso, un correo de
+  cita obliga a buscar a la clínica por fuera para reprogramar.
+- **"Agendado por" NO es el tutor, y "Responsable" ya no existe como
+  etiqueta.** Esa fila mostraba al propietario y se leía como si el dueño de
+  la mascota hubiera hecho la reserva. Ahora sale de
+  `agenda_eventos.created_by` (no de quien esté llamando: editar una cita no
+  cambia quién la reservó) y **si esa persona es admin se muestra el nombre de
+  la CLÍNICA**, no su nombre personal — cuando reserva la clínica, el
+  interlocutor es la clínica. Para médico/auxiliar/ventas va el nombre propio,
+  que es con quien el tutor va a hablar. `resolverAgendadoPor()` nunca lanza:
+  el nombre de la clínica es un default correcto, no un relleno.
+- **El tutor solo se lista en el correo del EQUIPO** (`filasAgenda(p, rol)`).
+  En el del tutor sería decirle su propio nombre.
+- **"Termina" se quitó** a pedido del cliente: la hora de fin no le aporta
+  nada a quien recibe la cita y alargaba la tabla. El `.ics` sí la conserva,
+  que es donde de verdad importa (el bloque en el calendario).
+- **Lugar**: el campo sigue siendo texto libre, pero el modal de Agenda tiene
+  dos atajos (`usarDireccionEnLugarAgenda()`) que lo rellenan con la dirección
+  de la sede o con el domicilio del tutor — algunos servicios son a domicilio
+  y escribir la dirección a mano cada vez es donde aparecían los errores de
+  digitación que después el tutor lee en su correo. Si el campo queda vacío,
+  el correo asume la dirección de la sede en vez de imprimir "Lugar: —".
 - **`TIPO_LABELS`/`ESTADO_LABELS` en `agenda-notificar.js` son un espejo de
   `AGENDA_TIPO_LABELS` y los `<option>` de `#ag-estado`.** Están duplicados
   porque el cron tiene que rotular un evento agendado hace una semana sin
