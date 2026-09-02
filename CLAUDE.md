@@ -931,6 +931,187 @@ en el tiempo. Entrada: acción **"Seguimiento de anestesia (N)"** en el menú
   el monitoreo de anestesia no se comparte entre clínicas. La cirugía sí, y
   eso alcanza para que la otra clínica sepa que el procedimiento existió.
 
+## Configuración de la veterinaria (Admin) — 8 subtabs
+`#admin-outer-config`. Los 8 subtabs tienen contenido real: Información
+general · Localización y servicios · Agenda y disponibilidad · Perfil
+fiscal · Ventas e inventario · Preferencias · Sala de espera · Sedes
+vinculadas.
+
+- **Un contenedor y un renderer por subtab.** `switchVetConfigTab(tabKey)`
+  resuelve `VETCONFIG_RENDERERS[tabKey]` y activa
+  `#vetconfig-view-<tabKey>`. Ese mapa vive **dentro** de la función a
+  propósito: como `const` de nivel superior quedaría en temporal dead zone
+  si alguna vez se llamara antes de esa línea (la trampa de "Qué es esto",
+  ya sufrida dos veces); las `function` a las que apunta sí están hoisted.
+  Para agregar un subtab: un `<div class="vetconfig-subview"
+  id="vetconfig-view-<key>">` vacío + una entrada en el mapa. El panel
+  placeholder compartido (`#vetconfig-view-placeholder`) hoy solo lo usa
+  **Preferencias**, que lo repinta entero.
+- **Dónde persiste cada cosa, y por qué no es lo mismo.**
+  **Preferencias** es lo único que vive en `localStorage`
+  (`claveVetConfigPreferencias()`): son ajustes del dispositivo. Todo el
+  resto son columnas reales de `establecimientos` — configuración de la
+  CLÍNICA, que tiene que verse igual desde cualquier equipo. No metas un
+  ajuste nuevo de clínica en `localStorage` "porque es más rápido".
+- **Un solo camino de escritura: `persistirEstablecimientoConfig(patch, okMsg)`.**
+  Update bloqueante + `.select('id')` para detectar el caso "0 filas = no
+  eres admin" — la policy `establecimientos_update_admin` filtra en
+  silencio, sin devolver error (mismo caso que `subirLogoClinicaReal`).
+  Solo si el update afectó una fila se toca `currentSession` y se repinta.
+- **Espejo en memoria: `ESTABLECIMIENTO_CONFIG`**, rearmado por
+  `cargarEstablecimientoConfigDesdeSesion()` desde
+  `currentSession.activeMembership.establecimiento`. La query de sesión ya
+  trae `establecimientos(*)`, así que **una columna nueva llega sola** sin
+  tocar ninguna lectura. Para agregar un ajuste: columna en una migración
+  nueva + entrada en `establecimientoConfigDefaults()` + entrada en el
+  mapeo de `cargarEstablecimientoConfigDesdeSesion()`. Los booleanos van
+  con el helper `bool(v, fallback)` de esa función: una sesión abierta
+  ANTES de correr la migración los trae `undefined`, y `!!undefined` sería
+  `false` — con `ventas_habilitar` (default `true`) eso escondería el
+  módulo de Ventas sin que nadie lo haya apagado.
+- **`establecimientos` está en `RESPALDO_TABLAS`** y es la única entrada
+  que `respaldoLeerTablaCompleta()` filtra por `id` y no por
+  `establecimiento_id` (su propia PK ES el establecimiento). Desde que la
+  fila carga toda esta configuración, un respaldo con los datos clínicos
+  pero sin ella no permitiría reconstruir la clínica.
+- Migraciones: `20260901_establecimiento_config.sql` (Localización +
+  Agenda) y `20260901b_establecimiento_config_fiscal_ventas.sql` (Perfil
+  fiscal + Ventas e inventario + Sala de espera + Sedes). Son dos archivos
+  porque el primero **ya estaba aplicado en vivo** cuando se agregó el
+  segundo grupo — no le agregues columnas a una migración ya corrida;
+  verificá con `information_schema.columns` antes de decidir.
+
+### Lo que alimenta cada subtab fuera de su propia pantalla
+Estos ajustes no son decorativos; el efecto de cada uno vive en otro
+módulo y hay que mantenerlo:
+
+- **Agenda y disponibilidad** → `getDuracionCitaMin()` fija la "Hora de
+  fin" por defecto del modal de evento; `getRangoHorarioAtencion()` define
+  el rango de la grilla de Disponibilidad; `prevenirSolapamientos` hace
+  que `guardarEventoAgenda()` BLOQUEE (no solo advierta) vía
+  `haySolapamientoAgenda()`.
+- **Perfil fiscal** → `sincronizarDatosFiscalesFacturacion()` llena
+  "Datos fiscales de la clínica" de Ventas > Configuración de facturación
+  (razón social, NIT+DV, dirección), con `CLINIC_INFO` de respaldo
+  mientras el perfil esté vacío. Se llama desde `renderVetConfigGeneral()`,
+  desde `guardarVetConfigFiscal()` y desde `abrirVentasView('config-facturacion')`.
+  `nombreFiscalEstablecimiento()`/`identificacionFiscalEstablecimiento()`
+  son los dos únicos lugares que arman esos textos — el PDF de tirilla los
+  reusa. El perfil fiscal es **distinto** del nombre comercial de
+  Información general a propósito: una clínica puede facturar a nombre de
+  otra razón social o de una persona natural (por eso Apellidos solo
+  existe en modo "Persona natural", y guardar como jurídica los descarta).
+- **Ventas e inventario** → ver la sección siguiente.
+- **Sala de espera** → tablero proyectable. Los turnos salen de
+  `AGENDA_EVENTOS` (citas de HOY en estado programada/confirmada/en_curso),
+  **no de un array paralelo**: quien agenda ya registró ahí a quién se
+  atiende, y un segundo listado se desincronizaría con el primer cambio de
+  cita. `salaEsperaBoardHTML(cfg)`/`salaEsperaBoardCSS(scope)` los
+  comparten la previsualización del subtab y la ventana proyectada — una
+  sola fuente, o divergen. La ventana (`abrirPantallaSalaEspera()`) **no
+  lleva lógica propia**: la repinta esta pestaña con un `setInterval`
+  (`pintarPantallaSalaEspera()`), así no hay que serializar datos hacia
+  allá y se apaga sola si alguien cierra la ventana. Los `mostrar_*` son
+  ajustes de **privacidad**, no estéticos: el nombre del tutor se lee
+  desde toda la sala. `salaEsperaAnunciados` evita que el aviso sonoro
+  suene en cada refresco mientras el paciente siga "En curso".
+- **Sedes vinculadas** → es **DIRECTORIO, no permiso**. Vincular una sede
+  no abre ni una fila: el acceso a historias clínicas entre
+  establecimientos sigue pasando exclusivamente por la Red IRIS
+  (`red_solicitudes` + policies `*_select_red`), y la pantalla lo dice
+  explícitamente. Por eso no hace falta ninguna policy nueva. Los
+  candidatos salen de `currentSession.memberships` filtrados a `rol ===
+  'admin'`: solo se declara sede a una clínica que la propia persona
+  administra.
+
+## Interruptores de "Ventas e inventario" — dónde actúa cada uno
+Cada uno de estos toggles tiene efecto real; el bloque
+"EFECTOS REALES DE 'VENTAS E INVENTARIO'" de `index.html` los agrupa.
+Si tocás Ventas/Inventario, respetalos:
+
+- **`invPermitirSobreventa`** → `bloqueadoPorSobreventa(tipo, items)` al
+  principio de `guardarDocVenta()`, antes de cualquier escritura. Solo
+  aplica a **facturas** (una cotización no compromete existencias; el
+  documento soporte es una compra a proveedor, suma). `itemsSinExistencias()`
+  **agrupa por `productoId` antes de comparar**: un mismo producto puede
+  venir en dos filas y evaluarlas por separado dejaría pasar el doble del
+  stock. `avisoExistenciasItemHTML()` es solo señalización inline.
+  **`productoEsCuantificable(p)` no mira solo `p.cuantificable`**: ese
+  campo lo traen únicamente los productos creados desde "+ Registrar" y
+  los importados por Excel; el catálogo semilla y los exports viejos no lo
+  tienen pero sí traen `stock`, que es el desempate. Sin eso, media
+  bodega quedaría fuera del control de existencias.
+  **Ojo:** una venta hoy NO descuenta stock (eso lo hacen Inventario >
+  Salidas y Compras). El chequeo es contra las existencias actuales.
+- **`invConfirmacionPicking`** → `aplicarPickingAItems(items)` en
+  `guardarDocVenta()` marca `it.entrega = 'pendiente'` en cada ítem
+  cuantificable. **El estado vive DENTRO de cada ítem**, no en una columna
+  nueva: `ventas_facturas.items` ya es jsonb y se guarda completo en cada
+  update, así que no hace falta migración ni un segundo lugar donde el
+  estado pueda desincronizarse. Un ítem que ya tiene estado se respeta
+  (editar la factura no revive como pendiente algo entregado) y **apagar
+  el interruptor no borra lo pendiente** de las facturas que ya lo tenían
+  — quedarían entregas abiertas que nadie volvería a ver.
+  `facturaEntregaEstado()` agrega el estado de la factura,
+  `facturaEntregaBadgeHTML()` lo pinta y `abrirEntregaModal()` abre
+  `#entrega-modal`. `marcarEntregaItem()` **no es optimista**: si el
+  update falla se revierte, porque una entrega que quedó solo en pantalla
+  haría que bodega la dé por despachada. Gate de rol:
+  `puedeConfirmarEntrega()` (admin y ventas — es acción de caja/bodega, no
+  clínica). `accionesExtraFactura(f)` junta esta acción con "Cerrar
+  cuenta"; cualquier acción condicional nueva de una factura va ahí.
+- **`ventasUsarTurnos`** → tabla `turnos` (migración
+  `20260902_turnos_caja.sql`) + `movimientos.turno_id`. `TURNO_ACTIVO` es
+  el turno abierto de ESTA persona en el establecimiento activo, repuesto
+  por `cargarTurnoActivo()` al final de `cargarDatosClinicaDesdeSupabase()`.
+  El turno es **por persona, no por establecimiento** (en una clínica con
+  dos cajas cada quien responde por lo suyo): el índice único parcial
+  `turnos_uno_abierto_por_usuario_idx` es sobre
+  `(establecimiento_id, user_id) where cerrado_at is null`, y es una
+  garantía de la BASE — sin él, dos pestañas del mismo usuario abren dos
+  turnos y los movimientos se reparten sin que nadie lo note (`abrirTurno()`
+  trata el `23505` como "ya había uno" y lo retoma, no como error).
+  Abrir/cerrar exige `user_id = auth.uid()` ADEMÁS de `user_is_member_of`:
+  nadie le cierra el turno a otro. Sin policy de DELETE — un turno cerrado
+  respalda un arqueo.
+  El guard es `bloqueadoPorTurnoCerrado(accion)` (devuelve `true` = abortar,
+  ya avisó) y se llama desde `guardarMovimiento()` y `confirmarCerrarCuenta()`
+  (cerrar una cuenta genera un ingreso). **Solo al CREAR**: exigir turno
+  para corregir un movimiento viejo dejaría un error de digitación
+  imposible de arreglar fuera de horario, y editar no cambia a qué turno
+  pertenece el movimiento. La barra `#turno-bar` la pinta `renderTurnoBar()`
+  y solo existe en Ingresos y Egresos > Movimientos.
+  **Cerrar turno ≠ cerrar caja**: el arqueo del día sigue siendo la
+  pestaña "Cierre de caja" (`VENTAS_ARQUEOS`), que agrupa por FECHA. El
+  turno agrupa por `turnoId`, que es justamente lo que permite separar dos
+  jornadas del mismo día.
+- **`recibosPrevenirCierreSaldo`** → `confirmarCerrarCuenta()` rechaza un
+  pago menor al total. Sin esto la factura quedaba `Pagada` y generaba el
+  ingreso completo con un pago parcial, o sea la clínica declaraba cobrado
+  lo que no cobró.
+- **`recibosImpresionTirilla`** → `generarPdfEstadoCuentaFactura()` desvía
+  a `generarTirillaFactura()` (rollo de 80 mm = `TIRILLA_ANCHO_PT`). El
+  desvío vive en esa función y no en cada llamador
+  (`confirmarCerrarCuenta`, `rowActionImprimir`…) para que el ajuste valga
+  por igual en todos. El alto se estima **de más** a propósito: jsPDF no
+  crece la página sola y lo que se pase sale cortado, mientras que el
+  papel sobrante lo consume el corte de la impresora.
+- **`recibosNotas`** → pie de página fijo, impreso tanto en la tirilla
+  como en el PDF A4. **No es** el "Mensaje predeterminado de
+  observaciones" de Ventas > Configuración de facturación: aquel vive en
+  `localStorage`, es por navegador y precarga un campo EDITABLE de cada
+  factura; este es texto fijo de la clínica al pie del documento.
+- **`ventasHabilitar` / `factSoftwarePropio` / `factSiigo` /
+  `factPosHabilitar`** son el espejo (prender/apagar) de lo que se detalla
+  en Ventas > Configuración de facturación; `irAConfiguracionFacturacion(pane)`
+  salta allá. Las credenciales, resoluciones y dispositivos NO se duplican
+  acá. `guardarVetConfigVentasInv()` sincroniza `#pos-habilitar-toggle` si
+  esa pantalla ya está montada, para que las dos no muestren lo contrario.
+- **`facturacionModulosVinculados`** (jsonb, claves de módulo clínico) se
+  guarda y se lee, pero **todavía no dispara cargos automáticos** en la
+  cuenta del tutor: eso exige que cada módulo clínico proponga sus ítems
+  al guardar. Es el pendiente conocido de esta sección.
+
 ## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·
 Desparasitaciones · Hospitalizaciones/ambulatorios ·
@@ -1663,12 +1844,16 @@ que existe es lo de abajo. Dos mecanismos, no se reemplazan:
      Supabase pause el proyecto por inactividad (riesgo real del free).
 2. **Respaldo manual desde la app** — Admin > Respaldo de datos
    (`#admin-outer-respaldo`, `descargarRespaldoEstablecimiento()`).
-   Descarga un `.json` con las filas reales de las 27 tablas por
+   Descarga un `.json` con las filas reales de las 35 tablas por
    establecimiento (`RESPALDO_TABLAS`), no el modelo en memoria: el
    objetivo es poder volver a insertar. Si agregas una tabla nueva por
    establecimiento, **agrégala a `RESPALDO_TABLAS`** o el respaldo
    manual la omite en silencio (el automático no necesita cambios,
-   vuelca el schema entero). No incluye los archivos binarios, solo el
+   vuelca el schema entero). `establecimientos` es la única entrada de esa
+   lista que `respaldoLeerTablaCompleta()` filtra por `id` en vez de por
+   `establecimiento_id` — su propia PK ES el establecimiento; entró cuando
+   la fila pasó a cargar toda la configuración de la clínica (ver
+   "Configuración de la veterinaria"). No incluye los archivos binarios, solo el
    inventario de rutas (`respaldoInventarioArchivos()`, genérico sobre
    campos `*_path`/`*_url` y arrays `fotos_*`).
    - `respaldoLeerTablaCompleta()` pagina de 1000 en 1000 **con

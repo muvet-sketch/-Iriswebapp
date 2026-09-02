@@ -1243,6 +1243,13 @@ alter table public.establecimientos add column if not exists zona_horaria text;
 alter table public.establecimientos add column if not exists horario_atencion jsonb not null default '[]'::jsonb;
 alter table public.establecimientos add column if not exists duracion_cita_min integer;
 alter table public.establecimientos add column if not exists prevenir_solapamientos boolean not null default false;
+-- Notificaciones y solicitudes de agendamiento — ver migración
+-- 20260901_establecimiento_agenda_notif.sql.
+alter table public.establecimientos add column if not exists notif_email_evento boolean not null default true;
+-- recordatorios: [{ "cantidad": 1, "unidad": "dias"|"horas", "canales": ["email","whatsapp","sms"] }]
+alter table public.establecimientos add column if not exists recordatorios jsonb not null default '[]'::jsonb;
+alter table public.establecimientos add column if not exists solicitudes_recibir boolean not null default false;
+alter table public.establecimientos add column if not exists solicitudes_antelacion_min integer;
 
 -- ── Configuración de la veterinaria: "Perfil fiscal", "Ventas e
 -- inventario", "Sala de espera" y "Sedes vinculadas". Ver la migración
@@ -1493,6 +1500,54 @@ drop policy if exists "movimientos_delete_member" on public.movimientos;
 create policy "movimientos_delete_member"
   on public.movimientos for delete
   using (public.user_is_member_of(establecimiento_id));
+
+-- ── TABLA: turnos (Ventas > Ingresos y Egresos) ─────────────
+-- Soporte del interruptor "Usar turnos" (establecimientos.ventas_usar_turnos).
+-- Ver la migración 20260902_turnos_caja.sql para el detalle. El turno es POR
+-- PERSONA (índice único parcial sobre establecimiento_id+user_id mientras
+-- cerrado_at is null), y abrir/cerrar exige `user_id = auth.uid()` ADEMÁS de
+-- ser miembro: nadie le cierra el turno a otro. Sin policy de delete a
+-- propósito — un turno cerrado respalda un arqueo.
+create table if not exists public.turnos (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  user_id            uuid not null references auth.users (id) on delete cascade,
+  usuario_nombre     text,
+  abierto_at         timestamptz not null default now(),
+  cerrado_at         timestamptz,
+  base_inicial       numeric,
+  notas              text,
+  created_at         timestamptz not null default now()
+);
+
+create index if not exists turnos_establecimiento_id_idx on public.turnos (establecimiento_id);
+create unique index if not exists turnos_uno_abierto_por_usuario_idx
+  on public.turnos (establecimiento_id, user_id)
+  where cerrado_at is null;
+
+alter table public.turnos enable row level security;
+
+drop policy if exists "turnos_select_member" on public.turnos;
+create policy "turnos_select_member"
+  on public.turnos for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "turnos_insert_propio" on public.turnos;
+create policy "turnos_insert_propio"
+  on public.turnos for insert
+  with check (public.user_is_member_of(establecimiento_id) and user_id = auth.uid());
+
+drop policy if exists "turnos_update_propio" on public.turnos;
+create policy "turnos_update_propio"
+  on public.turnos for update
+  using (public.user_is_member_of(establecimiento_id) and user_id = auth.uid())
+  with check (public.user_is_member_of(establecimiento_id) and user_id = auth.uid());
+
+-- Etiqueta del movimiento con el turno en el que se registró. Nullable: los
+-- movimientos previos a los turnos y los registrados con el interruptor
+-- apagado no tienen ninguno.
+alter table public.movimientos add column if not exists turno_id uuid references public.turnos (id) on delete set null;
+create index if not exists movimientos_turno_id_idx on public.movimientos (turno_id);
 
 -- ── TABLA: arqueos (Ventas > Ingresos y Egresos > Cierre de caja) ─
 -- Un registro por fecha (unique establecimiento_id+fecha) — ver

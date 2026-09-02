@@ -792,6 +792,23 @@
     .orden-block-header-actions { display: flex; align-items: center; gap: 14px; }
 
     /* Toggle visual pequeño "Generar solicitud" (sin lógica real) */
+    /* Barra de turno de caja (Ventas > Ingresos y Egresos), visible solo
+       con "Usar turnos" activo. Sin turno usa --warning y no --danger: no
+       hay nada roto, falta un paso. */
+    .turno-bar {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+      padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px;
+      border: 1px solid var(--border);
+    }
+    /* Un ítem ya entregado/devuelto deja sus dos botones deshabilitados;
+       .btn-outline no trae estilo :disabled propio y se veían clickeables. */
+    #entrega-modal .btn-outline:disabled { opacity: 0.4; cursor: default; }
+
+    .turno-bar-cerrado { background: rgba(245, 158, 11, 0.10); border-color: rgba(245, 158, 11, 0.35); color: var(--text-1); }
+    .turno-bar-cerrado i { color: var(--warning); }
+    .turno-bar-abierto { background: rgba(var(--clinic-accent-rgb), 0.08); border-color: rgba(var(--clinic-accent-rgb), 0.28); color: var(--text-1); }
+    .turno-bar-abierto i { color: var(--clinic-accent); }
+
     .mini-toggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
     .mini-toggle-input { display: none; }
     .mini-toggle-slider {
@@ -7304,6 +7321,10 @@
                   <i data-lucide="plus" style="width:14px;height:14px;"></i> Registrar movimiento
                 </button>
               </div>
+              <!-- Barra de turno de caja — la pinta renderTurnoBar() y solo
+                   aparece con "Usar turnos" activo (Admin > Configuración de
+                   la veterinaria > Ventas e inventario). -->
+              <div id="turno-bar" style="display:none;"></div>
               <div class="ventas-filter-bar" style="margin-bottom:16px;">
                 <div class="ventas-filter-row">
                   <div class="input-group">
@@ -24743,7 +24764,7 @@
       // mascota_fusiones es lo ÚNICO que queda de una ficha unificada: la
       // duplicada se borra y su snapshot vive ahí. Sin esto, el respaldo no
       // permitiría reconstruir qué se fusionó ni deshacerlo a mano.
-      'mascota_contactos', 'mascota_fusiones',
+      'mascota_contactos', 'mascota_fusiones', 'turnos',
       // La fila de `establecimientos` dejó de ser solo nombre+NIT: hoy
       // carga la configuración real de la clínica (perfil fiscal, horario
       // de atención, ventas/inventario, sala de espera, sedes). Un respaldo
@@ -25979,6 +26000,11 @@
         // se deja al día en vez de que muestre lo contrario.
         const posToggle = document.getElementById('pos-habilitar-toggle');
         if (posToggle) posToggle.checked = ESTABLECIMIENTO_CONFIG.factPosHabilitar;
+        // Dos de estos interruptores cambian lo que se ve en Ventas sin
+        // recargar: "Usar turnos" muestra/oculta la barra de turno y
+        // "Confirmación de entrega" cambia los badges de las facturas.
+        renderTurnoBar();
+        renderFacturasTable();
       }
     }
 
@@ -28108,8 +28134,8 @@
           <td>${(ventasClienteById(f.clienteId) || {}).nombre || '—'}</td>
           <td>${f.fecha}</td>
           <td>${formatCOP(f.total)}</td>
-          <td><span class="status-badge status-badge-${f.estado.toLowerCase()}">${f.estado}</span></td>
-          <td style="text-align:right;">${renderRowActionButtons('factura', f.id, ['imprimir', 'ver', 'email'], f.estado === 'Pendiente' ? [{ icon: 'lock', label: 'Cerrar cuenta', onclick: `abrirCerrarCuentaModalDesdeId('${f.id}')` }] : [])}</td>
+          <td><span class="status-badge status-badge-${f.estado.toLowerCase()}">${f.estado}</span>${facturaEntregaBadgeHTML(f)}</td>
+          <td style="text-align:right;">${renderRowActionButtons('factura', f.id, ['imprimir', 'ver', 'email'], accionesExtraFactura(f))}</td>
         </tr>
       `).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--text-2);">No hay ventas/facturas registradas</td></tr>`;
       lucide.createIcons();
@@ -28182,7 +28208,7 @@
           </div>`;
       return `
         <tr data-doc-item-row="${idx}">
-          <td>${conceptoCell}</td>
+          <td>${conceptoCell}${avisoExistenciasItemHTML(item)}</td>
           <td><input type="number" min="1" value="${item.cantidad}" oninput="handleDocItemFieldInput(${idx}, 'cantidad', this.value)"></td>
           <td><input type="number" min="0" value="${item.precioUnitario}" oninput="handleDocItemFieldInput(${idx}, 'precioUnitario', this.value)"></td>
           <td><input type="number" min="0" max="100" value="${item.descuentoPct}" oninput="handleDocItemFieldInput(${idx}, 'descuentoPct', this.value)"></td>
@@ -28461,6 +28487,14 @@
 
       const items = docVentaState.items.filter(it => it.producto && it.cantidad > 0);
       if (!items.length) { showToast('Agrega al menos un ítem con concepto'); return; }
+      // "Permitir sobre venta" apagado (Configuración de la veterinaria >
+      // Ventas e inventario): una factura no puede pedir más unidades de las
+      // que hay. Va antes de cualquier escritura, local o remota.
+      if (bloqueadoPorSobreventa(tipo, items)) return;
+      // "Confirmación de entrega (picking)": los ítems cuantificables nacen
+      // pendientes de confirmar. Muta `items` en sitio a propósito — es el
+      // mismo array que se persiste y que queda en memoria.
+      aplicarPickingAItems(items);
       const total = sumItems(items);
 
       if (tipo === 'docsoporte') {
@@ -28542,6 +28576,8 @@
           if (!facturaGuardada.pago) facturaGuardada.pago = { metodo: 'Efectivo', valor: facturaGuardada.total, fecha: facturaGuardada.fecha };
           await crearMovimientoDesdeFactura(facturaGuardada);
         }
+        // El movimiento recién creado cuenta para el turno abierto.
+        if (ESTABLECIMIENTO_CONFIG.ventasUsarTurnos) renderTurnoBar();
         tipo === 'cotizacion' ? renderCotizacionesTable() : renderFacturasTable();
         refreshFacturacionPropietarioTablesIfOpen();
         renderVentasDashboard();
@@ -28624,6 +28660,16 @@
       const valor = Number(document.getElementById('cerrar-cuenta-valor-input').value) || 0;
       if (!metodo) { showToast('Selecciona el método de pago'); return; }
       if (valor <= 0) { showToast('El valor del pago debe ser mayor a $0'); return; }
+      // "Prevenir cierre con saldo pendiente" (Configuración de la
+      // veterinaria > Ventas e inventario): cerrar la cuenta la deja en
+      // Pagada y genera el ingreso, así que con un pago parcial la clínica
+      // quedaría declarando cobrado algo que no cobró.
+      if (ESTABLECIMIENTO_CONFIG.recibosPrevenirCierreSaldo && valor < factura.total) {
+        showToast(`Queda un saldo de ${formatCOP(factura.total - valor)}. Con "Prevenir cierre con saldo pendiente" activo la cuenta no se puede cerrar parcialmente.`);
+        return;
+      }
+      // Cerrar la cuenta genera un ingreso en caja (crearMovimientoDesdeFactura).
+      if (bloqueadoPorTurnoCerrado('cerrar una cuenta')) return;
 
       const pago = { metodo, valor, fecha: VENTAS_HOY };
 
@@ -28643,6 +28689,7 @@
       factura.estado = 'Pagada';
       factura.pago = pago;
       await crearMovimientoDesdeFactura(factura);
+      renderTurnoBar();
 
       closeCerrarCuentaModal();
       closeDocVentaModal();
@@ -28663,6 +28710,11 @@
     // exportarClientesPDF, porque el formato de tabla fiscal es fijo y no
     // depende de ninguna vista HTML existente (docVentaViewContentHTML).
     async function generarPdfEstadoCuentaFactura(factura) {
+      // "Impresión tirilla" (Configuración de la veterinaria > Ventas e
+      // inventario): el mismo documento sale en formato de rollo de 80 mm.
+      // El desvío va acá y no en cada llamador (confirmarCerrarCuenta,
+      // rowActionImprimir…) para que el ajuste valga por igual en todos.
+      if (ESTABLECIMIENTO_CONFIG.recibosImpresionTirilla) return generarTirillaFactura(factura);
       const cliente = ventasClienteById(factura.clienteId) || {};
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -28760,6 +28812,23 @@
         });
       }
 
+      // "Notas y pie de página" del establecimiento — texto fijo de la
+      // clínica, distinto de las observaciones propias de esta factura que
+      // se acaban de imprimir arriba.
+      const notasPie = (ESTABLECIMIENTO_CONFIG.recibosNotas || '').trim();
+      if (notasPie) {
+        y += 26;
+        if (y > pageHeight - 60) { doc.addPage(); y = 50; }
+        doc.setDrawColor(220, 220, 220);
+        doc.line(marginX, y - 12, pageWidth - marginX, y - 12);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+        doc.splitTextToSize(notasPie, pageWidth - marginX * 2).forEach(linea => {
+          if (y > pageHeight - 40) { doc.addPage(); y = 50; }
+          doc.text(linea, marginX, y);
+          y += 11;
+        });
+      }
+
       const nombreArchivoFactura = ['estado-cuenta', ...[cliente.nombre, factura.numero].filter(Boolean).map(slugificarIrisPdf)].join('-') + '.pdf';
       doc.save(nombreArchivoFactura);
       showToast('PDF descargado');
@@ -28797,6 +28866,9 @@
 
     // ── MÓDULO: VENTAS — INGRESOS Y EGRESOS ──────────────────────
     function switchIngresosEgresosView(viewKey) {
+      // La barra de turno vive en la vista Movimientos y depende de un
+      // ajuste que se puede prender desde Admin sin recargar la página.
+      renderTurnoBar();
       document.querySelectorAll('#ventas-view-ingresos-egresos .admin-subview-tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-ingegr-view') === viewKey);
       });
@@ -28928,7 +29000,14 @@
       const metodoPago = document.getElementById('movimiento-metodo-select').value;
       if (!fecha || !categoria || !concepto || monto <= 0) { showToast('Completa todos los campos obligatorios'); return; }
       if (cierreBloqueado(fecha)) { showToast(`El cierre de caja del ${fecha} ya pasó las 24 horas para modificarse — no se pueden registrar movimientos en esa fecha`); return; }
+      // "Usar turnos" (Configuración de la veterinaria > Ventas e
+      // inventario). Solo al CREAR: exigir turno para corregir un movimiento
+      // viejo dejaría un error de digitación imposible de arreglar fuera de
+      // horario, y editar no cambia a qué turno pertenece.
+      if (!editingMovimientoId && bloqueadoPorTurnoCerrado('registrar un movimiento')) return;
       const data = { tipo, fecha, categoria, concepto, monto, metodoPago };
+      // El turno se fija al crear y no se reasigna al editar (ver arriba).
+      if (!editingMovimientoId && TURNO_ACTIVO) data.turnoId = TURNO_ACTIVO.id;
       const wasEdit = !!editingMovimientoId;
       const btn = document.getElementById('movimiento-guardar-btn');
       if (btn) btn.disabled = true;
@@ -28950,6 +29029,7 @@
           VENTAS_MOVIMIENTOS.unshift({ id: inserted.id, ...data });
         }
         renderIngresosEgresosTable();
+        renderTurnoBar(); // el contador de movimientos del turno cambió
         if (document.getElementById('ingegr-view-cierre').classList.contains('active')) abrirCierreCajaEnFecha(cierreCajaState.fecha);
         renderDashboard(); // "Ingresos Hoy" del Dashboard sale de este array
         closeMovimientoModal();
@@ -29071,7 +29151,10 @@
         monto: factura.pago.valor,
         metodoPago: mapMetodoPagoFacturaAMovimiento(factura.pago.metodo),
         facturaId: factura.id,
-        facturaNumero: factura.numero
+        facturaNumero: factura.numero,
+        // Mismo criterio que guardarMovimiento(): el ingreso que produce
+        // cerrar una cuenta pertenece al turno que la cerró.
+        turnoId: TURNO_ACTIVO ? TURNO_ACTIVO.id : null
       };
       try {
         const establecimientoId = currentSession.activeMembership.establecimientoId;
@@ -31435,6 +31518,530 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       showToast('Enlace copiado al portapapeles');
     }
 
+    // ── EFECTOS REALES DE "VENTAS E INVENTARIO" ────────────────────
+    // Los interruptores de Admin > Configuración de la veterinaria >
+    // Ventas e inventario no son decorativos: cada uno tiene su efecto acá.
+    // Todos leen ESTABLECIMIENTO_CONFIG (espejo de las columnas de
+    // `establecimientos`, ver persistirEstablecimientoConfig), nunca
+    // localStorage — un ajuste de la clínica no puede depender del
+    // navegador de quien lo prendió.
+    //
+    //   invPermitirSobreventa       -> guardarDocVenta() bloquea la factura
+    //                                  si un ítem cuantificable no alcanza
+    //   invConfirmacionPicking      -> los ítems cuantificables nacen
+    //                                  'pendiente' de entrega (#entrega-modal)
+    //   ventasUsarTurnos            -> registrar caja exige turno abierto
+    //   recibosPrevenirCierreSaldo  -> no se cierra una cuenta con saldo
+    //   recibosImpresionTirilla     -> el PDF de la factura sale en 80 mm
+    //   recibosNotas                -> pie de página de ese PDF
+
+    // ── Existencias (sobreventa) ───────────────────────────────────
+    // "Cuantificable" = el ítem descuenta existencias. El campo explícito
+    // solo lo traen los productos creados desde el modal "+ Registrar"
+    // (Tarea 4) y los importados por Excel; el catálogo semilla y los
+    // exports viejos no lo tienen pero sí traen `stock`. Mirar solo
+    // `p.cuantificable` dejaría a la mitad del inventario fuera del control
+    // de existencias, así que `stock` es el desempate.
+    function productoEsCuantificable(p) {
+      if (!p || p.tipo !== 'producto') return false;
+      return p.cuantificable !== undefined ? !!p.cuantificable : typeof p.stock === 'number';
+    }
+
+    function existenciasProducto(productoId) {
+      const p = invProductoById(productoId);
+      return (p && typeof p.stock === 'number') ? p.stock : null;
+    }
+
+    // Ítems del documento que piden más unidades de las que hay. Se agrupa
+    // por productoId antes de comparar: un mismo producto puede venir en dos
+    // filas (dos presentaciones del mismo cargo) y evaluarlas por separado
+    // dejaría pasar el doble del stock disponible.
+    function itemsSinExistencias(items) {
+      const pedidoPorProducto = {};
+      (items || []).forEach(it => {
+        if (!it.productoId) return;
+        const p = invProductoById(it.productoId);
+        if (!productoEsCuantificable(p)) return;
+        pedidoPorProducto[it.productoId] = (pedidoPorProducto[it.productoId] || 0) + (Number(it.cantidad) || 0);
+      });
+      return Object.keys(pedidoPorProducto).map(id => {
+        const disponible = existenciasProducto(id);
+        if (disponible === null) return null;
+        const pedido = pedidoPorProducto[id];
+        if (pedido <= disponible) return null;
+        return { productoId: id, nombre: (invProductoById(id) || {}).nombre || 'Ítem', pedido, disponible };
+      }).filter(Boolean);
+    }
+
+    // Devuelve true si hay que ABORTAR el guardado (ya avisó). Solo aplica a
+    // facturas: una cotización no compromete existencias, y el documento
+    // soporte es una compra a proveedor (suma, no resta).
+    function bloqueadoPorSobreventa(tipo, items) {
+      if (tipo !== 'factura') return false;
+      if (ESTABLECIMIENTO_CONFIG.invPermitirSobreventa) return false;
+      const faltantes = itemsSinExistencias(items);
+      if (!faltantes.length) return false;
+      const detalle = faltantes.slice(0, 3)
+        .map(f => `${f.nombre} (pide ${f.pedido}, hay ${f.disponible})`).join('; ');
+      const resto = faltantes.length > 3 ? ` y ${faltantes.length - 3} más` : '';
+      showToast(`Sin existencias suficientes: ${detalle}${resto}. Activa "Permitir sobre venta" en Configuración de la veterinaria si igual quieres facturarlo.`);
+      return true;
+    }
+
+    // Aviso inline en la fila del ítem, para que el problema se vea al
+    // digitar y no recién al guardar. Es solo señalización: quien decide es
+    // bloqueadoPorSobreventa().
+    function avisoExistenciasItemHTML(item) {
+      if (!item || !item.productoId) return '';
+      const p = invProductoById(item.productoId);
+      if (!productoEsCuantificable(p)) return '';
+      const disponible = existenciasProducto(item.productoId);
+      if (disponible === null) return '';
+      const excede = (Number(item.cantidad) || 0) > disponible;
+      const color = excede ? 'var(--danger)' : 'var(--text-2)';
+      const texto = excede ? `Solo hay ${disponible} disponibles` : `Disponibles: ${disponible}`;
+      return `<div style="font-size:11px;color:${color};margin-top:3px;">${texto}</div>`;
+    }
+
+    // ── Confirmación de entrega (picking) ──────────────────────────
+    // El estado de entrega vive DENTRO de cada ítem (`it.entrega`), no en
+    // una columna nueva: `ventas_facturas.items` ya es jsonb y se guarda
+    // completo en cada update, así que no hace falta migración ni un
+    // segundo lugar donde el estado pueda quedar desincronizado.
+    // Ojo con la posición: este `const` lo lee facturaEntregaBadgeHTML()
+    // <- renderFacturasTable() <- renderAllModulesData(), que SÍ corre en el
+    // nivel superior del script (cerca del final). Mientras esta línea siga
+    // estando antes de esa llamada no hay problema; moverla debajo sería un
+    // acceso en temporal dead zone — la trampa ya sufrida dos veces, ver
+    // CLAUDE.md.
+    const ENTREGA_ESTADOS = {
+      pendiente: { label: 'Entrega pendiente', badge: 'status-badge-pendiente' },
+      entregado: { label: 'Entregado', badge: 'status-badge-completado' },
+      devuelto: { label: 'Devuelto', badge: 'status-badge-vencido' }
+    };
+
+    // Confirmar la entrega es una acción de caja/bodega, no clínica.
+    function puedeConfirmarEntrega() {
+      return currentSimRole === 'admin' || currentSimRole === 'ventas';
+    }
+
+    function facturaItemsConEntrega(factura) {
+      return (factura && Array.isArray(factura.items) ? factura.items : [])
+        .map((it, idx) => ({ it, idx }))
+        .filter(({ it }) => !!it.entrega);
+    }
+
+    // null = esta factura no participa del picking (no tenía ítems
+    // cuantificables, o se creó con el interruptor apagado).
+    function facturaEntregaEstado(factura) {
+      const conEntrega = facturaItemsConEntrega(factura);
+      if (!conEntrega.length) return null;
+      const estados = new Set(conEntrega.map(({ it }) => it.entrega));
+      if (estados.size === 1) return conEntrega[0].it.entrega;
+      return estados.has('pendiente') ? 'pendiente' : 'entregado';
+    }
+
+    function facturaEntregaBadgeHTML(factura) {
+      const estado = facturaEntregaEstado(factura);
+      if (!estado) return '';
+      const def = ENTREGA_ESTADOS[estado] || ENTREGA_ESTADOS.pendiente;
+      const pendientes = facturaItemsConEntrega(factura).filter(({ it }) => it.entrega === 'pendiente').length;
+      const texto = (estado === 'pendiente' && pendientes) ? `${def.label} (${pendientes})` : def.label;
+      return `<div style="margin-top:4px;"><span class="status-badge ${def.badge}" style="font-size:10.5px;">${texto}</span></div>`;
+    }
+
+    // Al guardar una factura con el picking activo, cada ítem cuantificable
+    // nace 'pendiente'. Los que YA tienen estado se respetan: editar una
+    // factura no puede revivir como pendiente algo que ya se entregó.
+    // Apagar el interruptor tampoco borra lo pendiente de las facturas que
+    // ya lo tenían — quedarían entregas abiertas que nadie volvería a ver.
+    function aplicarPickingAItems(items) {
+      if (!ESTABLECIMIENTO_CONFIG.invConfirmacionPicking) return items;
+      (items || []).forEach(it => {
+        if (it.entrega) return;
+        if (productoEsCuantificable(invProductoById(it.productoId))) it.entrega = 'pendiente';
+      });
+      return items;
+    }
+
+    // Acciones condicionales del menú "..." de una factura. Antes solo
+    // existía "Cerrar cuenta" en línea dentro de renderFacturasTable; se
+    // extrajo acá para que la de entrega no duplique esa expresión.
+    function accionesExtraFactura(factura) {
+      const extras = [];
+      if (factura.estado === 'Pendiente') {
+        extras.push({ icon: 'lock', label: 'Cerrar cuenta', onclick: `abrirCerrarCuentaModalDesdeId('${factura.id}')` });
+      }
+      const entrega = facturaEntregaEstado(factura);
+      if (entrega === 'pendiente' && puedeConfirmarEntrega()) {
+        extras.push({ icon: 'package-check', label: 'Confirmar entrega', onclick: `abrirEntregaModal('${factura.id}')` });
+      }
+      return extras;
+    }
+
+    let entregaFacturaId = null;
+
+    function abrirEntregaModal(facturaId) {
+      closeAllRowMenus();
+      const factura = VENTAS_FACTURAS.find(f => f.id === facturaId);
+      if (!factura) return;
+      if (!puedeConfirmarEntrega()) { showToast('Tu rol no puede confirmar entregas'); return; }
+      entregaFacturaId = facturaId;
+      document.getElementById('entrega-modal-numero').textContent = factura.numero;
+      renderEntregaModalItems();
+      document.getElementById('entrega-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeEntregaModal() {
+      document.getElementById('entrega-modal').classList.remove('show');
+      entregaFacturaId = null;
+    }
+    function handleEntregaModalOverlayClick(e) {
+      if (e.target === document.getElementById('entrega-modal')) closeEntregaModal();
+    }
+
+    function renderEntregaModalItems() {
+      const factura = VENTAS_FACTURAS.find(f => f.id === entregaFacturaId);
+      const cont = document.getElementById('entrega-modal-items');
+      if (!factura || !cont) return;
+      const filas = facturaItemsConEntrega(factura);
+      cont.innerHTML = filas.map(({ it, idx }) => {
+        const def = ENTREGA_ESTADOS[it.entrega] || ENTREGA_ESTADOS.pendiente;
+        const pendiente = it.entrega === 'pendiente';
+        return `
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;color:var(--text-1);">${escapeHtml(it.producto || '—')}</div>
+              <div style="font-size:11.5px;color:var(--text-2);">Cantidad: ${it.cantidad || 0}</div>
+            </div>
+            <span class="status-badge ${def.badge}" style="font-size:10.5px;flex-shrink:0;">${def.label}</span>
+            <div style="display:flex;gap:6px;flex-shrink:0;">
+              <button type="button" class="btn-outline" style="padding:4px 10px;font-size:11.5px;" onclick="marcarEntregaItem(${idx}, 'entregado')" ${pendiente ? '' : 'disabled'}>Entregar</button>
+              <button type="button" class="btn-outline" style="padding:4px 10px;font-size:11.5px;" onclick="marcarEntregaItem(${idx}, 'devuelto')" ${pendiente ? '' : 'disabled'}>Devolver</button>
+            </div>
+          </div>`;
+      }).join('') || '<p style="font-size:13px;color:var(--text-2);">Esta factura no tiene ítems sujetos a confirmación de entrega.</p>';
+      const quedanPendientes = filas.some(({ it }) => it.entrega === 'pendiente');
+      const btnTodo = document.getElementById('entrega-modal-todo-btn');
+      if (btnTodo) btnTodo.style.display = quedanPendientes ? '' : 'none';
+    }
+
+    // Marca en memoria y persiste el array `items` completo. No se hace
+    // optimista: si el update falla se revierte, porque una entrega que
+    // "quedó" solo en pantalla haría que bodega la dé por despachada.
+    async function marcarEntregaItem(idx, nuevoEstado) {
+      const factura = VENTAS_FACTURAS.find(f => f.id === entregaFacturaId);
+      if (!factura || !factura.items[idx]) return;
+      const previo = factura.items[idx].entrega;
+      factura.items[idx].entrega = nuevoEstado;
+      const ok = await persistirItemsFactura(factura);
+      if (!ok) { factura.items[idx].entrega = previo; }
+      renderEntregaModalItems();
+      renderFacturasTable();
+      refreshFacturacionPropietarioTablesIfOpen();
+    }
+
+    async function marcarEntregaTodo() {
+      const factura = VENTAS_FACTURAS.find(f => f.id === entregaFacturaId);
+      if (!factura) return;
+      const previos = factura.items.map(it => it.entrega);
+      factura.items.forEach(it => { if (it.entrega === 'pendiente') it.entrega = 'entregado'; });
+      const ok = await persistirItemsFactura(factura);
+      if (!ok) factura.items.forEach((it, i) => { it.entrega = previos[i]; });
+      else showToast('Entrega confirmada');
+      renderEntregaModalItems();
+      renderFacturasTable();
+      refreshFacturacionPropietarioTablesIfOpen();
+    }
+
+    async function persistirItemsFactura(factura) {
+      if (!window.supabase) return true;
+      try {
+        const { error } = await window.supabase.from('ventas_facturas')
+          .update({ items: factura.items, updated_at: new Date().toISOString() })
+          .eq('id', factura.id);
+        if (error) throw error;
+        return true;
+      } catch (err) {
+        console.error('[IRIS] Error guardando el estado de entrega:', err);
+        showToast('No se pudo guardar el estado de entrega — intenta de nuevo');
+        return false;
+      }
+    }
+
+    // ── Turnos de caja ─────────────────────────────────────────────
+    // Turno abierto del usuario actual en el establecimiento activo (tabla
+    // `turnos`, migración 20260902). null = ninguno. Lo repone
+    // cargarTurnoActivo() al iniciar sesión y cada vez que se abre/cierra.
+    let TURNO_ACTIVO = null;
+
+    async function cargarTurnoActivo(establecimientoId) {
+      TURNO_ACTIVO = null;
+      if (!window.supabase || !establecimientoId || !currentSession) return;
+      try {
+        const { data, error } = await window.supabase.from('turnos')
+          .select('*')
+          .eq('establecimiento_id', establecimientoId)
+          .eq('user_id', currentSession.user.id)
+          .is('cerrado_at', null)
+          .maybeSingle();
+        if (error) throw error;
+        TURNO_ACTIVO = data || null;
+      } catch (err) {
+        // No relanza: quedarse sin saber el turno no puede impedir entrar a
+        // la app. El guard de abajo avisa igual si el ajuste está activo.
+        console.error('[IRIS] No se pudo leer el turno activo:', err);
+      }
+      renderTurnoBar();
+    }
+
+    // Devuelve true si hay que ABORTAR (ya avisó).
+    function bloqueadoPorTurnoCerrado(accion) {
+      if (!ESTABLECIMIENTO_CONFIG.ventasUsarTurnos) return false;
+      if (TURNO_ACTIVO) return false;
+      showToast(`Abre un turno en Ventas > Ingresos y Egresos antes de ${accion}`);
+      return true;
+    }
+
+    function movimientosDelTurno(turno) {
+      if (!turno) return [];
+      return VENTAS_MOVIMIENTOS.filter(m => m.turnoId === turno.id);
+    }
+
+    function renderTurnoBar() {
+      const cont = document.getElementById('turno-bar');
+      if (!cont) return;
+      if (!ESTABLECIMIENTO_CONFIG.ventasUsarTurnos) { cont.innerHTML = ''; cont.style.display = 'none'; return; }
+      cont.style.display = '';
+      if (!TURNO_ACTIVO) {
+        cont.innerHTML = `
+          <div class="turno-bar turno-bar-cerrado">
+            <i data-lucide="lock" style="width:15px;height:15px;flex-shrink:0;"></i>
+            <span style="flex:1;">Sin turno abierto. Registrar ingresos y egresos requiere un turno.</span>
+            <button type="button" class="btn-primary" style="padding:6px 14px;font-size:12.5px;" onclick="abrirTurnoModal('abrir')">Abrir turno</button>
+          </div>`;
+      } else {
+        const desde = new Date(TURNO_ACTIVO.abierto_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        const movs = movimientosDelTurno(TURNO_ACTIVO);
+        cont.innerHTML = `
+          <div class="turno-bar turno-bar-abierto">
+            <i data-lucide="unlock" style="width:15px;height:15px;flex-shrink:0;"></i>
+            <span style="flex:1;">Turno abierto desde <strong>${desde}</strong> · ${movs.length} movimiento${movs.length === 1 ? '' : 's'}</span>
+            <button type="button" class="btn-secondary" style="padding:6px 14px;font-size:12.5px;" onclick="abrirTurnoModal('cerrar')">Cerrar turno</button>
+          </div>`;
+      }
+      lucide.createIcons();
+    }
+
+    let turnoModalModo = 'abrir';
+
+    function abrirTurnoModal(modo) {
+      turnoModalModo = modo;
+      const esAbrir = modo === 'abrir';
+      document.getElementById('turno-modal-title').textContent = esAbrir ? 'Abrir turno' : 'Cerrar turno';
+      document.getElementById('turno-abrir-campos').style.display = esAbrir ? '' : 'none';
+      document.getElementById('turno-cerrar-resumen').style.display = esAbrir ? 'none' : '';
+      document.getElementById('turno-confirmar-btn').textContent = esAbrir ? 'Abrir turno' : 'Cerrar turno';
+      if (esAbrir) {
+        document.getElementById('turno-base-input').value = '';
+        document.getElementById('turno-notas-input').value = '';
+      } else {
+        renderTurnoCierreResumen();
+      }
+      document.getElementById('turno-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeTurnoModal() { document.getElementById('turno-modal').classList.remove('show'); }
+    function handleTurnoModalOverlayClick(e) {
+      if (e.target === document.getElementById('turno-modal')) closeTurnoModal();
+    }
+
+    // Resumen de lo que se movió en el turno. Se calcula sobre los
+    // movimientos etiquetados con su id, no sobre la fecha: la gracia del
+    // turno es justamente separar dos jornadas del mismo día.
+    function renderTurnoCierreResumen() {
+      const cont = document.getElementById('turno-cerrar-resumen');
+      if (!cont || !TURNO_ACTIVO) return;
+      const movs = movimientosDelTurno(TURNO_ACTIVO);
+      const ingresos = movs.filter(m => m.tipo === 'Ingreso').reduce((s, m) => s + (m.monto || 0), 0);
+      const egresos = movs.filter(m => m.tipo === 'Egreso').reduce((s, m) => s + (m.monto || 0), 0);
+      const base = Number(TURNO_ACTIVO.base_inicial) || 0;
+      const desde = new Date(TURNO_ACTIVO.abierto_at).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      cont.innerHTML = `
+        <div style="font-size:12.5px;color:var(--text-2);margin-bottom:12px;">Abierto desde <strong style="color:var(--text-1);">${desde}</strong></div>
+        <table class="results-table" style="margin:0;">
+          <tbody>
+            <tr><td>Base inicial</td><td style="text-align:right;">${formatCOP(base)}</td></tr>
+            <tr><td>Ingresos del turno (${movs.filter(m => m.tipo === 'Ingreso').length})</td><td style="text-align:right;">${formatCOP(ingresos)}</td></tr>
+            <tr><td>Egresos del turno (${movs.filter(m => m.tipo === 'Egreso').length})</td><td style="text-align:right;">${formatCOP(egresos)}</td></tr>
+            <tr><td style="font-weight:700;">Saldo del turno</td><td style="text-align:right;font-weight:700;">${formatCOP(base + ingresos - egresos)}</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:11.5px;color:var(--text-2);margin-top:10px;">
+          Cerrar el turno no cierra la caja del día: el arqueo sigue estando en la pestaña "Cierre de caja".
+        </p>`;
+    }
+
+    async function confirmarTurnoModal() {
+      const btn = document.getElementById('turno-confirmar-btn');
+      if (btn) btn.disabled = true;
+      try {
+        if (turnoModalModo === 'abrir') await abrirTurno();
+        else await cerrarTurno();
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function abrirTurno() {
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede abrir el turno'); return;
+      }
+      if (TURNO_ACTIVO) { showToast('Ya tienes un turno abierto'); return; }
+      const baseRaw = document.getElementById('turno-base-input').value.trim();
+      const base = baseRaw === '' ? null : Number(baseRaw);
+      if (base !== null && (!isFinite(base) || base < 0)) { showToast('La base inicial no es válida'); return; }
+      const usuario = getUsuarioActualSistema();
+      try {
+        const { data, error } = await window.supabase.from('turnos').insert({
+          establecimiento_id: currentSession.activeMembership.establecimientoId,
+          user_id: currentSession.user.id,
+          usuario_nombre: (usuario && usuario.nombre) || currentSession.user.nombre || currentSession.user.email || null,
+          base_inicial: base,
+          notas: document.getElementById('turno-notas-input').value.trim() || null
+        }).select().single();
+        if (error) throw error;
+        TURNO_ACTIVO = data;
+        closeTurnoModal();
+        renderTurnoBar();
+        showToast('Turno abierto');
+      } catch (err) {
+        console.error('[IRIS] Error abriendo el turno:', err);
+        // turnos_uno_abierto_por_usuario_idx: otra pestaña/dispositivo ya lo
+        // abrió. No es un error del usuario — se recupera leyendo el que hay.
+        if (err && err.code === '23505') {
+          showToast('Ya tenías un turno abierto en otra sesión — se retomó ese');
+          closeTurnoModal();
+          await cargarTurnoActivo(currentSession.activeMembership.establecimientoId);
+          return;
+        }
+        showToast('No se pudo abrir el turno — intenta de nuevo');
+      }
+    }
+
+    async function cerrarTurno() {
+      if (!TURNO_ACTIVO || !window.supabase) { closeTurnoModal(); return; }
+      try {
+        const { error } = await window.supabase.from('turnos')
+          .update({ cerrado_at: new Date().toISOString() })
+          .eq('id', TURNO_ACTIVO.id);
+        if (error) throw error;
+        TURNO_ACTIVO = null;
+        closeTurnoModal();
+        renderTurnoBar();
+        showToast('Turno cerrado');
+      } catch (err) {
+        console.error('[IRIS] Error cerrando el turno:', err);
+        showToast('No se pudo cerrar el turno — intenta de nuevo');
+      }
+    }
+
+    // ── Tirilla / pie de página de los documentos de venta ─────────
+    // 80 mm de ancho de rollo = 226.77 pt. El alto se calcula a partir del
+    // contenido: un rollo no tiene página fija, y con un alto constante una
+    // factura de 20 ítems saldría cortada.
+    const TIRILLA_ANCHO_PT = 226.77;
+
+    async function generarTirillaFactura(factura) {
+      const cliente = ventasClienteById(factura.clienteId) || {};
+      const { jsPDF } = window.jspdf;
+      const margen = 12;
+      const anchoUtil = TIRILLA_ANCHO_PT - margen * 2;
+      const notas = (ESTABLECIMIENTO_CONFIG.recibosNotas || '').trim();
+      const items = factura.items || [];
+      // Cada ítem ocupa 2 líneas (nombre + cantidad×precio) y el nombre puede
+      // partirse en varias. El alto se estima de MÁS a propósito: jsPDF no
+      // crece la página sola y lo que se pase del alto declarado sale
+      // cortado, mientras que el papel sobrante lo consume igual el corte de
+      // la impresora térmica. Errar por exceso es el lado barato.
+      const alto = 190 + items.length * 26 + (notas ? 60 : 0) + (factura.observaciones ? 46 : 0);
+      const doc = new jsPDF({ unit: 'pt', format: [TIRILLA_ANCHO_PT, alto] });
+      let y = 20;
+
+      const centrar = (txt, size, bold) => {
+        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setFontSize(size);
+        doc.splitTextToSize(String(txt), anchoUtil).forEach(l => {
+          doc.text(l, TIRILLA_ANCHO_PT / 2, y, { align: 'center' });
+          y += size + 2;
+        });
+      };
+      const linea = () => {
+        doc.setDrawColor(180, 180, 180);
+        doc.line(margen, y, TIRILLA_ANCHO_PT - margen, y);
+        y += 9;
+      };
+
+      doc.setTextColor(20, 20, 20);
+      centrar(nombreFiscalEstablecimiento() || 'Clínica', 10, true);
+      doc.setTextColor(90, 90, 90);
+      const idFiscal = identificacionFiscalEstablecimiento();
+      if (idFiscal) centrar(`NIT ${idFiscal}`, 7.5);
+      const dir = ESTABLECIMIENTO_CONFIG.fiscalDireccion || ESTABLECIMIENTO_CONFIG.direccion;
+      if (dir) centrar(dir, 7.5);
+      if (CLINIC_INFO.telefono) centrar(CLINIC_INFO.telefono, 7.5);
+      y += 4;
+      linea();
+
+      doc.setTextColor(20, 20, 20);
+      centrar(`Factura ${factura.numero}`, 9, true);
+      doc.setTextColor(90, 90, 90);
+      centrar(factura.fecha || '', 7.5);
+      centrar(cliente.nombre || 'Consumidor final', 7.5);
+      y += 4;
+      linea();
+
+      doc.setTextColor(30, 30, 30);
+      items.forEach(it => {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+        doc.splitTextToSize(it.producto || '—', anchoUtil).forEach(l => { doc.text(l, margen, y); y += 10; });
+        doc.setFontSize(7.5); doc.setTextColor(110, 110, 110);
+        doc.text(`${it.cantidad || 0} x ${formatCOP(it.precioUnitario || 0)}`, margen, y);
+        doc.setTextColor(30, 30, 30);
+        doc.text(formatCOP(it.total || 0), TIRILLA_ANCHO_PT - margen, y, { align: 'right' });
+        y += 13;
+      });
+      linea();
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(20, 20, 20);
+      doc.text('TOTAL', margen, y);
+      doc.text(formatCOP(factura.total), TIRILLA_ANCHO_PT - margen, y, { align: 'right' });
+      y += 14;
+      if (factura.pago) {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(90, 90, 90);
+        doc.text(factura.pago.metodo || '', margen, y);
+        doc.text(formatCOP(factura.pago.valor || 0), TIRILLA_ANCHO_PT - margen, y, { align: 'right' });
+        y += 12;
+      }
+
+      if (factura.observaciones && String(factura.observaciones).trim()) {
+        y += 4; linea();
+        doc.setTextColor(90, 90, 90);
+        centrar(String(factura.observaciones).trim(), 7);
+      }
+      if (notas) {
+        y += 4; linea();
+        doc.setTextColor(110, 110, 110);
+        centrar(notas, 7);
+      }
+
+      const nombreArchivo = ['tirilla', ...[cliente.nombre, factura.numero].filter(Boolean).map(slugificarIrisPdf)].join('-') + '.pdf';
+      doc.save(nombreArchivo);
+      showToast('Tirilla descargada');
+    }
+
     // ── MÓDULO: VENTAS — CONFIGURACIÓN DE FACTURACIÓN ────────────
     function guardarConfigFacturacion() {
       showToast('Configuración de facturación guardada');
@@ -33534,14 +34141,18 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       return {
         id: r.id, fecha: r.fecha, tipo: r.tipo, categoria: r.categoria, concepto: r.concepto,
         monto: Number(r.monto) || 0, metodoPago: r.metodo_pago,
-        facturaId: r.factura_id || null, facturaNumero: r.factura_numero || null
+        facturaId: r.factura_id || null, facturaNumero: r.factura_numero || null,
+        // Turno en el que se registró (interruptor "Usar turnos"). null en
+        // todo lo anterior a los turnos y en lo registrado sin el ajuste.
+        turnoId: r.turno_id || null
       };
     }
     function filaSupabaseDesdeMovimiento(m) {
       return {
         fecha: m.fecha, tipo: m.tipo, categoria: m.categoria, concepto: m.concepto,
         monto: m.monto || 0, metodo_pago: m.metodoPago,
-        factura_id: m.facturaId || null, factura_numero: m.facturaNumero || null
+        factura_id: m.facturaId || null, factura_numero: m.facturaNumero || null,
+        turno_id: m.turnoId || null
       };
     }
     // `filas` (desglose Tipo+Forma de pago del arqueo) y `contado_por_metodo`
@@ -34070,6 +34681,12 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       // Deja el contador de solicitudes pendientes al día en el menú de
       // Admin sin esperar a que alguien abra la bandeja.
       renderRedSolicitudes();
+
+      // Turno de caja abierto de esta persona (interruptor "Usar turnos").
+      // Va al final y sin await bloqueante sobre el resto: no hace falta
+      // para pintar ningún módulo, solo para la barra de Ingresos y
+      // Egresos, y su propio catch ya evita que tumbe la carga.
+      await cargarTurnoActivo(establecimientoId);
     }
 
     // Clínica nueva: el único "usuario del sistema" visible en Admin >
@@ -36869,6 +37486,49 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn-secondary" onclick="closeCerrarCuentaModal()">Cancelar</button>
         <button class="btn-primary" onclick="confirmarCerrarCuenta()">Cerrar cuenta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Abrir / Cerrar turno de caja (interruptor "Usar turnos") -->
+  <div class="modal-overlay" id="turno-modal" onclick="handleTurnoModalOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:440px;">
+      <div class="modal-header">
+        <span class="modal-title" id="turno-modal-title">Abrir turno</span>
+        <button class="modal-close" onclick="closeTurnoModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div id="turno-abrir-campos">
+        <div class="input-group" style="margin-bottom:14px;">
+          <label class="input-label" for="turno-base-input">Base inicial (opcional)</label>
+          <input type="number" id="turno-base-input" class="input-control" style="padding-left:12px;" min="0" placeholder="0">
+        </div>
+        <div class="input-group" style="margin-bottom:20px;">
+          <label class="input-label" for="turno-notas-input">Notas (opcional)</label>
+          <textarea id="turno-notas-input" class="input-control" style="padding-left:12px;min-height:60px;resize:vertical;"></textarea>
+        </div>
+      </div>
+      <div id="turno-cerrar-resumen" style="display:none;margin-bottom:20px;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn-secondary" onclick="closeTurnoModal()">Cancelar</button>
+        <button class="btn-primary" id="turno-confirmar-btn" onclick="confirmarTurnoModal()">Abrir turno</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirmación de entrega (picking) de una factura -->
+  <div class="modal-overlay" id="entrega-modal" onclick="handleEntregaModalOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:560px;">
+      <div class="modal-header">
+        <span class="modal-title">Confirmación de entrega</span>
+        <button class="modal-close" onclick="closeEntregaModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div style="font-size:12.5px;color:var(--text-2);margin-bottom:6px;">
+        Factura <strong id="entrega-modal-numero" style="color:var(--text-1);">—</strong> · productos cuantificables pendientes de despacho.
+      </div>
+      <div id="entrega-modal-items" style="margin-bottom:18px;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn-secondary" onclick="closeEntregaModal()">Cerrar</button>
+        <button class="btn-primary" id="entrega-modal-todo-btn" onclick="marcarEntregaTodo()">Marcar todo como entregado</button>
       </div>
     </div>
   </div>
