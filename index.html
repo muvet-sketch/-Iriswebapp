@@ -26124,11 +26124,19 @@
         return;
       }
 
-      const linea = (ok, texto, detalle) => `
+      // Tres estados, no dos. `null` = indeterminado: no se pudo comprobar,
+      // que no es lo mismo que "está mal". Pintarlo en rojo haría que el
+      // panel acuse un problema inexistente — pasó con la lista de dominios
+      // y una API key de solo envío.
+      const linea = (ok, texto, detalle) => {
+        const icono = ok === null ? 'help-circle' : (ok ? 'check-circle-2' : 'x-circle');
+        const color = ok === null ? 'var(--text-2)' : (ok ? 'var(--success)' : 'var(--danger)');
+        return `
         <li style="display:flex;gap:8px;align-items:flex-start;margin:0 0 8px;font-size:13px;">
-          <i data-lucide="${ok ? 'check-circle-2' : 'x-circle'}" style="width:15px;height:15px;flex:none;margin-top:2px;color:${ok ? 'var(--success)' : 'var(--danger)'};"></i>
+          <i data-lucide="${icono}" style="width:15px;height:15px;flex:none;margin-top:2px;color:${color};"></i>
           <span>${texto}${detalle ? `<br><span style="color:var(--text-2);font-size:12px;">${detalle}</span>` : ''}</span>
         </li>`;
+      };
 
       const e = d.entorno || {};
       const dominios = (d.resend && d.resend.dominios) || [];
@@ -26139,8 +26147,15 @@
           d.remitenteEsDePruebas
             ? 'Es el remitente de pruebas de Resend: solo entrega al correo dueño de la cuenta. Configura RESEND_FROM_EMAIL con una dirección de tu dominio verificado.'
             : null),
-        linea(verificados.length > 0, `Dominios verificados en Resend: ${verificados.length ? verificados.map(x => escapeHtml(x.nombre)).join(', ') : 'ninguno'}`,
-          d.resend && d.resend.error ? escapeHtml(d.resend.error) : (verificados.length ? null : 'Sin un dominio verificado, Resend rechaza los envíos a terceros.')),
+        // Una API key de tipo "Sending access" (la más restringida, y la
+        // recomendable) puede enviar pero NO leer /domains. Eso no dice nada
+        // sobre si el dominio está verificado: queda indeterminado y lo
+        // resuelve el correo de prueba de abajo, que es la comprobación real.
+        (d.resend && d.resend.restringida
+          ? linea(null, 'Dominios verificados en Resend: no se puede comprobar',
+              'Tu API key es de solo envío, así que no puede listar dominios — es la opción correcta por seguridad. Usa "Enviar correo de prueba" para confirmar que el dominio está bien.')
+          : linea(verificados.length > 0, `Dominios verificados en Resend: ${verificados.length ? verificados.map(x => escapeHtml(x.nombre)).join(', ') : 'ninguno'}`,
+              d.resend && d.resend.error ? escapeHtml(d.resend.error) : (verificados.length ? null : 'Sin un dominio verificado, Resend rechaza los envíos a terceros.'))),
         linea(e.serviceRoleKey, 'Acceso del servidor a la base', e.serviceRoleKey ? null : 'Falta SUPABASE_SERVICE_ROLE_KEY en Vercel.'),
         linea(e.cronSecret && d.cron && d.cron.secreto && !!d.cron.url, 'Recordatorios automáticos',
           (e.cronSecret && d.cron && d.cron.secreto && d.cron.url)

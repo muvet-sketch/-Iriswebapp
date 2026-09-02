@@ -23,7 +23,17 @@ async function dominiosResend() {
       headers: { Authorization: `Bearer ${apiKey}` }
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { error: (data && (data.message || data.name)) || `Resend respondió ${res.status}` };
+    const mensaje = (data && (data.message || data.name)) || '';
+    if (!res.ok) {
+      // "No puedo listar los dominios" NO es lo mismo que "no hay dominios
+      // verificados", y confundirlos hace que el diagnóstico acuse un
+      // problema que no existe. Una API key de tipo "Sending access" —la
+      // opción correcta y más restringida— puede enviar pero no leer
+      // /domains, y responde exactamente esto. Se reporta como
+      // indeterminado, no como fallo.
+      const restringida = res.status === 401 || res.status === 403 || /restricted|permission/i.test(mensaje);
+      return { error: mensaje || `Resend respondió ${res.status}`, restringida, estado: res.status };
+    }
     return {
       dominios: ((data && data.data) || []).map(d => ({
         nombre: d.name,
