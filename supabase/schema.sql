@@ -1244,6 +1244,53 @@ alter table public.establecimientos add column if not exists horario_atencion js
 alter table public.establecimientos add column if not exists duracion_cita_min integer;
 alter table public.establecimientos add column if not exists prevenir_solapamientos boolean not null default false;
 
+-- ── Configuración de la veterinaria: "Perfil fiscal", "Ventas e
+-- inventario", "Sala de espera" y "Sedes vinculadas". Ver la migración
+-- 20260901b_establecimiento_config_fiscal_ventas.sql, donde está el detalle
+-- de por qué cada grupo vive acá y no en su módulo.
+-- Perfil fiscal — con qué identidad factura la clínica (distinta del
+-- nombre comercial de "Información general").
+alter table public.establecimientos add column if not exists fiscal_tipo_persona text;
+alter table public.establecimientos add column if not exists fiscal_tipo_identificacion text;
+alter table public.establecimientos add column if not exists fiscal_numero_identificacion text;
+alter table public.establecimientos add column if not exists fiscal_digito_verificacion text;
+alter table public.establecimientos add column if not exists fiscal_razon_social text;
+alter table public.establecimientos add column if not exists fiscal_apellidos text;
+alter table public.establecimientos add column if not exists fiscal_regimen_iva text;
+-- fiscal_responsabilidades: array de códigos DIAN, ej. ["O-13","O-15"]
+alter table public.establecimientos add column if not exists fiscal_responsabilidades jsonb not null default '[]'::jsonb;
+alter table public.establecimientos add column if not exists fiscal_telefono text;
+alter table public.establecimientos add column if not exists fiscal_correo text;
+alter table public.establecimientos add column if not exists fiscal_direccion text;
+alter table public.establecimientos add column if not exists fiscal_requiere_fe boolean not null default false;
+-- Ventas e inventario — los fact_* son el espejo (prender/apagar) de lo
+-- que se detalla en Ventas > Configuración de facturación.
+alter table public.establecimientos add column if not exists ventas_habilitar boolean not null default true;
+alter table public.establecimientos add column if not exists fact_software_propio boolean not null default false;
+alter table public.establecimientos add column if not exists fact_siigo boolean not null default false;
+alter table public.establecimientos add column if not exists fact_pos_habilitar boolean not null default false;
+alter table public.establecimientos add column if not exists ventas_usar_turnos boolean not null default false;
+alter table public.establecimientos add column if not exists recibos_prevenir_cierre_saldo boolean not null default false;
+alter table public.establecimientos add column if not exists recibos_impresion_tirilla boolean not null default false;
+alter table public.establecimientos add column if not exists recibos_notas text;
+alter table public.establecimientos add column if not exists inv_permitir_sobreventa boolean not null default false;
+alter table public.establecimientos add column if not exists inv_confirmacion_picking boolean not null default false;
+alter table public.establecimientos add column if not exists facturacion_modulos_vinculados jsonb not null default '[]'::jsonb;
+-- Sala de espera — pantalla pública de recepción; los mostrar_* son de
+-- privacidad (tutor y profesional se leen desde la sala), no estéticos.
+alter table public.establecimientos add column if not exists sala_espera_habilitar boolean not null default false;
+alter table public.establecimientos add column if not exists sala_espera_titulo text;
+alter table public.establecimientos add column if not exists sala_espera_mensaje text;
+alter table public.establecimientos add column if not exists sala_espera_mostrar_paciente boolean not null default true;
+alter table public.establecimientos add column if not exists sala_espera_mostrar_tutor boolean not null default false;
+alter table public.establecimientos add column if not exists sala_espera_mostrar_profesional boolean not null default true;
+alter table public.establecimientos add column if not exists sala_espera_mostrar_hora boolean not null default true;
+alter table public.establecimientos add column if not exists sala_espera_refresco_seg integer not null default 30;
+alter table public.establecimientos add column if not exists sala_espera_sonido boolean not null default true;
+-- Sedes vinculadas: [{"id": uuid, "nombre": text}]. Es DIRECTORIO, no
+-- permiso — el acceso a historias entre clínicas sigue siendo la Red IRIS.
+alter table public.establecimientos add column if not exists sedes_vinculadas jsonb not null default '[]'::jsonb;
+
 -- ── STORAGE: bucket `logos-clinica` (logo del establecimiento) ──
 -- Público (igual que `fotos-mascotas`) — por establecimiento, path
 -- "<establecimiento_id>/logo.<ext>", mismo patrón "own folder" que

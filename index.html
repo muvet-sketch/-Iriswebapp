@@ -7802,16 +7802,14 @@
                columnas de `establecimientos` (migración 20260901). -->
           <div class="vetconfig-subview" id="vetconfig-view-localizacion"></div>
           <div class="vetconfig-subview" id="vetconfig-view-agenda"></div>
+          <div class="vetconfig-subview" id="vetconfig-view-fiscal"></div>
+          <div class="vetconfig-subview" id="vetconfig-view-ventasinv"></div>
+          <div class="vetconfig-subview" id="vetconfig-view-salaespera"></div>
+          <div class="vetconfig-subview" id="vetconfig-view-sedes"></div>
 
-          <!-- Sedes vinculadas — confirmado como uso lejano, sin lógica -->
-          <div class="vetconfig-subview" id="vetconfig-view-sedes">
-            <div class="placeholder-content" style="padding:48px 0;">
-              <div class="placeholder-icon"><i data-lucide="building" style="width: 24px; height: 24px;"></i></div>
-              <p class="placeholder-text">Disponible en una futura iteración — soporte multi-sede</p>
-            </div>
-          </div>
-
-          <!-- Placeholder compartido por los 6 subtabs restantes (texto dinámico) -->
+          <!-- Placeholder compartido — hoy solo lo usa "Preferencias"
+               (que lo repinta con renderVetConfigPreferencias); el resto de
+               subtabs ya tiene su propio contenedor arriba. -->
           <div class="vetconfig-subview" id="vetconfig-view-placeholder">
             <div class="placeholder-content" style="padding:48px 0;">
               <div class="placeholder-icon"><i data-lucide="hourglass" style="width: 24px; height: 24px;"></i></div>
@@ -24745,7 +24743,15 @@
       // mascota_fusiones es lo ÚNICO que queda de una ficha unificada: la
       // duplicada se borra y su snapshot vive ahí. Sin esto, el respaldo no
       // permitiría reconstruir qué se fusionó ni deshacerlo a mano.
-      'mascota_contactos', 'mascota_fusiones'
+      'mascota_contactos', 'mascota_fusiones',
+      // La fila de `establecimientos` dejó de ser solo nombre+NIT: hoy
+      // carga la configuración real de la clínica (perfil fiscal, horario
+      // de atención, ventas/inventario, sala de espera, sedes). Un respaldo
+      // que traiga los datos clínicos sin la configuración que los enmarca
+      // no permitiría reconstruir la clínica. Ver el caso especial de
+      // respaldoLeerTablaCompleta(): esta es la única tabla que no se filtra
+      // por establecimiento_id, porque su propia PK ES el establecimiento.
+      'establecimientos'
     ];
 
     function respaldoUltimoKey(establecimientoId) {
@@ -24775,10 +24781,13 @@
       const PAGINA = 1000;
       const filas = [];
       for (let desde = 0; ; desde += PAGINA) {
+        // `establecimientos` es la única entrada de RESPALDO_TABLAS cuya
+        // PK ES el establecimiento; el resto cuelga de él por FK.
+        const columnaFiltro = tabla === 'establecimientos' ? 'id' : 'establecimiento_id';
         const { data, error } = await window.supabase
           .from(tabla)
           .select('*')
-          .eq('establecimiento_id', establecimientoId)
+          .eq(columnaFiltro, establecimientoId)
           .order('id', { ascending: true })
           .range(desde, desde + PAGINA - 1);
         if (error) throw error;
@@ -24923,10 +24932,10 @@
     }
 
     // ── A.1 — CONFIGURACIÓN DE LA VETERINARIA ──────────────────────
-    // Solo "Información general" tiene contenido real en esta iteración;
-    // los demás 6 subtabs comparten un mismo panel placeholder (texto
-    // dinámico) y "Sedes vinculadas" tiene el suyo propio, confirmado
-    // como uso lejano (soporte multi-sede) — ver CLAUDE.md.
+    // Los 8 subtabs tienen contenido real; cada uno pinta en su propio
+    // contenedor #vetconfig-view-<key> (ver VETCONFIG_RENDERERS dentro de
+    // switchVetConfigTab). El único que sigue usando el panel placeholder
+    // compartido es "Preferencias", que lo repinta entero.
     let CLINIC_INFO = {
       nombre: 'Clínica Felinos & Caninos',
       nit: '900.123.456-7',
@@ -24941,31 +24950,31 @@
       logoUrl: null,
       logoPath: null
     };
-    const VETCONFIG_PLACEHOLDER_LABELS = {
-      localizacion: 'Localización y servicios',
-      agenda: 'Agenda y disponibilidad',
-      fiscal: 'Perfil fiscal',
-      ventasinv: 'Ventas e inventario',
-      preferencias: 'Preferencias',
-      salaespera: 'Sala de espera'
-    };
-
     function switchVetConfigTab(tabKey) {
+      // El mapa vive DENTRO de la función a propósito: como `const` de nivel
+      // superior quedaría en temporal dead zone si alguna vez se llamara a
+      // esta función antes de esa línea (la trampa ya sufrida dos veces, ver
+      // CLAUDE.md). Las `function` de abajo sí están hoisted.
+      const VETCONFIG_RENDERERS = {
+        general: renderVetConfigGeneral,
+        localizacion: renderVetConfigLocalizacion,
+        agenda: renderVetConfigAgenda,
+        fiscal: renderVetConfigFiscal,
+        ventasinv: renderVetConfigVentasInv,
+        salaespera: renderVetConfigSalaEspera,
+        sedes: renderVetConfigSedes
+      };
       document.querySelectorAll('.vetconfig-tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-vetconfig-tab') === tabKey);
       });
-      const isGeneral = tabKey === 'general';
-      const isSedes = tabKey === 'sedes';
-      const isLocalizacion = tabKey === 'localizacion';
-      const isAgenda = tabKey === 'agenda';
-      if (isGeneral) renderVetConfigGeneral();
-      if (isLocalizacion) renderVetConfigLocalizacion();
-      if (isAgenda) renderVetConfigAgenda();
-      document.getElementById('vetconfig-view-general').classList.toggle('active', isGeneral);
-      document.getElementById('vetconfig-view-sedes').classList.toggle('active', isSedes);
-      document.getElementById('vetconfig-view-localizacion').classList.toggle('active', isLocalizacion);
-      document.getElementById('vetconfig-view-agenda').classList.toggle('active', isAgenda);
-      const showPlaceholder = !isGeneral && !isSedes && !isLocalizacion && !isAgenda;
+      const render = VETCONFIG_RENDERERS[tabKey];
+      if (render) render();
+      document.querySelectorAll('#admin-outer-config .vetconfig-subview').forEach(view => {
+        view.classList.toggle('active', view.id === `vetconfig-view-${tabKey}`);
+      });
+      // Solo "Preferencias" (y cualquier subtab futuro que todavía no tenga
+      // renderer) cae al panel placeholder compartido.
+      const showPlaceholder = !render;
       const placeholderEl = document.getElementById('vetconfig-view-placeholder');
       placeholderEl.classList.toggle('active', showPlaceholder);
       if (showPlaceholder) {
@@ -24979,7 +24988,7 @@
         } else {
           placeholderEl.innerHTML = `<div class="placeholder-content" style="padding:48px 0;">
             <div class="placeholder-icon"><i data-lucide="settings" style="width:28px;height:28px;"></i></div>
-            <p class="placeholder-text" id="vetconfig-placeholder-text">${VETCONFIG_PLACEHOLDER_LABELS[tabKey]} — Pendiente de definición</p>
+            <p class="placeholder-text" id="vetconfig-placeholder-text">Pendiente de definición</p>
           </div>`;
           lucide.createIcons();
         }
@@ -25055,14 +25064,9 @@
       // "Datos fiscales de la clínica" (Ventas > Configuración de
       // facturación) tenía razón social/NIT quemados en el HTML estático
       // (nunca leídos desde CLINIC_INFO) — fuga de datos entre clínicas
-      // detectada en la auditoría de la Tarea 3. Se resuelve reutilizando
-      // los mismos campos de CLINIC_INFO, no un mecanismo paralelo.
-      const factRazonSocial = document.getElementById('config-fact-razon-social');
-      const factNit = document.getElementById('config-fact-nit');
-      const factDireccion = document.getElementById('config-fact-direccion');
-      if (factRazonSocial) factRazonSocial.value = CLINIC_INFO.nombre || '';
-      if (factNit) factNit.value = CLINIC_INFO.nit || '';
-      if (factDireccion) factDireccion.value = '';
+      // detectada en la auditoría de la Tarea 3. Hoy la fuente es el subtab
+      // "Perfil fiscal" con CLINIC_INFO de respaldo, en un solo lugar.
+      sincronizarDatosFiscalesFacturacion();
     }
 
     function guardarVetConfigGeneral() {
@@ -25182,7 +25186,51 @@
         serviciosOfrecidos: [], especiesAtendidas: [],
         precioConsulta: '', moneda: 'COP', zonaHoraria: 'America/Bogota',
         horarioAtencion: [{ dias: ['lun', 'mar', 'mie', 'jue', 'vie'], apertura: '08:00', cierre: '18:00' }],
-        duracionCitaMin: 30, prevenirSolapamientos: false
+        duracionCitaMin: 30, prevenirSolapamientos: false,
+
+        // Perfil fiscal — con qué identidad factura la clínica. Es
+        // deliberadamente distinto de CLINIC_INFO.nombre/nit ("Información
+        // general", que es el nombre comercial): una clínica puede facturar
+        // a nombre de otra razón social o de una persona natural.
+        fiscalTipoPersona: 'juridica',
+        fiscalTipoIdentificacion: 'NIT',
+        fiscalNumeroIdentificacion: '',
+        fiscalDigitoVerificacion: '',
+        fiscalRazonSocial: '',
+        fiscalApellidos: '',
+        fiscalRegimenIva: 'responsable',
+        fiscalResponsabilidades: [],
+        fiscalTelefono: '',
+        fiscalCorreo: '',
+        fiscalDireccion: '',
+        fiscalRequiereFE: false,
+
+        // Ventas e inventario
+        ventasHabilitar: true,
+        factSoftwarePropio: false,
+        factSiigo: false,
+        factPosHabilitar: false,
+        ventasUsarTurnos: false,
+        recibosPrevenirCierreSaldo: false,
+        recibosImpresionTirilla: false,
+        recibosNotas: '',
+        invPermitirSobreventa: false,
+        invConfirmacionPicking: false,
+        facturacionModulosVinculados: [],
+
+        // Sala de espera (pantalla pública de recepción)
+        salaEsperaHabilitar: false,
+        salaEsperaTitulo: '',
+        salaEsperaMensaje: '',
+        salaEsperaMostrarPaciente: true,
+        salaEsperaMostrarTutor: false,
+        salaEsperaMostrarProfesional: true,
+        salaEsperaMostrarHora: true,
+        salaEsperaRefrescoSeg: 30,
+        salaEsperaSonido: true,
+
+        // Sedes vinculadas — directorio, no permiso (ver renderVetConfigSedes)
+        sedesVinculadas: []
       };
     }
 
@@ -25199,6 +25247,11 @@
       const d = establecimientoConfigDefaults();
       if (!estab) { ESTABLECIMIENTO_CONFIG = d; return; }
       const arr = v => Array.isArray(v) ? v : [];
+      // Las columnas booleanas son NOT NULL con default, pero una sesión
+      // abierta ANTES de correr la migración las trae como undefined: ahí
+      // manda el default de la app, no `false` (ventas_habilitar arranca en
+      // true — apagarlo por accidente escondería el módulo de Ventas).
+      const bool = (v, fallback) => (v === undefined || v === null) ? fallback : !!v;
       const horario = arr(estab.horario_atencion)
         .filter(b => b && Array.isArray(b.dias) && b.apertura && b.cierre)
         .map(b => ({ dias: b.dias.slice(), apertura: b.apertura, cierre: b.cierre }));
@@ -25214,7 +25267,44 @@
         zonaHoraria: estab.zona_horaria || d.zonaHoraria,
         horarioAtencion: horario.length ? horario : d.horarioAtencion,
         duracionCitaMin: Number(estab.duracion_cita_min) > 0 ? Number(estab.duracion_cita_min) : d.duracionCitaMin,
-        prevenirSolapamientos: !!estab.prevenir_solapamientos
+        prevenirSolapamientos: !!estab.prevenir_solapamientos,
+
+        fiscalTipoPersona: estab.fiscal_tipo_persona || d.fiscalTipoPersona,
+        fiscalTipoIdentificacion: estab.fiscal_tipo_identificacion || d.fiscalTipoIdentificacion,
+        fiscalNumeroIdentificacion: estab.fiscal_numero_identificacion || '',
+        fiscalDigitoVerificacion: estab.fiscal_digito_verificacion || '',
+        fiscalRazonSocial: estab.fiscal_razon_social || '',
+        fiscalApellidos: estab.fiscal_apellidos || '',
+        fiscalRegimenIva: estab.fiscal_regimen_iva || d.fiscalRegimenIva,
+        fiscalResponsabilidades: arr(estab.fiscal_responsabilidades),
+        fiscalTelefono: estab.fiscal_telefono || '',
+        fiscalCorreo: estab.fiscal_correo || '',
+        fiscalDireccion: estab.fiscal_direccion || '',
+        fiscalRequiereFE: bool(estab.fiscal_requiere_fe, d.fiscalRequiereFE),
+
+        ventasHabilitar: bool(estab.ventas_habilitar, d.ventasHabilitar),
+        factSoftwarePropio: bool(estab.fact_software_propio, d.factSoftwarePropio),
+        factSiigo: bool(estab.fact_siigo, d.factSiigo),
+        factPosHabilitar: bool(estab.fact_pos_habilitar, d.factPosHabilitar),
+        ventasUsarTurnos: bool(estab.ventas_usar_turnos, d.ventasUsarTurnos),
+        recibosPrevenirCierreSaldo: bool(estab.recibos_prevenir_cierre_saldo, d.recibosPrevenirCierreSaldo),
+        recibosImpresionTirilla: bool(estab.recibos_impresion_tirilla, d.recibosImpresionTirilla),
+        recibosNotas: estab.recibos_notas || '',
+        invPermitirSobreventa: bool(estab.inv_permitir_sobreventa, d.invPermitirSobreventa),
+        invConfirmacionPicking: bool(estab.inv_confirmacion_picking, d.invConfirmacionPicking),
+        facturacionModulosVinculados: arr(estab.facturacion_modulos_vinculados),
+
+        salaEsperaHabilitar: bool(estab.sala_espera_habilitar, d.salaEsperaHabilitar),
+        salaEsperaTitulo: estab.sala_espera_titulo || '',
+        salaEsperaMensaje: estab.sala_espera_mensaje || '',
+        salaEsperaMostrarPaciente: bool(estab.sala_espera_mostrar_paciente, d.salaEsperaMostrarPaciente),
+        salaEsperaMostrarTutor: bool(estab.sala_espera_mostrar_tutor, d.salaEsperaMostrarTutor),
+        salaEsperaMostrarProfesional: bool(estab.sala_espera_mostrar_profesional, d.salaEsperaMostrarProfesional),
+        salaEsperaMostrarHora: bool(estab.sala_espera_mostrar_hora, d.salaEsperaMostrarHora),
+        salaEsperaRefrescoSeg: Number(estab.sala_espera_refresco_seg) >= 5 ? Number(estab.sala_espera_refresco_seg) : d.salaEsperaRefrescoSeg,
+        salaEsperaSonido: bool(estab.sala_espera_sonido, d.salaEsperaSonido),
+
+        sedesVinculadas: arr(estab.sedes_vinculadas).filter(x => x && x.id)
       };
     }
 
@@ -25512,6 +25602,765 @@
       }
     }
 
+
+    // ── A.1.3 — "Perfil fiscal", "Ventas e inventario", "Sala de espera"
+    // y "Sedes vinculadas" ──────────────────────────────────────────
+    // Los cuatro siguen exactamente el patrón de Localización/Agenda de
+    // arriba: se pintan por JS en su propio #vetconfig-view-<key>, leen de
+    // ESTABLECIMIENTO_CONFIG y escriben con persistirEstablecimientoConfig()
+    // (update bloqueante + chequeo "0 filas = no eres admin"). Ninguno usa
+    // localStorage: son configuración de la CLÍNICA, no del navegador — a
+    // diferencia de Preferencias, que sí es por dispositivo.
+    const CONFIG_TIPOS_PERSONA = [['juridica', 'Persona jurídica'], ['natural', 'Persona natural']];
+    const CONFIG_TIPOS_IDENTIFICACION = ['NIT', 'Cédula de ciudadanía', 'Cédula de extranjería', 'Pasaporte', 'Tarjeta de identidad', 'NIT de otro país', 'NUIP', 'Documento de identificación extranjero'];
+    const CONFIG_REGIMENES_IVA = [
+      ['responsable', 'Responsable de IVA'],
+      ['no_responsable', 'No responsable de IVA'],
+      ['gran_contribuyente', 'Gran contribuyente'],
+      ['regimen_simple', 'Régimen simple de tributación']
+    ];
+    // Códigos DIAN. Se guardan como código + etiqueta en un solo string
+    // porque es exactamente lo que el proveedor de facturación electrónica
+    // espera ver impreso — separarlos obligaría a un segundo catálogo.
+    const CONFIG_RESPONSABILIDADES_FISCALES = [
+      'O-13 Gran contribuyente',
+      'O-15 Autorretenedor',
+      'O-23 Agente de retención IVA',
+      'O-47 Régimen simple de tributación',
+      'O-48 Impuesto sobre las ventas — IVA',
+      'O-49 No responsable de IVA',
+      'O-14 Informante de exógena',
+      'R-99-PN No aplica / otros'
+    ];
+
+    function renderVetConfigFiscal() {
+      const cont = document.getElementById('vetconfig-view-fiscal');
+      if (!cont) return;
+      const c = ESTABLECIMIENTO_CONFIG;
+      const esNatural = c.fiscalTipoPersona === 'natural';
+      cont.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="receipt" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Identificación tributaria</span>
+          </div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:16px;max-width:760px;">
+            <p style="font-size:12.5px;color:var(--text-2);margin:0;line-height:1.5;">
+              Con estos datos se identifica la clínica en sus facturas. Son independientes del nombre
+              comercial de <strong>Información general</strong>: alimentan la tarjeta
+              "Datos fiscales de la clínica" de <strong>Ventas &gt; Configuración de facturación</strong>.
+            </p>
+            <div class="med-block-grid">
+              <div class="input-group">
+                <label class="input-label" for="cfg-fis-tipo-persona">Tipo de persona</label>
+                <select class="soap-select-control" id="cfg-fis-tipo-persona" onchange="onChangeFiscalTipoPersona()">
+                  ${CONFIG_TIPOS_PERSONA.map(([v, l]) => `<option value="${v}" ${c.fiscalTipoPersona === v ? 'selected' : ''}>${l}</option>`).join('')}
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="cfg-fis-tipo-id">Tipo de identificación</label>
+                <select class="soap-select-control" id="cfg-fis-tipo-id">
+                  ${CONFIG_TIPOS_IDENTIFICACION.map(t => `<option value="${escapeHtml(t)}" ${c.fiscalTipoIdentificacion === t ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="cfg-fis-numero">Número de identificación</label>
+                <input type="text" class="input-control" style="padding-left:12px;" id="cfg-fis-numero" value="${escapeHtml(c.fiscalNumeroIdentificacion)}" placeholder="900123456">
+                <span style="font-size:11.5px;color:var(--text-2);margin-top:4px;">Visible en los documentos, sin dígito de verificación.</span>
+              </div>
+            </div>
+            <div class="input-group" style="max-width:190px;">
+              <label class="input-label" for="cfg-fis-dv">Dígito de verificación</label>
+              <input type="text" inputmode="numeric" maxlength="1" class="input-control" style="padding-left:12px;" id="cfg-fis-dv" value="${escapeHtml(c.fiscalDigitoVerificacion)}" placeholder="7">
+            </div>
+            <div class="med-block-grid">
+              <div class="input-group">
+                <label class="input-label" for="cfg-fis-razon" id="cfg-fis-razon-label">${esNatural ? 'Nombres' : 'Nombre o razón social'}</label>
+                <input type="text" class="input-control" style="padding-left:12px;" id="cfg-fis-razon" value="${escapeHtml(c.fiscalRazonSocial)}">
+              </div>
+              <div class="input-group" id="cfg-fis-apellidos-wrap" style="${esNatural ? '' : 'display:none;'}">
+                <label class="input-label" for="cfg-fis-apellidos">Apellidos</label>
+                <input type="text" class="input-control" style="padding-left:12px;" id="cfg-fis-apellidos" value="${escapeHtml(c.fiscalApellidos)}">
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="cfg-fis-regimen">Régimen de IVA</label>
+                <select class="soap-select-control" id="cfg-fis-regimen">
+                  ${CONFIG_REGIMENES_IVA.map(([v, l]) => `<option value="${v}" ${c.fiscalRegimenIva === v ? 'selected' : ''}>${l}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="input-label" style="display:block;margin-bottom:8px;">Responsabilidades fiscales</label>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;">
+                ${CONFIG_RESPONSABILIDADES_FISCALES.map(r => `
+                  <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-1);cursor:pointer;">
+                    <input type="checkbox" data-cfg-responsabilidad value="${escapeHtml(r)}" ${c.fiscalResponsabilidades.indexOf(r) !== -1 ? 'checked' : ''}>
+                    <span>${escapeHtml(r)}</span>
+                  </label>`).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="mail" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Contacto para facturación</span>
+          </div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:16px;max-width:760px;">
+            <div class="med-block-grid">
+              <div class="input-group">
+                <label class="input-label" for="cfg-fis-direccion">Dirección</label>
+                <input type="text" class="input-control" style="padding-left:12px;" id="cfg-fis-direccion" value="${escapeHtml(c.fiscalDireccion)}" placeholder="Calle 00 # 00-00">
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="cfg-fis-telefono">Teléfono</label>
+                <input type="text" class="input-control" style="padding-left:12px;" id="cfg-fis-telefono" value="${escapeHtml(c.fiscalTelefono)}" placeholder="Número de contacto">
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="cfg-fis-correo">Correo electrónico</label>
+                <input type="email" class="input-control" style="padding-left:12px;" id="cfg-fis-correo" value="${escapeHtml(c.fiscalCorreo)}" placeholder="facturacion@clinica.com">
+              </div>
+            </div>
+            <label class="mini-toggle" style="align-items:flex-start;">
+              <input type="checkbox" id="cfg-fis-fe" class="mini-toggle-input" ${c.fiscalRequiereFE ? 'checked' : ''}>
+              <span class="mini-toggle-slider" style="margin-top:2px;"></span>
+              <span class="mini-toggle-text" style="font-weight:500;line-height:1.5;">
+                Requiero factura electrónica y declaro que la información registrada es correcta para dicho propósito.
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div style="padding:4px 0 24px;">
+          <button type="button" class="btn-primary" onclick="guardarVetConfigFiscal()">Guardar cambios</button>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    // Persona natural factura con nombres + apellidos; la jurídica con una
+    // sola razón social. Acá solo cambia la etiqueta y la visibilidad — el
+    // valor de apellidos NO se borra: alternar el select por error no puede
+    // perder un dato ya digitado. Descartarlo es decisión de guardar.
+    function onChangeFiscalTipoPersona() {
+      const esNatural = document.getElementById('cfg-fis-tipo-persona').value === 'natural';
+      document.getElementById('cfg-fis-razon-label').textContent = esNatural ? 'Nombres' : 'Nombre o razón social';
+      document.getElementById('cfg-fis-apellidos-wrap').style.display = esNatural ? '' : 'none';
+    }
+
+    async function guardarVetConfigFiscal() {
+      const tipoPersona = document.getElementById('cfg-fis-tipo-persona').value;
+      const correo = document.getElementById('cfg-fis-correo').value.trim();
+      if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) { showToast('El correo de facturación no es válido'); return; }
+      const dv = document.getElementById('cfg-fis-dv').value.trim();
+      if (dv && !/^[0-9]$/.test(dv)) { showToast('El dígito de verificación debe ser un solo número'); return; }
+      const patch = {
+        fiscal_tipo_persona: tipoPersona,
+        fiscal_tipo_identificacion: document.getElementById('cfg-fis-tipo-id').value,
+        fiscal_numero_identificacion: document.getElementById('cfg-fis-numero').value.trim() || null,
+        fiscal_digito_verificacion: dv || null,
+        fiscal_razon_social: document.getElementById('cfg-fis-razon').value.trim() || null,
+        // Una persona jurídica no tiene apellidos: dejarlos guardados haría
+        // que reaparecieran al volver a "natural" y, peor, que se imprimieran.
+        fiscal_apellidos: tipoPersona === 'natural' ? (document.getElementById('cfg-fis-apellidos').value.trim() || null) : null,
+        fiscal_regimen_iva: document.getElementById('cfg-fis-regimen').value,
+        fiscal_responsabilidades: Array.from(document.querySelectorAll('[data-cfg-responsabilidad]:checked')).map(el => el.value),
+        fiscal_telefono: document.getElementById('cfg-fis-telefono').value.trim() || null,
+        fiscal_correo: correo || null,
+        fiscal_direccion: document.getElementById('cfg-fis-direccion').value.trim() || null,
+        fiscal_requiere_fe: document.getElementById('cfg-fis-fe').checked
+      };
+      const btn = document.querySelector('#vetconfig-view-fiscal .btn-primary');
+      if (btn) btn.disabled = true;
+      const ok = await persistirEstablecimientoConfig(patch, 'Perfil fiscal guardado');
+      if (btn) btn.disabled = false;
+      if (ok) {
+        renderVetConfigFiscal();
+        sincronizarDatosFiscalesFacturacion();
+      }
+    }
+
+    // Nombre completo con el que la clínica factura (jurídica: razón social;
+    // natural: nombres + apellidos). Cae al nombre comercial de CLINIC_INFO
+    // mientras el perfil fiscal esté vacío, que es como se comportaba antes.
+    function nombreFiscalEstablecimiento() {
+      const c = ESTABLECIMIENTO_CONFIG;
+      const partes = [c.fiscalRazonSocial, c.fiscalTipoPersona === 'natural' ? c.fiscalApellidos : ''];
+      const nombre = partes.filter(Boolean).join(' ').trim();
+      return nombre || CLINIC_INFO.nombre || '';
+    }
+
+    // Identificación con dígito de verificación: "900123456-7".
+    function identificacionFiscalEstablecimiento() {
+      const c = ESTABLECIMIENTO_CONFIG;
+      if (!c.fiscalNumeroIdentificacion) return CLINIC_INFO.nit || '';
+      return c.fiscalDigitoVerificacion
+        ? `${c.fiscalNumeroIdentificacion}-${c.fiscalDigitoVerificacion}`
+        : c.fiscalNumeroIdentificacion;
+    }
+
+    // "Datos fiscales de la clínica" (Ventas > Configuración de facturación)
+    // tenía razón social/NIT quemados en el HTML y después pasó a leerlos de
+    // CLINIC_INFO (ver renderVetConfigGeneral). La fuente real es ahora el
+    // perfil fiscal, con CLINIC_INFO de respaldo: un solo lugar donde se
+    // edita, dos pantallas donde se ve.
+    function sincronizarDatosFiscalesFacturacion() {
+      const razon = document.getElementById('config-fact-razon-social');
+      const nit = document.getElementById('config-fact-nit');
+      const direccion = document.getElementById('config-fact-direccion');
+      if (razon) razon.value = nombreFiscalEstablecimiento();
+      if (nit) nit.value = identificacionFiscalEstablecimiento();
+      if (direccion) direccion.value = ESTABLECIMIENTO_CONFIG.fiscalDireccion || ESTABLECIMIENTO_CONFIG.direccion || '';
+    }
+
+    // ── Subtab: Ventas e inventario ────────────────────────────────
+    // Módulos clínicos cuyos registros pueden proponer cargos en la cuenta
+    // del tutor. Las claves son las del sidebar del Consultorio.
+    const CONFIG_MODULOS_FACTURABLES = [
+      ['consultas', 'Consultas'],
+      ['vacunaciones', 'Vacunaciones'],
+      ['desparasitaciones', 'Desparasitaciones'],
+      ['cirugias', 'Cirugías / procedimientos'],
+      ['hospitalizaciones', 'Hospitalizaciones / ambulatorios'],
+      ['examenes', 'Exámenes de laboratorio'],
+      ['imagenes', 'Imágenes diagnósticas'],
+      ['peluqueria', 'Peluquería y spa'],
+      ['guarderia', 'Guardería']
+    ];
+
+    // Fila etiqueta | interruptor | descripción — el MISMO markup de
+    // .permisos-item-row que ya usan Privilegios y Preferencias, para no
+    // inventar un tercer estilo de lista de ajustes en la misma pantalla.
+    function vetConfigToggleRowHTML(id, label, desc, checked, extraAttrs) {
+      return `
+        <div class="permisos-item-row">
+          <span class="permisos-item-label">${label}</span>
+          <div class="permisos-item-control">
+            <label class="mini-toggle">
+              <input type="checkbox" id="${id}" class="mini-toggle-input" ${checked ? 'checked' : ''} ${extraAttrs || ''}>
+              <span class="mini-toggle-slider"></span>
+            </label>
+          </div>
+          <span class="permisos-item-desc">${desc}</span>
+        </div>`;
+    }
+
+    function renderVetConfigVentasInv() {
+      const cont = document.getElementById('vetconfig-view-ventasinv');
+      if (!cont) return;
+      const c = ESTABLECIMIENTO_CONFIG;
+      cont.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="shopping-cart" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Ventas, recibos y facturas</span>
+          </div>
+          <div style="padding:20px;">
+            <div class="permisos-items-list">
+              ${vetConfigToggleRowHTML('cfg-vi-ventas', 'Habilitar', 'Habilita los controles de emisión de recibos y facturas en el módulo Ventas.', c.ventasHabilitar)}
+              ${vetConfigToggleRowHTML('cfg-vi-turnos', 'Usar turnos', 'Limita el registro de ingresos y egresos a quien tenga un turno abierto, para agrupar por turno la información de ventas.', c.ventasUsarTurnos)}
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="cloud" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Integración de facturación</span>
+          </div>
+          <div style="padding:20px;">
+            <div class="permisos-items-list">
+              ${vetConfigToggleRowHTML('cfg-vi-propio', 'Software propio (IRIS)', 'Emisión de documentos electrónicos (factura, nota crédito y documento soporte) desde IRIS ante la DIAN. Requiere habilitación previa.', c.factSoftwarePropio)}
+              ${vetConfigToggleRowHTML('cfg-vi-siigo', 'Siigo', 'Integración con Siigo Nube para emitir facturas y notas crédito. Requiere una suscripción de Siigo con acceso API.', c.factSiigo)}
+              ${vetConfigToggleRowHTML('cfg-vi-pos', 'Facturación POS', 'Habilita los controles de facturación en punto de venta. Requiere configurar al menos un dispositivo y una resolución.', c.factPosHabilitar)}
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
+              <button type="button" class="btn-outline" onclick="irAConfiguracionFacturacion('siigo')">
+                <i data-lucide="settings-2" style="width:14px;height:14px;"></i> Ir a configuración de facturación
+              </button>
+              <button type="button" class="btn-outline" onclick="irAConfiguracionFacturacion('pos')">
+                <i data-lucide="settings-2" style="width:14px;height:14px;"></i> Ir a configuración POS
+              </button>
+            </div>
+            <p style="font-size:12px;color:var(--text-2);margin-top:12px;">
+              Las credenciales, resoluciones y dispositivos se administran en
+              <strong>Ventas &gt; Configuración de facturación</strong>; aquí solo se decide qué método está activo.
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="receipt" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Recibos</span>
+          </div>
+          <div style="padding:20px;">
+            <div class="permisos-items-list">
+              ${vetConfigToggleRowHTML('cfg-vi-prevenir-saldo', 'Prevenir cierre con saldo pendiente', 'Cuando está activo, no se podrán cerrar cuentas de contado que aún tengan saldo pendiente.', c.recibosPrevenirCierreSaldo)}
+              ${vetConfigToggleRowHTML('cfg-vi-tirilla', 'Impresión tirilla', 'Usar formato compatible con impresoras térmicas / de tirilla / POS.', c.recibosImpresionTirilla)}
+            </div>
+            <div class="input-group" style="margin-top:16px;max-width:640px;">
+              <label class="input-label" for="cfg-vi-notas">Notas y pie de página</label>
+              <textarea id="cfg-vi-notas" class="input-control" style="padding-left:12px;min-height:80px;resize:vertical;" placeholder="Texto fijo al pie de los documentos de venta impresos.">${escapeHtml(c.recibosNotas)}</textarea>
+              <span style="font-size:11.5px;color:var(--text-2);margin-top:4px;">
+                Distinto del <em>mensaje predeterminado de observaciones</em> de Ventas &gt; Configuración de
+                facturación: aquel precarga un campo editable en cada factura, este es el pie fijo del documento.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="package" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Inventario</span>
+          </div>
+          <div style="padding:20px;">
+            <div class="permisos-items-list">
+              ${vetConfigToggleRowHTML('cfg-vi-sobreventa', 'Permitir sobre venta', 'Permite vender más unidades de las disponibles para los ítems cuantificables, generando existencias negativas.', c.invPermitirSobreventa)}
+              ${vetConfigToggleRowHTML('cfg-vi-picking', 'Confirmación de entrega (picking)', 'Los productos cuantificables de un documento de venta quedan pendientes de confirmación; un usuario autorizado confirma la entrega o la devolución.', c.invConfirmacionPicking)}
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="link" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Módulos vinculados a facturación</span>
+          </div>
+          <div style="padding:20px;">
+            <p style="font-size:12.5px;color:var(--text-2);margin:0 0 14px;line-height:1.5;">
+              Módulos clínicos cuyos registros deben proponer los cargos correspondientes en la cuenta del tutor.
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;">
+              ${CONFIG_MODULOS_FACTURABLES.map(([k, l]) => `
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-1);cursor:pointer;">
+                  <input type="checkbox" data-cfg-modulo-fact value="${k}" ${c.facturacionModulosVinculados.indexOf(k) !== -1 ? 'checked' : ''}>
+                  <span>${l}</span>
+                </label>`).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:4px 0 24px;">
+          <button type="button" class="btn-primary" onclick="guardarVetConfigVentasInv()">Guardar cambios</button>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    // Salta al módulo donde se configura el detalle. `pane` es la tab interna
+    // de "Método de facturación electrónica" (siigo | pos), no una vista
+    // aparte: abrirVentasView pinta la pantalla y switchFactConfigTab deja
+    // arriba la mitad correcta.
+    function irAConfiguracionFacturacion(pane) {
+      abrirVentasView('config-facturacion');
+      switchFactConfigTab(pane === 'pos' ? 'pos' : 'siigo');
+      const cont = document.getElementById('ventas-view-config-facturacion');
+      if (cont) cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function guardarVetConfigVentasInv() {
+      const patch = {
+        ventas_habilitar: document.getElementById('cfg-vi-ventas').checked,
+        ventas_usar_turnos: document.getElementById('cfg-vi-turnos').checked,
+        fact_software_propio: document.getElementById('cfg-vi-propio').checked,
+        fact_siigo: document.getElementById('cfg-vi-siigo').checked,
+        fact_pos_habilitar: document.getElementById('cfg-vi-pos').checked,
+        recibos_prevenir_cierre_saldo: document.getElementById('cfg-vi-prevenir-saldo').checked,
+        recibos_impresion_tirilla: document.getElementById('cfg-vi-tirilla').checked,
+        recibos_notas: document.getElementById('cfg-vi-notas').value.trim() || null,
+        inv_permitir_sobreventa: document.getElementById('cfg-vi-sobreventa').checked,
+        inv_confirmacion_picking: document.getElementById('cfg-vi-picking').checked,
+        facturacion_modulos_vinculados: Array.from(document.querySelectorAll('[data-cfg-modulo-fact]:checked')).map(el => el.value)
+      };
+      const btn = document.querySelector('#vetconfig-view-ventasinv .btn-primary');
+      if (btn) btn.disabled = true;
+      const ok = await persistirEstablecimientoConfig(patch, 'Ventas e inventario guardado');
+      if (btn) btn.disabled = false;
+      if (ok) {
+        renderVetConfigVentasInv();
+        // El toggle POS de Ventas > Configuración de facturación es el mismo
+        // ajuste visto desde el otro lado: si esa pantalla ya está montada,
+        // se deja al día en vez de que muestre lo contrario.
+        const posToggle = document.getElementById('pos-habilitar-toggle');
+        if (posToggle) posToggle.checked = ESTABLECIMIENTO_CONFIG.factPosHabilitar;
+      }
+    }
+
+    // ── Subtab: Sala de espera ─────────────────────────────────────
+    // Pantalla pública que se proyecta en recepción con los turnos del día.
+    // Sale de AGENDA_EVENTOS, no de un array propio: quien agenda ya
+    // registró ahí a quién se atiende y cuándo, y un segundo listado
+    // paralelo se desincronizaría con el primer cambio de cita.
+    let salaEsperaWin = null;
+    let salaEsperaTimer = null;
+    let salaEsperaAudioCtx = null;
+    // Ids ya anunciados con sonido: sin esto sonaría en cada refresco
+    // mientras el paciente siga "En curso", no una vez al llamarlo.
+    let salaEsperaAnunciados = new Set();
+
+    // Eventos de HOY que siguen en juego. Completada/No asistió/Cancelada
+    // desaparecen del tablero — nadie en la sala está esperando por ellos.
+    function salaEsperaEventosDeHoy() {
+      const hoy = isoDateOnly(new Date());
+      return (AGENDA_EVENTOS || [])
+        .filter(e => e && !e.soloEspacio && e.startISO && e.startISO.slice(0, 10) === hoy
+          && ['programada', 'confirmada', 'en_curso'].indexOf(e.estado) !== -1)
+        .sort((a, b) => (a.sinHora ? 1 : 0) - (b.sinHora ? 1 : 0) || a.startISO.localeCompare(b.startISO));
+    }
+
+    function salaEsperaNombreProfesional(encargadoId) {
+      const u = USUARIOS_SISTEMA.find(x => Number(x.id) === Number(encargadoId));
+      return u ? u.nombre : '';
+    }
+
+    // Cuerpo del tablero. Lo comparten la previsualización del subtab y la
+    // ventana proyectada — una sola fuente para las dos, o divergen.
+    function salaEsperaBoardHTML(cfg) {
+      const eventos = salaEsperaEventosDeHoy();
+      const titulo = cfg.salaEsperaTitulo || CLINIC_INFO.nombre || 'Sala de espera';
+      const filas = eventos.map(e => {
+        const enCurso = e.estado === 'en_curso';
+        const paciente = (e.petKey && patientData[e.petKey]) ? patientData[e.petKey].name : (e.title || '');
+        const celdas = [];
+        if (cfg.salaEsperaMostrarHora) celdas.push(`<span class="se-hora">${e.sinHora ? '—' : e.startISO.slice(11, 16)}</span>`);
+        if (cfg.salaEsperaMostrarPaciente) celdas.push(`<span class="se-paciente">${escapeHtml(paciente)}</span>`);
+        if (cfg.salaEsperaMostrarTutor) celdas.push(`<span class="se-dato">${escapeHtml(e.propietario || '')}</span>`);
+        if (cfg.salaEsperaMostrarProfesional) celdas.push(`<span class="se-dato">${escapeHtml(salaEsperaNombreProfesional(e.encargadoId))}</span>`);
+        celdas.push(`<span class="se-estado ${enCurso ? 'se-estado-curso' : ''}">${enCurso ? 'Pase a consulta' : 'En espera'}</span>`);
+        return `<li class="se-fila ${enCurso ? 'se-fila-curso' : ''}">${celdas.join('')}</li>`;
+      }).join('');
+      return `
+        <header class="se-header">
+          <h1>${escapeHtml(titulo)}</h1>
+          ${cfg.salaEsperaMensaje ? `<p class="se-mensaje">${escapeHtml(cfg.salaEsperaMensaje)}</p>` : ''}
+        </header>
+        <ul class="se-lista">
+          ${filas || '<li class="se-vacio">No hay pacientes en espera en este momento.</li>'}
+        </ul>
+        <footer class="se-footer">Actualizado ${new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</footer>
+      `;
+    }
+
+    // Hoja de estilo del tablero. Se inyecta tal cual en la ventana
+    // proyectada (que no comparte el CSS de la app) y, con los selectores
+    // prefijados, dentro de la previsualización del subtab. Los colores
+    // fijos son el fallback para la ventana nueva; el acento real se pasa
+    // como variable desde abrirPantallaSalaEspera().
+    function salaEsperaBoardCSS(scope) {
+      const s = scope ? scope + ' ' : '';
+      return `
+        ${s}.se-header { padding: 18px 24px; border-bottom: 2px solid var(--clinic-accent, #2F6F62); }
+        ${s}.se-header h1 { margin: 0; font-size: 26px; font-weight: 700; color: var(--clinic-accent, #2F6F62); }
+        ${s}.se-mensaje { margin: 6px 0 0; font-size: 14px; color: #556677; }
+        ${s}.se-lista { list-style: none; margin: 0; padding: 12px 24px; display: flex; flex-direction: column; gap: 8px; }
+        ${s}.se-fila { display: flex; align-items: center; gap: 18px; padding: 12px 16px; border-radius: 10px; background: #F4F6F9; font-size: 17px; color: #1F2933; }
+        ${s}.se-fila-curso { background: rgba(var(--clinic-accent-rgb, 47,111,98), 0.14); font-weight: 600; }
+        ${s}.se-hora { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 70px; }
+        ${s}.se-paciente { font-weight: 700; }
+        ${s}.se-dato { color: #556677; }
+        ${s}.se-estado { margin-left: auto; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #667788; }
+        ${s}.se-estado-curso { color: var(--clinic-accent, #2F6F62); }
+        ${s}.se-vacio { padding: 32px 16px; text-align: center; color: #7A8794; font-size: 16px; }
+        ${s}.se-footer { padding: 12px 24px; font-size: 12px; color: #8A96A3; border-top: 1px solid #E2E7EE; }
+      `;
+    }
+
+    function renderVetConfigSalaEspera() {
+      const cont = document.getElementById('vetconfig-view-salaespera');
+      if (!cont) return;
+      const c = ESTABLECIMIENTO_CONFIG;
+      cont.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="monitor" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Pantalla de sala de espera</span>
+          </div>
+          <div style="padding:20px;">
+            <div class="permisos-items-list">
+              ${vetConfigToggleRowHTML('cfg-se-habilitar', 'Habilitar pantalla', 'Permite proyectar el tablero de turnos del día en la pantalla de recepción.', c.salaEsperaHabilitar)}
+            </div>
+            <div style="display:flex;flex-direction:column;gap:16px;max-width:640px;margin-top:18px;">
+              <div class="input-group">
+                <label class="input-label" for="cfg-se-titulo">Título de la pantalla</label>
+                <input type="text" class="input-control" style="padding-left:12px;" id="cfg-se-titulo" value="${escapeHtml(c.salaEsperaTitulo)}" placeholder="${escapeHtml(CLINIC_INFO.nombre || 'Nombre de la clínica')}" oninput="refrescarPreviewSalaEspera()">
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="cfg-se-mensaje">Mensaje de bienvenida</label>
+                <textarea id="cfg-se-mensaje" class="input-control" style="padding-left:12px;min-height:64px;resize:vertical;" placeholder="Gracias por su paciencia. Le atenderemos en breve." oninput="refrescarPreviewSalaEspera()">${escapeHtml(c.salaEsperaMensaje)}</textarea>
+              </div>
+              <div class="input-group" style="max-width:280px;">
+                <label class="input-label" for="cfg-se-refresco">Refresco automático (segundos)</label>
+                <input type="number" min="5" step="5" class="input-control" style="padding-left:12px;" id="cfg-se-refresco" value="${Number(c.salaEsperaRefrescoSeg) || 30}">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="eye" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Qué se muestra</span>
+          </div>
+          <div style="padding:20px;">
+            <p style="font-size:12.5px;color:var(--text-2);margin:0 0 14px;line-height:1.5;">
+              La pantalla es visible para todos los que están en la sala: cada clínica decide qué datos expone.
+            </p>
+            <div class="permisos-items-list">
+              ${vetConfigToggleRowHTML('cfg-se-hora', 'Hora de la cita', 'Muestra la hora programada de cada turno.', c.salaEsperaMostrarHora, 'onchange="refrescarPreviewSalaEspera()"')}
+              ${vetConfigToggleRowHTML('cfg-se-paciente', 'Nombre del paciente', 'Muestra el nombre de la mascota.', c.salaEsperaMostrarPaciente, 'onchange="refrescarPreviewSalaEspera()"')}
+              ${vetConfigToggleRowHTML('cfg-se-tutor', 'Nombre del tutor', 'Muestra el nombre del responsable. Es un dato personal legible desde toda la sala.', c.salaEsperaMostrarTutor, 'onchange="refrescarPreviewSalaEspera()"')}
+              ${vetConfigToggleRowHTML('cfg-se-profesional', 'Profesional que atiende', 'Muestra quién tiene asignado el turno.', c.salaEsperaMostrarProfesional, 'onchange="refrescarPreviewSalaEspera()"')}
+              ${vetConfigToggleRowHTML('cfg-se-sonido', 'Aviso sonoro al llamar', 'Emite un tono corto en la pantalla proyectada cuando un turno pasa a "En curso".', c.salaEsperaSonido)}
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="tv" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Previsualización</span>
+            <button type="button" class="btn-outline" style="padding:8px 14px;font-size:13px;" onclick="abrirPantallaSalaEspera()">
+              <i data-lucide="external-link" style="width:14px;height:14px;"></i> Abrir pantalla
+            </button>
+          </div>
+          <div style="padding:20px;">
+            <style>${salaEsperaBoardCSS('#cfg-se-preview')}</style>
+            <div id="cfg-se-preview" style="border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);"></div>
+            <p style="font-size:12px;color:var(--text-2);margin-top:12px;">
+              Los turnos salen de <strong>Agenda</strong>: se listan las citas de hoy que estén programadas,
+              confirmadas o en curso. Marcar una cita como "En curso" es lo que la anuncia como
+              <em>Pase a consulta</em>.
+            </p>
+          </div>
+        </div>
+
+        <div style="padding:4px 0 24px;">
+          <button type="button" class="btn-primary" onclick="guardarVetConfigSalaEspera()">Guardar cambios</button>
+        </div>
+      `;
+      refrescarPreviewSalaEspera();
+      lucide.createIcons();
+    }
+
+    // Config "en vivo" del formulario (todavía sin guardar) para que la
+    // previsualización responda mientras se editan los interruptores.
+    function salaEsperaConfigDesdeFormulario() {
+      const c = ESTABLECIMIENTO_CONFIG;
+      const txt = (id, fallback) => { const el = document.getElementById(id); return el ? el.value.trim() : fallback; };
+      const chk = (id, fallback) => { const el = document.getElementById(id); return el ? el.checked : fallback; };
+      return {
+        salaEsperaTitulo: txt('cfg-se-titulo', c.salaEsperaTitulo),
+        salaEsperaMensaje: txt('cfg-se-mensaje', c.salaEsperaMensaje),
+        salaEsperaMostrarHora: chk('cfg-se-hora', c.salaEsperaMostrarHora),
+        salaEsperaMostrarPaciente: chk('cfg-se-paciente', c.salaEsperaMostrarPaciente),
+        salaEsperaMostrarTutor: chk('cfg-se-tutor', c.salaEsperaMostrarTutor),
+        salaEsperaMostrarProfesional: chk('cfg-se-profesional', c.salaEsperaMostrarProfesional)
+      };
+    }
+
+    function refrescarPreviewSalaEspera() {
+      const el = document.getElementById('cfg-se-preview');
+      if (!el) return;
+      el.innerHTML = salaEsperaBoardHTML(salaEsperaConfigDesdeFormulario());
+    }
+
+    // Tono corto para el llamado. El AudioContext se crea perezosamente y
+    // siempre a partir de un click del usuario (abrir la pantalla), que es
+    // lo que exigen las políticas de autoplay de los navegadores.
+    function salaEsperaSonarLlamado() {
+      try {
+        if (!salaEsperaAudioCtx) salaEsperaAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = salaEsperaAudioCtx;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.5);
+      } catch (err) {
+        console.warn('[IRIS] Sala de espera: no se pudo emitir el aviso sonoro', err);
+      }
+    }
+
+    // La ventana proyectada NO lleva lógica propia: la repinta esta pestaña
+    // con un setInterval. Así no hay que serializar los datos hacia allá, y
+    // el tablero se apaga solo si alguien cierra la ventana.
+    function pintarPantallaSalaEspera() {
+      if (!salaEsperaWin || salaEsperaWin.closed) { detenerPantallaSalaEspera(); return; }
+      const c = ESTABLECIMIENTO_CONFIG;
+      salaEsperaWin.document.body.innerHTML = salaEsperaBoardHTML(c);
+      const enCurso = salaEsperaEventosDeHoy().filter(e => e.estado === 'en_curso');
+      enCurso.forEach(e => {
+        if (salaEsperaAnunciados.has(e.id)) return;
+        salaEsperaAnunciados.add(e.id);
+        if (c.salaEsperaSonido) salaEsperaSonarLlamado();
+      });
+      // Un turno que salió de "En curso" y vuelve a entrar sí debe volver a
+      // sonar: se olvidan los ids que ya no están llamados.
+      const vigentes = new Set(enCurso.map(e => e.id));
+      salaEsperaAnunciados.forEach(id => { if (!vigentes.has(id)) salaEsperaAnunciados.delete(id); });
+    }
+
+    function detenerPantallaSalaEspera() {
+      if (salaEsperaTimer) { clearInterval(salaEsperaTimer); salaEsperaTimer = null; }
+      salaEsperaWin = null;
+      salaEsperaAnunciados.clear();
+    }
+
+    function abrirPantallaSalaEspera() {
+      const c = ESTABLECIMIENTO_CONFIG;
+      if (!c.salaEsperaHabilitar) {
+        showToast('Activa "Habilitar pantalla" y guarda los cambios antes de proyectarla');
+        return;
+      }
+      detenerPantallaSalaEspera();
+      salaEsperaWin = window.open('', 'iris-sala-espera', 'width=1280,height=760');
+      if (!salaEsperaWin) { showToast('El navegador bloqueó la ventana emergente'); return; }
+      const doc = salaEsperaWin.document;
+      const raiz = getComputedStyle(document.documentElement);
+      const accent = (raiz.getPropertyValue('--clinic-accent') || '').trim() || '#2F6F62';
+      const accentRgb = (raiz.getPropertyValue('--clinic-accent-rgb') || '').trim() || '47,111,98';
+      doc.head.innerHTML = `<meta charset="utf-8"><title>${escapeHtml(c.salaEsperaTitulo || CLINIC_INFO.nombre || 'Sala de espera')}</title>`;
+      const estilo = doc.createElement('style');
+      estilo.textContent = `
+        :root { --clinic-accent: ${accent}; --clinic-accent-rgb: ${accentRgb}; }
+        body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background: #FFFFFF; color: #1F2933; }
+        ${salaEsperaBoardCSS('')}
+      `;
+      doc.head.appendChild(estilo);
+      pintarPantallaSalaEspera();
+      salaEsperaTimer = setInterval(pintarPantallaSalaEspera, Math.max(5, Number(c.salaEsperaRefrescoSeg) || 30) * 1000);
+      showToast('Pantalla de sala de espera abierta');
+    }
+
+    async function guardarVetConfigSalaEspera() {
+      const refresco = Number(document.getElementById('cfg-se-refresco').value);
+      if (!isFinite(refresco) || refresco < 5) { showToast('El refresco debe ser de al menos 5 segundos'); return; }
+      const patch = {
+        sala_espera_habilitar: document.getElementById('cfg-se-habilitar').checked,
+        sala_espera_titulo: document.getElementById('cfg-se-titulo').value.trim() || null,
+        sala_espera_mensaje: document.getElementById('cfg-se-mensaje').value.trim() || null,
+        sala_espera_mostrar_hora: document.getElementById('cfg-se-hora').checked,
+        sala_espera_mostrar_paciente: document.getElementById('cfg-se-paciente').checked,
+        sala_espera_mostrar_tutor: document.getElementById('cfg-se-tutor').checked,
+        sala_espera_mostrar_profesional: document.getElementById('cfg-se-profesional').checked,
+        sala_espera_sonido: document.getElementById('cfg-se-sonido').checked,
+        sala_espera_refresco_seg: Math.round(refresco)
+      };
+      const btn = document.querySelector('#vetconfig-view-salaespera .btn-primary');
+      if (btn) btn.disabled = true;
+      const ok = await persistirEstablecimientoConfig(patch, 'Sala de espera guardada');
+      if (btn) btn.disabled = false;
+      if (ok) {
+        renderVetConfigSalaEspera();
+        // La ventana proyectada quedaría con el título/columnas viejos hasta
+        // el próximo tick, y con el intervalo anterior: se reprograma.
+        if (salaEsperaWin && !salaEsperaWin.closed) {
+          if (salaEsperaTimer) clearInterval(salaEsperaTimer);
+          pintarPantallaSalaEspera();
+          salaEsperaTimer = setInterval(pintarPantallaSalaEspera, Math.max(5, ESTABLECIMIENTO_CONFIG.salaEsperaRefrescoSeg) * 1000);
+        }
+      }
+    }
+
+    // ── Subtab: Sedes vinculadas ───────────────────────────────────
+    // Directorio de las otras sedes de la misma organización. IMPORTANTE:
+    // vincular aquí NO da acceso a ninguna historia clínica — eso sigue
+    // pasando exclusivamente por la Red IRIS (Admin > Red IRIS), con su
+    // aprobación por establecimiento y sus policies *_select_red. Acá solo
+    // se registra la relación, y por eso no hace falta ninguna policy nueva.
+    //
+    // Los candidatos salen de currentSession.memberships filtrados a rol
+    // 'admin': solo se puede declarar sede a una clínica que la propia
+    // persona administra, para que nadie cuelgue del directorio un
+    // establecimiento ajeno.
+    function getSedesCandidatas() {
+      if (!currentSession || !currentSession.memberships) return [];
+      const activaId = currentSession.activeMembership ? currentSession.activeMembership.establecimientoId : null;
+      const yaVinculadas = (ESTABLECIMIENTO_CONFIG.sedesVinculadas || []).map(s => s.id);
+      return currentSession.memberships
+        .filter(m => m.rol === 'admin' && m.establecimientoId !== activaId && yaVinculadas.indexOf(m.establecimientoId) === -1)
+        .map(m => ({ id: m.establecimientoId, nombre: (m.establecimiento && m.establecimiento.nombre) || 'Establecimiento' }));
+    }
+
+    function renderVetConfigSedes() {
+      const cont = document.getElementById('vetconfig-view-sedes');
+      if (!cont) return;
+      const sedes = ESTABLECIMIENTO_CONFIG.sedesVinculadas || [];
+      const candidatas = getSedesCandidatas();
+      const nombreActual = escapeHtml(CLINIC_INFO.nombre || 'esta clínica');
+      cont.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="building" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Sedes</span>
+          </div>
+          <div style="padding:20px;">
+            <p style="font-size:12.5px;color:var(--text-2);margin:0 0 12px;line-height:1.5;">
+              Registra las otras sedes de ${nombreActual} para tenerlas identificadas como una sola organización.
+            </p>
+            <div style="display:flex;gap:10px;padding:12px 14px;border-radius:8px;background:rgba(var(--clinic-accent-rgb),0.08);border:1px solid rgba(var(--clinic-accent-rgb),0.25);margin-bottom:18px;">
+              <i data-lucide="info" style="width:16px;height:16px;color:var(--clinic-accent);flex-shrink:0;margin-top:2px;"></i>
+              <p style="font-size:12.5px;color:var(--text-1);margin:0;line-height:1.5;">
+                Vincular una sede aquí <strong>no da acceso a historias clínicas</strong>. Consultar la información
+                clínica de otro establecimiento se sigue haciendo desde <strong>Admin &gt; Red IRIS</strong>, con
+                solicitud y aprobación de la clínica dueña de los datos.
+              </p>
+            </div>
+            <div class="input-group" style="max-width:560px;">
+              <label class="input-label" for="cfg-sedes-select">Veterinarias vinculadas</label>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <select class="soap-select-control" id="cfg-sedes-select" style="flex:1;" ${candidatas.length ? '' : 'disabled'}>
+                  ${candidatas.length
+                    ? candidatas.map(s => `<option value="${s.id}">${escapeHtml(s.nombre)}</option>`).join('')
+                    : '<option value="">No hay selección</option>'}
+                </select>
+                <button type="button" class="btn-primary" style="flex-shrink:0;" onclick="vincularSedeSeleccionada()" ${candidatas.length ? '' : 'disabled'}>
+                  <i data-lucide="link" style="width:14px;height:14px;"></i> Vincular
+                </button>
+              </div>
+              <span style="font-size:11.5px;color:var(--text-2);margin-top:6px;">
+                Solo aparecen los establecimientos en los que tu propia cuenta tiene privilegios de administración.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="list" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Sedes vinculadas (${sedes.length})</span>
+          </div>
+          <table class="results-table">
+            <thead><tr><th>Establecimiento</th><th>Identificador</th><th style="text-align:right;">Acciones</th></tr></thead>
+            <tbody>
+              ${sedes.length ? sedes.map(s => `
+                <tr>
+                  <td>${escapeHtml(s.nombre || 'Establecimiento')}</td>
+                  <td style="font-family:monospace;font-size:11.5px;color:var(--text-2);">${escapeHtml(s.id)}</td>
+                  <td style="text-align:right;">
+                    <button type="button" class="btn-outline" style="padding:5px 11px;font-size:12px;" onclick="desvincularSede('${escapeHtml(s.id)}')">Desvincular</button>
+                  </td>
+                </tr>`).join('')
+                : '<tr><td colspan="3" style="color:var(--text-2);">Todavía no hay sedes vinculadas.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    async function vincularSedeSeleccionada() {
+      const sel = document.getElementById('cfg-sedes-select');
+      const id = sel ? sel.value : '';
+      if (!id) { showToast('Selecciona una sede'); return; }
+      const candidata = getSedesCandidatas().find(s => s.id === id);
+      if (!candidata) { showToast('Esa sede ya no está disponible'); return; }
+      const sedes = (ESTABLECIMIENTO_CONFIG.sedesVinculadas || []).concat([{ id: candidata.id, nombre: candidata.nombre }]);
+      const ok = await persistirEstablecimientoConfig({ sedes_vinculadas: sedes }, `${candidata.nombre} vinculada como sede`);
+      if (ok) renderVetConfigSedes();
+    }
+
+    async function desvincularSede(id) {
+      const sedes = (ESTABLECIMIENTO_CONFIG.sedesVinculadas || []).filter(s => s.id !== id);
+      const ok = await persistirEstablecimientoConfig({ sedes_vinculadas: sedes }, 'Sede desvinculada');
+      if (ok) renderVetConfigSedes();
+    }
+
     // ── A.3 — TUTORES (vista administrativa) ───────────────────────
     function renderTutoresTable(filterText) {
       const tbody = document.getElementById('tutores-table-body');
@@ -25721,7 +26570,15 @@
       document.querySelectorAll('#tab-ventas > .admin-pane > .admin-subview').forEach(pane => {
         pane.classList.toggle('active', pane.id === `ventas-view-${viewKey}`);
       });
-      if (viewKey === 'config-facturacion') renderConfigObservacionesDefault();
+      if (viewKey === 'config-facturacion') {
+        renderConfigObservacionesDefault();
+        // Los datos fiscales y el toggle de POS se editan en Admin >
+        // Configuración de la veterinaria; acá solo se reflejan, para que
+        // las dos pantallas no muestren cosas distintas del mismo ajuste.
+        sincronizarDatosFiscalesFacturacion();
+        const posToggle = document.getElementById('pos-habilitar-toggle');
+        if (posToggle) posToggle.checked = ESTABLECIMIENTO_CONFIG.factPosHabilitar;
+      }
     }
 
     // Mensaje predeterminado de Observaciones (Ventas > Configuración de
