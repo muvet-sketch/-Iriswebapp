@@ -679,8 +679,32 @@ los roles sin `canRegisterOwner` sin tocar nada más.
   enviamos nosotros. Solo si reconoció poco (< 4 campos, o sin nombre de tutor,
   o sin mascota) se llama a `/api/parsear-intake`, y su resultado **rellena
   huecos, nunca pisa** lo que el parser local sí reconoció (`intakeFusionar`).
-  Si el endpoint falla, se muestra lo parcial con un aviso: la interpretación
-  asistida es un respaldo, no un requisito.
+  Si el endpoint falla, se muestra lo parcial con un aviso **que incluye el
+  motivo real** (ej. "ANTHROPIC_API_KEY no está configurada"): la
+  interpretación asistida es un respaldo, no un requisito, pero sin el motivo
+  ese fallo se ve idéntico a "el mensaje no traía nada" y nadie sabe qué
+  arreglar — mismo criterio que la pantalla de estado del envío de correos.
+- **Tres cosas que el parser por etiquetas NO puede dar por sentadas**, porque
+  las tres se dieron con mensajes reales y las tres devolvían CERO campos (o,
+  peor, el nombre de la mascota en el nombre del tutor):
+  - **El mensaje viene copiado de WhatsApp, no tecleado.** Cada línea trae
+    `[2/9/26, 10:05 a. m.] Juan Pérez: ` delante, así que el primer `:` de la
+    línea es el de la hora y ninguna etiqueta se reconocía.
+    `intakeQuitarPrefijoWhatsapp()` lo quita (formato con corchetes de
+    Web/iOS y formato de exportación de Android) antes de partir por `:`.
+  - **El cliente responde sin los encabezados de sección.** `INTAKE_CAMPOS_SOLO_MASCOTA`
+    infiere la sección: la primera etiqueta que solo puede ser de un animal
+    (especie/raza/color/peso/edad/sexo/…) abre la mascota aunque nadie haya
+    escrito "DATOS DE TU CHIQUITIN", y un segundo `Nombre:` con el tutor ya
+    nombrado también. Si el `Nombre:` **inmediatamente anterior** era ambiguo
+    (`nombre`/`nombres`/`comosellama`, no "Nombre completo"), se le devuelve a
+    la mascota — pero solo si fue el último dato reconocido: con una cédula o
+    un teléfono de por medio ese nombre sí era del tutor.
+  - **La respuesta va DEBAJO de la etiqueta**, no al lado (el que copia la
+    plantilla y escribe abajo es tan común como el que responde en la misma
+    línea). Una etiqueta sin valor toma la siguiente línea no vacía, salvo que
+    esa línea sea otra etiqueta conocida o un encabezado de sección — así la
+    plantilla reenviada en blanco sigue sin aportar nada.
 - **Un solo lugar convierte texto libre a valores de `<select>`**: los
   `intakeNormalizar*` (especie/genero/esterilizado/peso/fecha/edad/chip/movil/
   docTipo). Por eso `api/parsear-intake.js` devuelve el texto **crudo** del
@@ -1111,6 +1135,196 @@ Si tocás Ventas/Inventario, respetalos:
   guarda y se lee, pero **todavía no dispara cargos automáticos** en la
   cuenta del tutor: eso exige que cada módulo clínico proponga sus ítems
   al guardar. Es el pendiente conocido de esta sección.
+
+## Envío de correos — un solo camino para toda la app
+Antes de esto, lo único que mandaba un correo real era la confirmación de
+registro de propietario y el código de verificación de email. Todo lo demás
+que decía "enviado" mentía: `rowActionEmail()` era
+`showToast('Documento enviado por email')` en los ~10 módulos que ofrecen la
+acción, Agenda abría un modal mock (`#agenda-notif-modal`) con el texto
+"📧 Notificación enviada a: …", y los recordatorios configurados en
+Configuración de la veterinaria > Agenda nunca salían: solo se calculaba
+`agenda_eventos.recordatorio_24h` para mostrarlo en el detalle.
+
+**El modo de falla de este subsistema es SILENCIOSO, y es lo primero que hay
+que entender antes de tocarlo.** Sin `RESEND_FROM_EMAIL` el remitente cae a
+`onboarding@resend.dev`, que Resend SOLO entrega a la dirección dueña de la
+cuenta: no falla nada, no hay error en ningún log y los correos simplemente
+no llegan. Encima, la llamada vieja era `await fetch('/api/send-email', …)`
+sin mirar la respuesta, así que un 500 por API key ausente tampoco dejaba
+rastro. Por eso hay dos cosas que no se pueden aflojar: **toda llamada revisa
+el resultado y avisa por toast**, y existe una pantalla de diagnóstico
+(Configuración de la veterinaria > Agenda > "Estado del envío de correos",
+`renderCorreoEstado()` → `GET /api/correo-estado`) que responde "¿por qué no
+llega?" sin abrir los logs de Vercel.
+
+### Las piezas
+- **`api/_lib/`** — no son rutas (Vercel ignora como endpoint todo lo que
+  empieza por `_`, pero sí lo empaqueta). `correo.js` (cliente de Resend +
+  plantilla base + `remitenteEsDePruebas()`), `plantillas.js` (render de una
+  fila de la bandeja), `ics.js`, `fechas.js`, `supabase.js` (Service Role +
+  autorización) y `bandeja.js` (encolar/procesar).
+- **`api/enviar-correo.js`** — el camino genérico: documento por correo,
+  mensaje al propietario, invitación de usuario, link de autorregistro,
+  correo de prueba. **Es UN endpoint y no uno por módulo a propósito**: el
+  remitente, la plantilla, el log y el reintento son los mismos para todos y
+  lo único que cambia es el contenido, que viaja en el payload. No agregues
+  un endpoint nuevo por módulo — agregá un `tipo` a `TIPOS_VALIDOS`.
+- **`api/agenda-notificar.js`** — avisos de cita + programación de
+  recordatorios.
+- **`api/correos-cron.js`** — el único consumidor de la cola.
+- **`api/correo-estado.js`** — diagnóstico (solo admin).
+- **`index.html`**, bloque "ENVÍO DE CORREO — punto único del lado del
+  navegador" (junto a `generarYSubirPdfPropietario`): `enviarCorreoIris()`,
+  `notificarAgendaEvento()`, `apiCorreo()`, `blobAAdjuntoCorreo()`,
+  `openEnviarCorreoModal()`. Cualquier disparador nuevo pasa por ahí.
+- **`api/send-email.js` ya NO existe**: tenía un solo llamador y su
+  plantilla estaba clavada al registro de propietario. Ese envío ahora va
+  por `/api/enviar-correo`, queda registrado en la bandeja y **manda el PDF
+  adjunto en vez de un enlace firmado de Storage** — el anterior vencía en 1
+  hora y el tutor que abría el correo al día siguiente encontraba un enlace
+  muerto.
+
+### La bandeja de salida (`correos`) — por qué todo pasa por una cola
+Migración `20260902b_correos_notificaciones.sql`. **Los correos inmediatos
+también se encolan** (con `programado_para = now()`) y se procesan en el
+mismo request. Tener un solo camino da un log auditable único, un reintento
+uniforme y un solo lugar donde mirar cuando alguien dice "no me llegó". No
+agregues un envío que llame a Resend directo saltándose la tabla.
+- **Solo el backend escribe.** La tabla tiene policy de SELECT para miembros
+  y **ninguna de insert/update/delete a propósito**: si un cliente pudiera
+  insertar filas, cualquier usuario autenticado mandaría correos con el
+  remitente verificado de la clínica.
+- **`payload` guarda el DATO, no el HTML ya armado.** Un recordatorio
+  programado con 7 días de antelación tiene que salir con la plantilla
+  vigente el día que se envía. Por eso `renderizar()` corre en
+  `procesarPendientes()`, no al encolar.
+- **`correos_reclamar(p_limite)` es `security definer` con `for update skip
+  locked`.** Es lo único que impide que dos ejecuciones solapadas (el cron y
+  el disparo inmediato de la API, o dos ticks encimados) manden el mismo
+  correo dos veces. PostgREST no sabe expresar ese reclamo, por eso es RPC —
+  y por eso `revoke` a `public`/`anon`/`authenticated` + `grant` solo a
+  `service_role` (mismo criterio del bloque de RED IRIS: revocar a `public`
+  no basta). Reencola además lo que quedó en `enviando` hace más de 10
+  minutos, que es lo que pasa si la función se murió a mitad.
+- **`correos_no_duplicados_idx`** (único parcial sobre
+  `referencia_id + tipo + destinatario_email + programado_para` donde el
+  estado es pendiente/enviando) es lo que hace que reprogramar sea
+  idempotente: guardar dos veces el mismo evento cancela y vuelve a
+  insertar, y sin el índice un doble click dejaría al tutor con el
+  recordatorio duplicado. `encolar()` trata el `23505` como "ya estaba", no
+  como error.
+- **Un error permanente no se reintenta.** `enviarCorreo()` marca
+  `permanente: true` en 4xx que no sea 429 (dominio sin verificar,
+  destinatario inválido, API key mala): gastar 3 intentos ahí solo haría
+  esperar 15 minutos por un fallo que no cambia.
+- `correos` **SÍ está en `RESPALDO_TABLAS`** — a diferencia de
+  `consultas_audio`, que es un buzón efímero, acá las filas enviadas son la
+  única prueba de qué se le comunicó al tutor y cuándo.
+
+### El programador de recordatorios es pg_cron, NO un Vercel Cron
+`public.disparar_correos_pendientes()` + job `iris-correos-pendientes` cada
+5 minutos, vía `pg_net`. **No se usó Vercel Cron a propósito:** en el plan
+Hobby corre como mucho UNA vez al día, y un recordatorio de "2 horas antes"
+llegaría con medio día de retraso. Así el tick no depende del plan de
+Vercel.
+- La URL y el secreto viven en `public.app_config` (**RLS habilitada y CERO
+  policies**, igual que las tablas de RED IRIS — ningún cliente de PostgREST
+  la lee). **El valor real NO va en la migración: el repo de GitHub es
+  PÚBLICO.** Se inserta a mano; ver `scripts/correos/README.md`.
+- `CRON_SECRET` (Vercel) tiene que ser IGUAL a
+  `app_config.correos_cron_secret` (Supabase). Si rotás uno, rotá el otro:
+  los recordatorios dejan de salir en silencio, porque el endpoint devuelve
+  401 y nadie está mirando.
+- La comparación del secreto es en tiempo constante a propósito
+  (`secretoValido()`): con `===` sobre strings el tiempo de respuesta filtra
+  cuántos caracteres acertó quien prueba.
+
+### Agenda — lo que hace `/api/agenda-notificar`
+Se llama SIEMPRE al guardar o eliminar un evento, **incluso con el
+interruptor "Notificaciones" apagado**: ese interruptor gobierna el correo
+de calendario inmediato, mientras que los recordatorios al propietario son
+un ajuste APARTE de la misma pantalla y hay que programarlos igual. Quien
+decide qué sale es el servidor leyendo la configuración del establecimiento,
+no un `if` en el navegador.
+- **El evento se RELEE de la base, no se confía en lo que mande el
+  navegador.** Consecuencia que hay que respetar: al eliminar, el navegador
+  llama al endpoint **ANTES** del `delete` (`eliminarEventoAgendaReal()`),
+  porque sobre una fila borrada no habría con qué armar el correo ni qué
+  cancelar.
+- **Cinco columnas nuevas en `agenda_eventos`** (`propietario_id`,
+  `propietario_email`, `encargado_email`, `encargado_nombre`,
+  `mascota_nombre`), las llena `datosNotificacionEventoAgenda()`. Existen
+  porque `encargado_id` es el id LOCAL numérico de `USUARIOS_SISTEMA`, que
+  se regenera 1..N en cada sesión del navegador (misma limitación ya
+  documentada para `tareas_pendientes.responsable_id`), y `propietario` era
+  solo un nombre en texto. **El cron corre sin navegador**: sin estas
+  columnas no hay a quién escribirle. El email del tutor igual se RELEE de
+  `propietarios` al enviar (por si lo cambió después de agendar); el
+  guardado en la fila es el respaldo para tutores ya borrados. Los eventos
+  creados antes de esto los traen en null y se completan solos la primera
+  vez que se editen.
+- **El trigger `agenda_eventos_cancelar_correos` es la garantía real de que
+  no salga un recordatorio de una cita borrada.** El endpoint ya cancela lo
+  pendiente, pero solo si el navegador llegó a llamarlo; un recordatorio de
+  una cita que ya no existe (el tutor se presenta a una cita cancelada) es
+  el peor resultado posible del módulo, así que la garantía vive en la BASE
+  y cubre también un borrado desde el panel de Supabase o un CASCADE.
+- **Los recordatorios van SOLO al tutor y SOLO por el canal `email`.** Lo
+  primero porque la pantalla los rotula "Recordatorios al propietario"; lo
+  segundo porque WhatsApp/SMS no tienen integración de salida y encolarlos
+  haría creer que salieron. El resumen del modal lo dice explícitamente en
+  vez de callarlo.
+- Un recordatorio cuyo momento ya pasó **no se encola**: agendar hoy una
+  cita para mañana no puede disparar al instante el aviso "de 7 días antes".
+- **`SEQUENCE` del `.ics` sube en cada cambio** (se cuentan las
+  notificaciones ya emitidas del evento). Un cliente de calendario ignora
+  una actualización con SEQUENCE menor o igual al que ya tiene, así que sin
+  esto reagendar duplicaría la cita en el calendario del tutor en vez de
+  moverla. El `UID` es el id del evento, por el mismo motivo. Las horas van
+  en UTC (sufijo `Z`) para no adjuntar un `VTIMEZONE`, que es donde fallan
+  los clientes estrictos.
+- **`TIPO_LABELS`/`ESTADO_LABELS` en `agenda-notificar.js` son un espejo de
+  `AGENDA_TIPO_LABELS` y los `<option>` de `#ag-estado`.** Están duplicados
+  porque el cron tiene que rotular un evento agendado hace una semana sin
+  navegador. Si agregás un tipo de cita en index.html, agregalo también ahí
+  o el correo muestra el código crudo.
+
+### Zona horaria — `establecimientos.zona_horaria`
+`agenda_eventos.start_iso` es `timestamp` SIN zona a propósito (todo el
+módulo trabaja con cadenas locales ingenuas). Para programar "24 h antes"
+hace falta el instante real, y para eso la zona. `instanteDesdeLocal()`
+(`_lib/fechas.js`) usa `Intl` en **dos pasadas**: la primera estima el
+offset y la segunda lo corrige, que es lo que hace falta en los bordes de un
+cambio de horario de verano. Colombia no lo tiene, pero la clínica puede no
+estar en Colombia y el error sería de una hora entera en el recordatorio.
+`fechaHumana()` NO pasa la cadena por `Date`: ya está en la hora de la
+clínica y parsearla la movería a la zona del servidor (misma trampa que
+`dashDiaLocalDeISO()`).
+
+### Los demás disparadores
+- **"Enviar por email" del menú "..."** (`rowActionEmail`) abre
+  `#enviar-correo-modal` con el destinatario **a la vista y editable**:
+  mandar un documento clínico a la dirección equivocada no se deshace, y el
+  correo del tutor puede estar desactualizado o vacío. El adjunto es el
+  MISMO PDF de "Imprimir" — `generarPdfRegistroImpresion()` y
+  `generarPdfEstadoCuentaFactura()`/`generarTirillaFactura()` recibieron un
+  `opciones.devolverBlob` en vez de tener un segundo generador que pudiera
+  divergir del que se descarga. El desvío a tirilla se propaga: si la
+  clínica imprime en rollo, el correo lleva la tirilla.
+- **Mensajes al propietario**: de los 4 métodos, "Email" es el único con
+  envío conectado. Los otros tres se siguen registrando como el canal por el
+  que la clínica dice haber contactado al tutor, y el toast lo distingue en
+  vez de decir "enviado" para todo.
+- **Invitación de usuario** (`crearInvitacionParaRol`): ahora se MANDA,
+  además de devolver el enlace. El enlace se sigue mostrando porque hace
+  falta cuando el correo rebota.
+- **Link público de autorregistro**: botón "Correo" junto a WhatsApp. Abre
+  el mismo modal de envío en vez de un `mailto:` — así queda en la bandeja
+  y se sabe si llegó, que es justo lo que un `mailto:` no permite.
+- **`reenviarLinkFirma`** manda el documento y el aviso de que falta la
+  firma, **no un enlace**: no existe una pantalla pública de firma (el tutor
+  firma en el consultorio, ver el patrón de Documentos).
 
 ## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·

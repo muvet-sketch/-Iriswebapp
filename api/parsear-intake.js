@@ -13,7 +13,7 @@
 // de CLAUDE.md.
 //
 // Usa fetch nativo de Node 18+, sin dependencias — mismo patrón que
-// api/send-email.js. La salida estructurada se fuerza con tool use
+// api/enviar-correo.js. La salida estructurada se fuerza con tool use
 // (tool_choice), que es el equivalente sin SDK de messages.parse(...) que usa
 // scripts/transcripcion/extraer_soip.py.
 

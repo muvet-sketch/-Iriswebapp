@@ -11276,11 +11276,14 @@
         encargadoId,
         lugar: document.getElementById('ag-lugar').value.trim(),
         descripcion: document.getElementById('ag-descripcion').value.trim(),
-        // Tarea 3 (mock): recordatorio antes del evento — no hay envío real,
-        // solo se calcula y se muestra en el detalle. El lead time sale del
-        // recordatorio configurado en "Agenda y disponibilidad" que se
-        // dispara primero (getRecordatorioLeadMs(); 24 h si no hay ninguno).
-        recordatorio24hISO: new Date(new Date(startISO).getTime() - getRecordatorioLeadMs()).toISOString().slice(0, 19)
+        // Momento del PRIMER recordatorio, el que se muestra en el detalle del
+        // evento. Sigue siendo el mismo cálculo de siempre
+        // (getRecordatorioLeadMs(); 24 h si no hay ninguno configurado), pero
+        // ya no es un dato mock: los envíos reales los programa
+        // /api/agenda-notificar a partir de la lista completa de
+        // recordatorios del establecimiento, uno por cada uno configurado.
+        recordatorio24hISO: new Date(new Date(startISO).getTime() - getRecordatorioLeadMs()).toISOString().slice(0, 19),
+        ...datosNotificacionEventoAgenda(soloEspacio ? null : (petKey || null), propietarioValue, encargadoId)
       };
 
       const btnGuardar = document.getElementById('agenda-evento-guardar-btn');
@@ -11364,24 +11367,23 @@
       const wasEditing = !!agendaEditingId;
       closeAgendaEventoModal();
       showToast(wasEditing ? 'Evento actualizado' : 'Evento creado');
-      // "Notificaciones" (Configuración de la veterinaria > Agenda): el aviso
-      // mock de calendario solo se muestra si el establecimiento lo tiene activo.
-      if (ESTABLECIMIENTO_CONFIG.notifEmailEvento) abrirAgendaNotifModal(evento);
+      // Notificación REAL. Se llama SIEMPRE, incluso con el interruptor
+      // "Notificaciones" apagado: ese interruptor gobierna el correo de
+      // calendario inmediato, mientras que los recordatorios al propietario
+      // son un ajuste aparte de la misma pantalla y hay que programarlos
+      // igual. Quien decide qué sale es el servidor, que lee la configuración
+      // del establecimiento — no este `if`.
+      abrirAgendaNotifModal(evento, wasEditing ? 'actualizado' : 'creado');
     }
 
-    // ── Tarea 3 (mock): notificación de correo al guardar un evento ────
-    function abrirAgendaNotifModal(evento) {
-      const clinica = document.getElementById('header-clinic-name').textContent.trim();
-      const medico = USUARIOS_SISTEMA.find(u => u.id === evento.encargadoId);
-      const destinatarios = [
-        evento.propietario || 'Tutor por definir',
-        clinica,
-        medico ? medico.nombre : 'Médico por definir'
-      ];
-      const canales = [...new Set((ESTABLECIMIENTO_CONFIG.recordatorios || []).flatMap(r => r.canales))];
-      const via = canales.length ? ` · Recordatorios vía ${canales.map(recordatorioCanalLabel).join(', ')}` : '';
-      document.getElementById('agenda-notif-modal-body').textContent =
-        `📧 Notificación enviada a: ${destinatarios.join(' · ')}${via}`;
+    // ── Notificación de correo al guardar un evento ────────────────
+    // Antes esto era un mock: pintaba "📧 Notificación enviada a: …" sin
+    // mandar nada. Ahora llama a /api/agenda-notificar y muestra lo que
+    // realmente pasó — a quién salió, qué falló y cuándo van los
+    // recordatorios programados.
+    async function abrirAgendaNotifModal(evento, accion) {
+      const cuerpo = document.getElementById('agenda-notif-modal-body');
+      const mostrarModal = ESTABLECIMIENTO_CONFIG.notifEmailEvento !== false;
 
       // Atajo "Ver en consultorio" justo después de agendar: mismo criterio
       // de rol/mascota real que en abrirAgendaEventoModalInterno, para no
@@ -11391,8 +11393,87 @@
       document.getElementById('agenda-notif-ver-consultorio-btn').style.display =
         agendaNotifModalPetKey ? 'inline-flex' : 'none';
 
-      document.getElementById('agenda-notif-modal').classList.add('show');
+      if (mostrarModal) {
+        cuerpo.innerHTML = `<span style="color:var(--text-2);">Enviando notificaciones…</span>`;
+        document.getElementById('agenda-notif-modal').classList.add('show');
+        lucide.createIcons();
+      }
+
+      const res = await notificarAgendaEvento(evento.id, accion || 'creado');
+
+      if (!mostrarModal) {
+        // Con el aviso de calendario apagado no se abre el modal, pero si se
+        // programaron recordatorios hay que decirlo: son correos que van a
+        // salir solos más adelante y el usuario tiene que saberlo.
+        const n = (res.recordatoriosProgramados || []).length;
+        if (n) showToast(`${n} recordatorio${n === 1 ? '' : 's'} de correo programado${n === 1 ? '' : 's'}`);
+        else if (!res.ok) showToast(`No se pudieron programar los recordatorios: ${resumenErrorCorreo(res)}`);
+        return;
+      }
+
+      // El título no puede decir "Notificación enviada" cuando algo falló:
+      // era justamente la afirmación falsa del modal mock anterior.
+      const huboFallo = !res.ok || (res.detalle || []).some(d => !d.ok);
+      const nadaQueEnviar = res.ok && !(res.destinatarios || []).length;
+      document.getElementById('agenda-notif-modal-titulo').textContent =
+        huboFallo ? 'Notificación con errores'
+        : nadaQueEnviar ? 'Sin destinatarios'
+        : 'Notificación enviada';
+      cuerpo.innerHTML = agendaNotifResumenHTML(res);
       lucide.createIcons();
+    }
+
+    // Resumen honesto: si un correo no salió, se dice cuál y por qué. El
+    // mock anterior siempre afirmaba que la notificación se había enviado,
+    // que es justo lo que hizo que nadie notara que nunca salía ninguna.
+    function agendaNotifResumenHTML(res) {
+      if (!res.ok) {
+        return `<div style="color:var(--danger);display:flex;gap:8px;align-items:flex-start;">
+            <i data-lucide="alert-circle" style="width:16px;height:16px;flex:none;margin-top:2px;"></i>
+            <span>No se pudo notificar: ${escapeHtml(resumenErrorCorreo(res))}</span>
+          </div>`;
+      }
+
+      const errores = (res.detalle || []).filter(d => !d.ok);
+      const enviadosPorEmail = new Set((res.detalle || []).filter(d => d.ok).map(d => d.email));
+      const etiquetaRol = { tutor: 'Tutor', encargado: 'Responsable', clinica: 'Clínica' };
+
+      const lineas = (res.destinatarios || []).map(d => {
+        const falla = errores.find(e => e.email === d.email);
+        const ok = enviadosPorEmail.has(d.email);
+        const icono = falla ? 'x-circle' : (ok ? 'check-circle-2' : 'clock');
+        const color = falla ? 'var(--danger)' : (ok ? 'var(--success)' : 'var(--text-2)');
+        const detalle = falla ? ` — ${escapeHtml(falla.error)}` : (ok ? '' : ' — en cola');
+        return `<li style="display:flex;gap:8px;align-items:flex-start;margin:0 0 6px;">
+            <i data-lucide="${icono}" style="width:15px;height:15px;flex:none;margin-top:2px;color:${color};"></i>
+            <span><strong>${etiquetaRol[d.rol] || d.rol}</strong> · ${escapeHtml(d.email)}${detalle}</span>
+          </li>`;
+      });
+
+      if (!lineas.length) {
+        lineas.push(`<li style="color:var(--text-2);">No hay ningún correo registrado para notificar — revisa el email del tutor y del responsable.</li>`);
+      }
+
+      const recordatorios = (res.recordatoriosProgramados || []).map(r =>
+        `<li style="margin:0 0 4px;color:var(--text-2);">${escapeHtml(r.antelacion)} antes · ${formatFechaHoraCorta(r.cuando)} → ${escapeHtml(r.email)}</li>`
+      );
+
+      // Canales sin integración de envío: se dicen aparte para no dar a
+      // entender que también salieron.
+      const otrosCanales = [...new Set((ESTABLECIMIENTO_CONFIG.recordatorios || [])
+        .flatMap(r => r.canales || []).filter(c => c !== 'email'))];
+
+      return `
+        <ul style="list-style:none;padding:0;margin:0 0 4px;">${lineas.join('')}</ul>
+        ${recordatorios.length ? `
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <div style="font-weight:600;margin-bottom:6px;">Recordatorios programados</div>
+            <ul style="list-style:none;padding:0;margin:0;font-size:12px;">${recordatorios.join('')}</ul>
+          </div>` : ''}
+        ${otrosCanales.length ? `
+          <p style="margin:10px 0 0;font-size:12px;color:var(--text-2);">
+            ${otrosCanales.map(recordatorioCanalLabel).join(' y ')} todavía no tiene${otrosCanales.length === 1 ? '' : 'n'} envío conectado — solo se envía por correo.
+          </p>` : ''}`;
     }
     function closeAgendaNotifModal() {
       document.getElementById('agenda-notif-modal').classList.remove('show');
@@ -16256,7 +16337,13 @@
     // la UI) el texto termina dibujado fuera del área imprimible de la
     // página — el PDF sale con el encabezado pero el cuerpo en blanco.
     // Rasterizar nosotros mismos evita ese desfase de coordenadas.
-    async function generarPdfRegistroImpresion(titulo, contenidoHTML, recordId, identidadOverride) {
+    // `opciones.devolverBlob` cambia el final de la función: en vez de
+    // descargar el PDF, devuelve { blob, nombreArchivo }. Lo usa "Enviar por
+    // email", que necesita el MISMO documento que produce "Imprimir" — sin
+    // esto habría dos generadores de PDF y el que se manda por correo podría
+    // dejar de parecerse al que se descarga.
+    async function generarPdfRegistroImpresion(titulo, contenidoHTML, recordId, identidadOverride, opciones) {
+      const devolverBlob = !!(opciones && opciones.devolverBlob);
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -16320,11 +16407,13 @@
         const nombreArchivo = identidad
           ? [slugificarIrisPdf(titulo), ...identidad.partes.map(slugificarIrisPdf), ...(identidad.sufijo ? [slugificarIrisPdf(identidad.sufijo)] : [])].join('-') + '.pdf'
           : `${slugificarIrisPdf(titulo)}-${slugificarIrisPdf(recordId)}.pdf`;
+        if (devolverBlob) return { blob: doc.output('blob'), nombreArchivo };
         doc.save(nombreArchivo);
         showToast('PDF descargado');
       } catch (err) {
         if (container.parentNode) container.parentNode.removeChild(container);
         console.error('[IRIS] Error generando PDF de impresión:', err);
+        if (devolverBlob) return null;
         showToast('No se pudo generar el PDF');
       }
     }
@@ -16351,13 +16440,171 @@
       generarPdfRegistroImpresion(data.title, data.html, recordId, data.identidad);
     }
 
-    function rowActionEmail(moduleKey, recordId) {
-      closeAllRowMenus();
-      showToast('Documento enviado por email');
+    // ── "Enviar por email" del menú "..." de cualquier fila ─────────
+    // Antes era `showToast('Documento enviado por email')` sobre un envío que
+    // nunca ocurría, en los ~10 módulos que ofrecen la acción. Ahora abre un
+    // modal de confirmación con el destinatario a la vista y editable: mandar
+    // un documento clínico a la dirección equivocada no se deshace, y el
+    // correo del tutor puede estar desactualizado o vacío.
+    let enviarCorreoPendiente = null;
+
+    // A quién se le manda cada tipo de registro. Los recordId de los módulos
+    // clínicos son `petKey:indice`, así que el tutor sale de la mascota; los
+    // de Ventas apuntan a un cliente de VENTAS_CLIENTES.
+    function destinatarioSugeridoDeRegistro(moduleKey, recordId) {
+      if (moduleKey === 'factura' || moduleKey === 'notacredito' || moduleKey === 'docsoporte' || moduleKey === 'cotizacion') {
+        const doc = VENTAS_FACTURAS.find(f => f.id === recordId)
+          || VENTAS_COTIZACIONES.find(c => c.id === recordId)
+          || null;
+        const cliente = doc ? ventasClienteById(doc.clienteId) : null;
+        if (!cliente) return null;
+        // VENTAS_CLIENTES no siempre trae email (el catálogo semilla no lo
+        // tiene): se cae al propietario homónimo, que sí lo persiste.
+        const prop = propietarios.find(p => p.nombre === cliente.nombre) || null;
+        return { email: cliente.email || (prop && prop.email) || '', nombre: cliente.nombre };
+      }
+      const i = typeof recordId === 'string' ? recordId.indexOf(':') : -1;
+      if (i === -1) return null;
+      const petKey = recordId.slice(0, i);
+      const prop = getPropietarioDeMascota(petKey);
+      if (!prop) return null;
+      return { email: prop.email || '', nombre: prop.nombre, petKey };
     }
 
-    function reenviarLinkFirma(recordId) {
-      showToast('Link de firma reenviado (simulado — sin envío real de WhatsApp/email todavía)');
+    async function rowActionEmail(moduleKey, recordId) {
+      closeAllRowMenus();
+
+      if (moduleKey === 'usuario' || moduleKey === 'agenda-evento') {
+        showToast('Este tipo de registro no se envía por correo');
+        return;
+      }
+
+      const destino = destinatarioSugeridoDeRegistro(moduleKey, recordId);
+      showToast('Preparando el documento…');
+
+      // El adjunto es el MISMO PDF de "Imprimir" (ver el parámetro
+      // devolverBlob de generarPdfRegistroImpresion / la tirilla o el A4 de
+      // generarPdfEstadoCuentaFactura): un solo generador, para que lo que
+      // recibe el tutor sea idéntico a lo que se descarga en la clínica.
+      let adjunto = null;
+      let titulo = 'Documento';
+      try {
+        if (moduleKey === 'factura') {
+          const factura = VENTAS_FACTURAS.find(f => f.id === recordId);
+          if (!factura) { showToast('No se encontró la factura'); return; }
+          titulo = `Factura ${factura.numero || factura.id}`;
+          const pdf = await generarPdfEstadoCuentaFactura(factura, { devolverBlob: true });
+          if (pdf) adjunto = await blobAAdjuntoCorreo(pdf.blob, pdf.nombreArchivo);
+        } else {
+          const data = getRegistroViewData(moduleKey, recordId);
+          if (!data) { showToast('No se encontró el registro para enviar'); return; }
+          titulo = data.title;
+          const pdf = await generarPdfRegistroImpresion(data.title, data.html, recordId, data.identidad, { devolverBlob: true });
+          if (pdf) adjunto = await blobAAdjuntoCorreo(pdf.blob, pdf.nombreArchivo);
+        }
+      } catch (err) {
+        console.error('[IRIS] Error generando el PDF para enviar por correo:', err);
+      }
+
+      if (!adjunto) {
+        showToast('No se pudo generar el PDF para enviar');
+        return;
+      }
+
+      openEnviarCorreoModal({
+        tipo: moduleKey === 'factura' ? 'factura' : 'documento',
+        titulo: `Enviar ${titulo.toLowerCase()}`,
+        asunto: `${titulo}${destino && destino.petKey && patientData[destino.petKey] ? ` — ${patientData[destino.petKey].name}` : ''}`,
+        emailDestino: (destino && destino.email) || '',
+        nombreDestino: (destino && destino.nombre) || '',
+        intro: 'Adjuntamos el documento solicitado. Cualquier duda, responde a este correo.',
+        adjuntos: [adjunto],
+        referencia: { tabla: moduleKey, id: recordId }
+      });
+    }
+
+    // Reenvío del link de firma de un documento. Sigue sin haber una pantalla
+    // pública de firma (el tutor firma en el consultorio, ver el patrón de
+    // Documentos), así que lo que se manda es el documento en sí más el aviso
+    // de que hace falta su firma — no un enlace que no existe.
+    async function reenviarLinkFirma(recordId) {
+      closeAllRowMenus();
+      const destino = destinatarioSugeridoDeRegistro('documento', recordId);
+      const data = getRegistroViewData('documento', recordId);
+      if (!data) { showToast('No se encontró el documento'); return; }
+      showToast('Preparando el documento…');
+      const pdf = await generarPdfRegistroImpresion(data.title, data.html, recordId, data.identidad, { devolverBlob: true });
+      const adjunto = pdf ? await blobAAdjuntoCorreo(pdf.blob, pdf.nombreArchivo) : null;
+      openEnviarCorreoModal({
+        tipo: 'documento',
+        titulo: 'Solicitar firma del documento',
+        asunto: `Pendiente de firma: ${data.title}`,
+        emailDestino: (destino && destino.email) || '',
+        nombreDestino: (destino && destino.nombre) || '',
+        intro: 'Este documento está pendiente de tu firma. Te esperamos en la clínica para completarlo.',
+        adjuntos: adjunto ? [adjunto] : [],
+        referencia: { tabla: 'documento', id: recordId }
+      });
+    }
+
+    function openEnviarCorreoModal(opciones) {
+      enviarCorreoPendiente = opciones;
+      document.getElementById('enviar-correo-titulo').textContent = opciones.titulo || 'Enviar por correo';
+      document.getElementById('enviar-correo-destino').value = opciones.emailDestino || '';
+      document.getElementById('enviar-correo-asunto').value = opciones.asunto || '';
+      document.getElementById('enviar-correo-mensaje').value = opciones.intro || '';
+      const adj = document.getElementById('enviar-correo-adjunto');
+      const nombre = opciones.adjuntos && opciones.adjuntos[0] ? opciones.adjuntos[0].filename : '';
+      adj.style.display = nombre ? '' : 'none';
+      adj.querySelector('span').textContent = nombre;
+      // Sin correo registrado el campo queda vacío a propósito, con el foco
+      // puesto ahí: es el caso más común y digitarlo es más rápido que ir a
+      // la ficha del tutor a copiarlo.
+      const aviso = document.getElementById('enviar-correo-aviso');
+      aviso.style.display = opciones.emailDestino ? 'none' : '';
+      document.getElementById('enviar-correo-modal').classList.add('show');
+      lucide.createIcons();
+      if (!opciones.emailDestino) document.getElementById('enviar-correo-destino').focus();
+    }
+
+    function closeEnviarCorreoModal() {
+      document.getElementById('enviar-correo-modal').classList.remove('show');
+      enviarCorreoPendiente = null;
+    }
+
+    function handleEnviarCorreoOverlayClick(e) {
+      if (e.target === document.getElementById('enviar-correo-modal')) closeEnviarCorreoModal();
+    }
+
+    async function confirmarEnviarCorreo() {
+      if (!enviarCorreoPendiente) return;
+      const email = document.getElementById('enviar-correo-destino').value.trim();
+      const asunto = document.getElementById('enviar-correo-asunto').value.trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        showToast('Escribe un correo válido');
+        return;
+      }
+      if (!asunto) { showToast('El correo necesita un asunto'); return; }
+
+      const btn = document.getElementById('enviar-correo-btn');
+      btn.disabled = true;
+      btn.textContent = 'Enviando…';
+      const res = await enviarCorreoIris({
+        tipo: enviarCorreoPendiente.tipo || 'documento',
+        asunto,
+        titulo: asunto,
+        intro: document.getElementById('enviar-correo-mensaje').value.trim() || null,
+        destinatarios: [{ email, nombre: enviarCorreoPendiente.nombreDestino, rol: 'tutor' }],
+        adjuntos: enviarCorreoPendiente.adjuntos || [],
+        // Botón del correo (el enlace de autorregistro, por ejemplo). No todos
+        // los envíos lo traen: un documento adjunto no necesita botón.
+        cta: enviarCorreoPendiente.cta || null,
+        referencia: enviarCorreoPendiente.referencia || null,
+        mensajeOk: `Correo enviado a ${email}`
+      });
+      btn.disabled = false;
+      btn.textContent = 'Enviar';
+      if (res.ok && res.enviados) closeEnviarCorreoModal();
     }
 
     // Descarga bajo demanda (bucket privado `pdfs` -> URL firmada de 1h) del
@@ -16636,6 +16883,7 @@
     // asumen que ese binding nunca se reemplaza.
     async function eliminarEventoAgendaReal(recordId) {
       const idx = AGENDA_EVENTOS.findIndex(ev => ev.id === recordId);
+      const evento = idx !== -1 ? AGENDA_EVENTOS[idx] : null;
       if (idx !== -1) AGENDA_EVENTOS.splice(idx, 1);
       refreshAgendaCalendarEvents();
       refreshAgendaPersonalCalendarEvents();
@@ -16643,12 +16891,34 @@
       if (selectedPetKey) renderCitasPacienteTable(selectedPetKey);
       closeAgendaEventoModal();
       if (!window.supabase) return;
+
+      // El aviso de cancelación va ANTES del delete y se espera: el servidor
+      // RELEE la fila para armar el correo (no confía en lo que mande el
+      // navegador) y de paso cancela los recordatorios que quedaban en cola.
+      // Sobre una fila ya borrada no tendría con qué. Que falle no puede
+      // impedir el borrado — es un aviso, no una precondición; el trigger
+      // agenda_eventos_cancelar_correos garantiza igual que ningún
+      // recordatorio salga para una cita que ya no existe.
+      let notif = { ok: false };
+      if (evento) {
+        notif = await notificarAgendaEvento(recordId, 'eliminado');
+      }
+
       try {
         const { error } = await window.supabase.from('agenda_eventos').delete().eq('id', recordId);
         if (error) throw error;
       } catch (err) {
         console.error('[IRIS] Error eliminando el evento de agenda en Supabase:', err);
         showToast('El evento se quitó del calendario pero no se pudo eliminar del servidor');
+        return;
+      }
+
+      if (evento && notif.ok && notif.enviados) {
+        showToast(`Cita eliminada — se avisó por correo a ${notif.enviados} destinatario${notif.enviados === 1 ? '' : 's'}`);
+      } else if (evento && notif.ok && notif.notificacionesActivas === false) {
+        showToast('Cita eliminada');
+      } else if (evento && !notif.ok) {
+        showToast(`Cita eliminada, pero no se pudo avisar por correo: ${resumenErrorCorreo(notif)}`);
       }
     }
     async function eliminarCotizacionReal(recordId) {
@@ -19061,9 +19331,35 @@
           renderMensajesTable(petKey);
         }
         closeMensajeModal();
-        showToast(esEnvioDeFormula
-          ? 'Fórmula médica enviada al propietario (simulado)'
-          : 'Mensaje enviado al propietario (simulado)');
+
+        // Del listado de métodos, "Email" es el único con envío real
+        // conectado. Los otros tres (SMS/WhatsApp/App MUVET) siguen siendo
+        // registro del canal por el que la clínica dice haber contactado al
+        // tutor, sin integración de salida — por eso el toast distingue los
+        // dos casos en vez de decir "enviado" para todo.
+        const porEmail = metodos.includes('Email');
+        const prop = getPropietarioDeMascota(petKey);
+        const etiqueta = esEnvioDeFormula ? 'Fórmula médica' : 'Mensaje';
+
+        if (porEmail) {
+          const res = await enviarCorreoIris({
+            tipo: 'mensaje_propietario',
+            silencioso: true,
+            destinatarios: prop && prop.email ? [{ email: prop.email, nombre: prop.nombre, rol: 'tutor' }] : [],
+            asunto: esEnvioDeFormula
+              ? `Fórmula médica de ${data.name}`
+              : `Mensaje de tu veterinaria sobre ${data.name}`,
+            titulo: esEnvioDeFormula ? `Fórmula médica de ${data.name}` : `Sobre ${data.name}`,
+            cuerpo: texto,
+            filas: [['Paciente', data.name], ['Enviado por', usuarioNombre]],
+            referencia: { tabla: 'mensajes', id: inserted.id }
+          });
+          if (res.ok && res.enviados) showToast(`${etiqueta} enviada por correo a ${prop.email}`);
+          else if (!prop || !prop.email) showToast(`${etiqueta} registrada, pero el tutor no tiene correo guardado`);
+          else showToast(`${etiqueta} registrada, pero el correo falló: ${resumenErrorCorreo(res)}`);
+        } else {
+          showToast(`${etiqueta} registrada — ${metodos.join(', ')} todavía no tiene envío automático`);
+        }
       } catch (err) {
         console.error('[IRIS] Error guardando mensaje en Supabase:', err);
         showToast('No se pudo enviar el mensaje — intenta de nuevo');
@@ -23118,7 +23414,30 @@
           renderKardexTrazabilidad();
           mountKardexHeader(petKey);
         }
-        showToast((isEdit ? 'Seguimiento actualizado' : 'Seguimiento registrado') + (mensajeEnviar ? ' — mensaje enviado al propietario (simulado)' : ''));
+        showToast(isEdit ? 'Seguimiento actualizado' : 'Seguimiento registrado');
+
+        // "Enviar mensaje al propietario": envío REAL por correo. Va después
+        // del toast del seguimiento y con su propio aviso porque es una acción
+        // aparte que puede fallar sola — el seguimiento ya quedó guardado.
+        // Solo al crear: reabrir y guardar un seguimiento no debe volver a
+        // escribirle al tutor, mismo criterio create-only del timeline.
+        if (mensajeEnviar && !isEdit) {
+          const propSeg = getPropietarioDeMascota(petKey);
+          const textoSeg = (record.mensajePropietario && record.mensajePropietario.texto || '').trim();
+          const resSeg = await enviarCorreoIris({
+            tipo: 'mensaje_propietario',
+            silencioso: true,
+            destinatarios: propSeg && propSeg.email ? [{ email: propSeg.email, nombre: propSeg.nombre, rol: 'tutor' }] : [],
+            asunto: `Seguimiento de ${data.name}`,
+            titulo: `Seguimiento de ${data.name}`,
+            cuerpo: textoSeg,
+            filas: [['Paciente', data.name], ['Registrado por', record.registradoPorNombre]],
+            referencia: { tabla: 'seguimientos', id: record.id || null }
+          });
+          if (resSeg.ok && resSeg.enviados) showToast(`Mensaje enviado al propietario (${propSeg.email})`);
+          else if (!propSeg || !propSeg.email) showToast('El tutor no tiene correo guardado — el mensaje no salió');
+          else showToast(`El mensaje al propietario no salió: ${resumenErrorCorreo(resSeg)}`);
+        }
         if (!isEdit && record.proximoControlISO) {
           await crearEventoSeguimiento({
             fechaISO: record.proximoControlISO,
@@ -24663,9 +24982,12 @@
       if (!rol || !ROLES[rol]) { if (rol !== null) showToast('Rol no válido'); return; }
       const email = prompt('¿A qué correo va dirigida la invitación? Solo esa persona podrá aceptarla.', '');
       if (!email || !esEmailValido(email)) { showToast('Ingresa un correo válido'); return; }
-      const { url, error } = await crearInvitacionParaRol(rol, email);
+      const { url, error, correoEnviado, correoError } = await crearInvitacionParaRol(rol, email);
       if (error) { showToast('No se pudo generar el enlace: ' + error); return; }
       if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+      showToast(correoEnviado
+        ? `Invitación enviada a ${email}`
+        : `El correo no salió: ${correoError || 'revisa el diagnóstico de correo'}`);
       window.prompt('Enlace de invitación (copiado al portapapeles si el navegador lo permitió) — válido 7 días:', url);
     }
 
@@ -24690,7 +25012,24 @@
         created_by: currentSession.user.id
       }).select().single();
       if (error) return { error: error.message };
-      return { url: `${location.origin}${location.pathname}?invite=${data.id}` };
+      const url = `${location.origin}${location.pathname}?invite=${data.id}`;
+
+      // La invitación se MANDA, además de devolver el enlace. Antes había que
+      // copiarlo y pegarlo a mano en otra parte; el enlace se sigue mostrando
+      // porque hace falta cuando el correo rebota o la persona lo perdió.
+      const ctx = correoContextoClinica();
+      const envio = await enviarCorreoIris({
+        tipo: 'invitacion_usuario',
+        silencioso: true,
+        destinatarios: [{ email: email.trim().toLowerCase(), rol: 'usuario' }],
+        asunto: `Te invitaron a ${ctx.clinica} en IRIS`,
+        titulo: `Te invitaron a ${ctx.clinica}`,
+        intro: `Te asignaron el rol de ${(ROLES[rol] && ROLES[rol].label) || rol}. Abre el enlace e inicia sesión (o crea tu cuenta) con este mismo correo para aceptar la invitación.`,
+        cta: { texto: 'Aceptar invitación', url },
+        aviso: 'El enlace vence en 7 días y solo funciona con la dirección a la que llegó este correo.',
+        referencia: { tabla: 'invites', id: data.id }
+      });
+      return { url, correoEnviado: !!(envio.ok && envio.enviados), correoError: envio.ok ? null : resumenErrorCorreo(envio) };
     }
 
     async function generarInvitacionDesdeModal() {
@@ -24704,14 +25043,17 @@
       const original = btn.textContent;
       btn.disabled = true;
       btn.textContent = 'Generando...';
-      const { url, error } = await crearInvitacionParaRol(rol, email);
+      btn.textContent = 'Enviando invitación...';
+      const { url, error, correoEnviado, correoError } = await crearInvitacionParaRol(rol, email);
       btn.disabled = false;
       btn.textContent = original;
       if (error) { showToast('No se pudo generar el enlace: ' + error); return; }
       document.getElementById('usuario-invite-link-input').value = url;
       document.getElementById('usuario-invite-link-group').style.display = '';
       if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
-      showToast('Enlace generado y copiado al portapapeles');
+      showToast(correoEnviado
+        ? `Invitación enviada a ${email} — el enlace también quedó copiado`
+        : `Enlace copiado, pero el correo no salió: ${correoError || 'revisa el diagnóstico de correo'}`);
     }
 
     function copiarInviteLink() {
@@ -24771,6 +25113,12 @@
       // duplicada se borra y su snapshot vive ahí. Sin esto, el respaldo no
       // permitiría reconstruir qué se fusionó ni deshacerlo a mano.
       'mascota_contactos', 'mascota_fusiones', 'turnos',
+      // `correos` es la bandeja de salida Y el log de lo enviado. Va al
+      // respaldo por lo segundo: es la única prueba de qué se le comunicó al
+      // tutor y cuándo (una cita avisada, un consentimiento mandado). A
+      // diferencia de `consultas_audio`, que es un buzón efímero, acá las
+      // filas enviadas no se consumen ni se reconstruyen desde otro lado.
+      'correos',
       // La fila de `establecimientos` dejó de ser solo nombre+NIT: hoy
       // carga la configuración real de la clínica (perfil fiscal, horario
       // de atención, ventas/inventario, sala de espera, sedes). Un respaldo
@@ -25600,8 +25948,20 @@
               <label class="input-label" style="display:block;margin-bottom:8px;">Recordatorios al propietario</label>
               <div id="cfg-recordatorios-rows" style="display:flex;flex-direction:column;gap:12px;"></div>
               <button type="button" class="btn-outline" style="margin-top:12px;" onclick="cfgRecordatorioAgregar()"><i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar recordatorio</button>
-              <p style="font-size:12px;color:var(--text-2);margin-top:10px;">El recordatorio de mayor antelación fija cuándo se programa el aviso de cada evento. El envío real todavía no está conectado.</p>
+              <p style="font-size:12px;color:var(--text-2);margin-top:10px;">Cada recordatorio con el canal <strong>Email</strong> se envía solo, a la hora que corresponda, al correo del propietario. WhatsApp y SMS todavía no tienen envío conectado: se guardan, pero no salen.</p>
             </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="mail-check" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Estado del envío de correos</span>
+            <button type="button" class="btn-outline" style="padding:6px 12px;font-size:12px;" onclick="renderCorreoEstado()">
+              <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> Actualizar
+            </button>
+          </div>
+          <div style="padding:20px;" id="correo-estado-cont">
+            <p style="font-size:13px;color:var(--text-2);">Cargando…</p>
           </div>
         </div>
 
@@ -25630,6 +25990,9 @@
       cfgHorarioRenderRows();
       cfgRecordatoriosRenderRows();
       lucide.createIcons();
+      // No se espera: el diagnóstico llama a Resend y puede tardar un segundo,
+      // y el resto de la pantalla no depende de él.
+      renderCorreoEstado();
     }
 
     function cfgHorarioRenderRows() {
@@ -25730,6 +26093,109 @@
       const idx = r.canales.indexOf(canal);
       if (idx === -1) r.canales.push(canal); else r.canales.splice(idx, 1);
       cfgRecordatoriosRenderRows();
+    }
+
+    // ── Diagnóstico del envío de correos ───────────────────────────
+    // Esta tarjeta existe porque el modo de falla del correo es SILENCIOSO:
+    // sin RESEND_FROM_EMAIL el remitente cae a onboarding@resend.dev, que
+    // Resend solo entrega a la dirección dueña de la cuenta — no falla nada,
+    // no hay error en ningún log, y los correos simplemente no llegan. Sin
+    // esta pantalla, la única forma de saberlo era abrir los logs de Vercel.
+    // Solo la ve el admin: /api/correo-estado exige ese rol.
+    async function renderCorreoEstado() {
+      const cont = document.getElementById('correo-estado-cont');
+      if (!cont) return;
+      cont.innerHTML = `<p style="font-size:13px;color:var(--text-2);">Consultando…</p>`;
+
+      const ctx = correoContextoClinica();
+      const headers = await correoAuthHeaders();
+      if (!ctx.establecimientoId || !headers) {
+        cont.innerHTML = `<p style="font-size:13px;color:var(--text-2);">No hay una clínica activa.</p>`;
+        return;
+      }
+
+      let d;
+      try {
+        const res = await fetch(`/api/correo-estado?establecimientoId=${encodeURIComponent(ctx.establecimientoId)}`, { headers });
+        d = await res.json();
+        if (!res.ok) throw new Error(d.error || `El servidor respondió ${res.status}`);
+      } catch (err) {
+        cont.innerHTML = `<p style="font-size:13px;color:var(--danger);">No se pudo consultar el estado: ${escapeHtml(err.message)}</p>`;
+        return;
+      }
+
+      const linea = (ok, texto, detalle) => `
+        <li style="display:flex;gap:8px;align-items:flex-start;margin:0 0 8px;font-size:13px;">
+          <i data-lucide="${ok ? 'check-circle-2' : 'x-circle'}" style="width:15px;height:15px;flex:none;margin-top:2px;color:${ok ? 'var(--success)' : 'var(--danger)'};"></i>
+          <span>${texto}${detalle ? `<br><span style="color:var(--text-2);font-size:12px;">${detalle}</span>` : ''}</span>
+        </li>`;
+
+      const e = d.entorno || {};
+      const dominios = (d.resend && d.resend.dominios) || [];
+      const verificados = dominios.filter(x => x.estado === 'verified');
+      const checks = [
+        linea(e.resendApiKey, 'API key de Resend', e.resendApiKey ? null : 'Falta RESEND_API_KEY en las variables de entorno de Vercel — sin esto no sale ningún correo.'),
+        linea(!d.remitenteEsDePruebas, `Remitente: <code style="font-size:12px;">${escapeHtml(d.remitente || '—')}</code>`,
+          d.remitenteEsDePruebas
+            ? 'Es el remitente de pruebas de Resend: solo entrega al correo dueño de la cuenta. Configura RESEND_FROM_EMAIL con una dirección de tu dominio verificado.'
+            : null),
+        linea(verificados.length > 0, `Dominios verificados en Resend: ${verificados.length ? verificados.map(x => escapeHtml(x.nombre)).join(', ') : 'ninguno'}`,
+          d.resend && d.resend.error ? escapeHtml(d.resend.error) : (verificados.length ? null : 'Sin un dominio verificado, Resend rechaza los envíos a terceros.')),
+        linea(e.serviceRoleKey, 'Acceso del servidor a la base', e.serviceRoleKey ? null : 'Falta SUPABASE_SERVICE_ROLE_KEY en Vercel.'),
+        linea(e.cronSecret && d.cron && d.cron.secreto && !!d.cron.url, 'Recordatorios automáticos',
+          (e.cronSecret && d.cron && d.cron.secreto && d.cron.url)
+            ? `Supabase llama a <code style="font-size:12px;">${escapeHtml(d.cron.url)}</code> cada 5 minutos.`
+            : 'Falta CRON_SECRET en Vercel o la configuración en app_config — los recordatorios programados no van a salir solos.')
+      ].join('');
+
+      const r = d.resumen || {};
+      const filasLog = (d.correos || []).slice(0, 8).map(c => {
+        const color = c.estado === 'enviado' ? 'var(--success)'
+          : c.estado === 'error' ? 'var(--danger)'
+          : c.estado === 'cancelado' ? 'var(--text-2)' : 'var(--warning)';
+        const cuando = c.enviado_at || c.programado_para;
+        return `<tr>
+            <td style="padding:6px 8px;font-size:12px;color:var(--text-2);white-space:nowrap;">${escapeHtml(formatFechaHoraCorta(cuando))}</td>
+            <td style="padding:6px 8px;font-size:12px;">${escapeHtml(c.destinatario_email)}</td>
+            <td style="padding:6px 8px;font-size:12px;color:var(--text-2);">${escapeHtml(c.asunto)}</td>
+            <td style="padding:6px 8px;font-size:12px;color:${color};white-space:nowrap;" title="${escapeHtml(c.ultimo_error || '')}">${escapeHtml(c.estado)}</td>
+          </tr>`;
+      }).join('');
+
+      cont.innerHTML = `
+        <ul style="list-style:none;padding:0;margin:0 0 18px;">${checks}</ul>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:18px;">
+          <input type="email" class="input-control" style="padding-left:12px;max-width:260px;" id="correo-prueba-destino"
+                 placeholder="tu@correo.com" value="${escapeHtml((currentSession && currentSession.user && currentSession.user.email) || '')}">
+          <button type="button" class="btn-outline" onclick="enviarCorreoDePrueba()">
+            <i data-lucide="send" style="width:14px;height:14px;"></i> Enviar correo de prueba
+          </button>
+        </div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">
+          Últimos correos ${r.total ? `<span style="font-weight:400;color:var(--text-2);">· ${r.pendientes} en cola · ${r.conError} con error</span>` : ''}
+        </div>
+        ${filasLog
+          ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">${filasLog}</table></div>`
+          : `<p style="font-size:13px;color:var(--text-2);">Todavía no se ha enviado ningún correo desde esta clínica.</p>`}`;
+      lucide.createIcons();
+    }
+
+    async function enviarCorreoDePrueba() {
+      const email = document.getElementById('correo-prueba-destino').value.trim();
+      if (!email) { showToast('Escribe un correo de destino'); return; }
+      const res = await enviarCorreoIris({
+        tipo: 'prueba',
+        destinatarios: [{ email, rol: 'usuario' }],
+        asunto: 'Prueba de envío · IRIS',
+        titulo: 'El envío de correos está funcionando',
+        intro: 'Si estás leyendo esto, la configuración de correo de tu clínica quedó bien: las notificaciones de agenda y los recordatorios van a salir por esta misma vía.',
+        filas: [['Enviado', new Date().toLocaleString('es-CO')]],
+        mensajeOk: `Correo de prueba enviado a ${email} — revisa también la carpeta de spam`
+      });
+      // Se repinta siempre: el log de abajo tiene que mostrar el intento, haya
+      // salido o no. Un fallo con su mensaje es información, no ruido.
+      renderCorreoEstado();
+      return res;
     }
 
     async function guardarVetConfigAgenda() {
@@ -28856,12 +29322,17 @@
     // módulos: acá se dibuja directo con jsPDF, mismo patrón que
     // exportarClientesPDF, porque el formato de tabla fiscal es fijo y no
     // depende de ninguna vista HTML existente (docVentaViewContentHTML).
-    async function generarPdfEstadoCuentaFactura(factura) {
+    // `opciones.devolverBlob` hace que en vez de descargar el PDF devuelva
+    // { blob, nombreArchivo }, para adjuntarlo en "Enviar por email". El
+    // desvío a tirilla se propaga igual: si la clínica imprime en rollo, el
+    // correo lleva la tirilla, que es su documento.
+    async function generarPdfEstadoCuentaFactura(factura, opciones) {
+      const devolverBlob = !!(opciones && opciones.devolverBlob);
       // "Impresión tirilla" (Configuración de la veterinaria > Ventas e
       // inventario): el mismo documento sale en formato de rollo de 80 mm.
       // El desvío va acá y no en cada llamador (confirmarCerrarCuenta,
       // rowActionImprimir…) para que el ajuste valga por igual en todos.
-      if (ESTABLECIMIENTO_CONFIG.recibosImpresionTirilla) return generarTirillaFactura(factura);
+      if (ESTABLECIMIENTO_CONFIG.recibosImpresionTirilla) return generarTirillaFactura(factura, opciones);
       const cliente = ventasClienteById(factura.clienteId) || {};
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -28977,6 +29448,7 @@
       }
 
       const nombreArchivoFactura = ['estado-cuenta', ...[cliente.nombre, factura.numero].filter(Boolean).map(slugificarIrisPdf)].join('-') + '.pdf';
+      if (devolverBlob) return { blob: doc.output('blob'), nombreArchivo: nombreArchivoFactura };
       doc.save(nombreArchivoFactura);
       showToast('PDF descargado');
     }
@@ -30536,6 +31008,49 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
                 m.fechaNacimiento || m.edad || m.genero || m.chip);
     }
 
+    // Etiquetas que solo pueden ser de una mascota. Sirven para inferir la
+    // sección cuando el cliente responde sin los encabezados de la plantilla
+    // (caso normal cuando escribe todo de corrido): en cuanto aparece una de
+    // estas, lo que sigue es la mascota aunque nadie haya escrito "DATOS DE TU
+    // CHIQUITIN". Sin esto, un "Nombre:" de mascota pisaba el nombre del tutor
+    // y la mascota no se detectaba en absoluto.
+    const INTAKE_CAMPOS_SOLO_MASCOTA = new Set(['especie', 'raza', 'color', 'peso',
+      'fechaNacimiento', 'edad', 'genero', 'esterilizado', 'chip', 'alergias', 'antecedentes']);
+    // Etiquetas que valen para tutor y para mascota ("Nombre:"). No pueden
+    // decidir la sección por sí solas.
+    const INTAKE_ETIQUETAS_NOMBRE_AMBIGUO = new Set(['nombre', 'nombres', 'comosellama']);
+
+    // Quita el prefijo que WhatsApp agrega al copiar mensajes desde la app de
+    // escritorio o al exportar el chat: "[2/9/26, 10:05 a. m.] Juan Pérez: …"
+    // o "2/9/26, 10:05 - Juan Pérez: …". Sin esto, el primer ":" de la línea
+    // es el de la hora y NINGUNA etiqueta se reconoce — copiar la conversación
+    // en vez de un solo mensaje es lo que hace cualquiera.
+    function intakeQuitarPrefijoWhatsapp(linea) {
+      let s = (linea || '').replace(/[‎‏ ]/g, ' ');
+      // Formato con corchetes (WhatsApp Web/iOS).
+      s = s.replace(/^\s*\[[^\]]{4,40}\]\s*[^:]{1,60}:\s*/, '');
+      // Formato de exportación sin corchetes (Android).
+      s = s.replace(/^\s*\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4},?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\.?\s*m\.?)?\s*[-–]\s*[^:]{1,60}:\s*/i, '');
+      return s;
+    }
+
+    // ¿Esta línea es una etiqueta conocida? Se usa para decidir si la línea
+    // siguiente a una etiqueta vacía es su valor o es otra etiqueta.
+    function intakeLineaEsEtiqueta(linea) {
+      const corte = linea.indexOf(':');
+      if (corte < 0) return false;
+      const et = normalizarHeaderCSV(linea.slice(0, corte));
+      return !!(INTAKE_CAMPOS_TUTOR[et] || INTAKE_CAMPOS_MASCOTA[et]);
+    }
+
+    function intakeEsEncabezadoSeccion(enc) {
+      if (enc.includes('tuinformacion') || enc.includes('tusdatos') ||
+          enc.includes('datosdeltutor') || enc.includes('informaciondeltutor')) return 'tutor';
+      if (enc.includes('chiquitin') || enc.includes('tumascota') || enc.includes('datosdelamascota') ||
+          enc.includes('datosdetupeludito') || enc.includes('tupeludito') || enc.includes('datosdelpaciente')) return 'mascota';
+      return null;
+    }
+
     function parsearIntakeWhatsapp(texto) {
       const tutor = { nombre: '', docTipo: 'C.C.', docNumero: '', movil: null,
                       email: '', direccion: '', ciudad: '' };
@@ -30544,38 +31059,81 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       let reconocidos = 0;
       let seccion = 'tutor';
       let actual = null;
+      // Cierto solo mientras el último dato reconocido haya sido un "Nombre:"
+      // ambiguo asignado al tutor. Es lo que permite devolverle ese nombre a
+      // la mascota si la línea siguiente resulta ser un campo de mascota.
+      let nombreTutorAmbiguo = false;
 
       // Los asteriscos son el negrita de WhatsApp, no parte del dato.
-      const lineas = (texto || '').replace(/\*/g, '').split(/\r?\n/);
+      const lineas = (texto || '').replace(/\*/g, '').split(/\r?\n/)
+        .map(l => intakeQuitarPrefijoWhatsapp(l).trim());
 
       const abrirMascota = () => { actual = intakeMascotaVacia(); mascotas.push(actual); return actual; };
 
-      for (const linea of lineas) {
-        const cruda = linea.trim();
+      for (let i = 0; i < lineas.length; i++) {
+        const cruda = lineas[i];
         if (!cruda) continue;
 
         const enc = normalizarHeaderCSV(cruda);
         // Encabezados de sección de la plantilla (van solos, sin ":").
         if (!cruda.includes(':')) {
-          if (enc.includes('tuinformacion') || enc.includes('tusdatos') || enc.includes('datosdeltutor') || enc.includes('informaciondeltutor')) {
-            seccion = 'tutor'; continue;
-          }
-          if (enc.includes('chiquitin') || enc.includes('tumascota') || enc.includes('datosdelamascota') ||
-              enc.includes('datosdetupeludito') || enc.includes('tupeludito') || enc.includes('datosdelpaciente')) {
-            seccion = 'mascota'; abrirMascota(); continue;
-          }
+          const nuevaSeccion = intakeEsEncabezadoSeccion(enc);
+          if (nuevaSeccion === 'tutor') { seccion = 'tutor'; nombreTutorAmbiguo = false; continue; }
+          if (nuevaSeccion === 'mascota') { seccion = 'mascota'; nombreTutorAmbiguo = false; abrirMascota(); continue; }
           continue;
         }
 
         const corte = cruda.indexOf(':');
         const etiqueta = normalizarHeaderCSV(cruda.slice(0, corte));
-        const valor = cruda.slice(corte + 1).trim();
-        // La plantilla reenviada en blanco no aporta nada: se ignora en vez de
-        // pisar con "" un dato que otra línea sí traía.
-        if (!etiqueta || !valor) continue;
+        let valor = cruda.slice(corte + 1).trim();
+        if (!etiqueta) continue;
+        // Etiqueta sin valor en la misma línea: el cliente que copia la
+        // plantilla y escribe la respuesta DEBAJO es tan común como el que
+        // responde al lado. Se toma la línea siguiente solo si no es otra
+        // etiqueta ni un encabezado de sección — así la plantilla reenviada
+        // en blanco sigue sin aportar nada.
+        if (!valor) {
+          for (let j = i + 1; j < lineas.length; j++) {
+            const sig = lineas[j];
+            if (!sig) continue;
+            if (intakeLineaEsEtiqueta(sig)) break;
+            if (!sig.includes(':') && intakeEsEncabezadoSeccion(normalizarHeaderCSV(sig))) break;
+            valor = sig;
+            i = j;
+            break;
+          }
+        }
+        if (!valor) continue;
+
+        const campoTutor = INTAKE_CAMPOS_TUTOR[etiqueta];
+        const campoMascota = INTAKE_CAMPOS_MASCOTA[etiqueta];
+
+        // Inferencia de sección sin encabezados: una etiqueta que solo puede
+        // ser de mascota abre la sección de mascota.
+        if (seccion === 'tutor' && campoMascota && INTAKE_CAMPOS_SOLO_MASCOTA.has(campoMascota)) {
+          seccion = 'mascota';
+          abrirMascota();
+          // El "Nombre:" inmediatamente anterior era el del animal, no el del
+          // tutor: se le devuelve. Solo si fue el último dato reconocido —
+          // con una cédula o un teléfono de por medio, ese nombre sí era del
+          // tutor y no hay que tocarlo.
+          if (nombreTutorAmbiguo && tutor.nombre) {
+            actual.nombre = tutor.nombre;
+            tutor.nombre = '';
+          }
+          nombreTutorAmbiguo = false;
+        }
+        // Un segundo "Nombre:" cuando el tutor ya tiene el suyo es el del
+        // animal, aunque el cliente no haya escrito el encabezado.
+        else if (seccion === 'tutor' && campoTutor === 'nombre' && tutor.nombre &&
+                 INTAKE_ETIQUETAS_NOMBRE_AMBIGUO.has(etiqueta)) {
+          seccion = 'mascota';
+          abrirMascota();
+          nombreTutorAmbiguo = false;
+        }
 
         if (seccion === 'mascota') {
-          const campo = INTAKE_CAMPOS_MASCOTA[etiqueta];
+          const campo = campoMascota;
           if (!campo) continue;
           if (!actual) abrirMascota();
           // Un segundo "Nombre:" dentro de la sección de mascotas es el
@@ -30601,12 +31159,12 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           continue;
         }
 
-        const campo = INTAKE_CAMPOS_TUTOR[etiqueta];
-        if (!campo) continue;
+        if (!campoTutor) continue;
         reconocidos++;
-        if (campo === 'movil') tutor.movil = intakeNormalizarMovil(valor);
-        else if (campo === 'docNumero') tutor.docNumero = soloDigitos(valor) || valor;
-        else tutor[campo] = valor;
+        nombreTutorAmbiguo = campoTutor === 'nombre' && INTAKE_ETIQUETAS_NOMBRE_AMBIGUO.has(etiqueta);
+        if (campoTutor === 'movil') tutor.movil = intakeNormalizarMovil(valor);
+        else if (campoTutor === 'docNumero') tutor.docNumero = soloDigitos(valor) || valor;
+        else tutor[campoTutor] = valor;
       }
 
       // Una mascota abierta por su encabezado pero sin un solo dato no se
@@ -30772,25 +31330,41 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ texto })
         });
-        const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error((data && data.error) || 'no se pudo interpretar');
+        // Un 404 devuelve HTML, no JSON (pasa al abrir el archivo sin las
+        // funciones de Vercel corriendo): res.json() reventaría con un error
+        // de sintaxis que no le dice nada a nadie.
+        let data = null;
+        try { data = await res.json(); }
+        catch (e) { throw new Error(`el endpoint /api/parsear-intake no respondió JSON (HTTP ${res.status})`); }
+        if (!res.ok || !data.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
         const remoto = intakeNormalizarRespuestaLLM(data.datos, texto);
         intakeWhatsappEstado = { ...intakeFusionar(local, remoto), origen: 'ia', textoOriginal: texto };
       } catch (err) {
         // La interpretación asistida es un respaldo, no un requisito: si no
         // está disponible se muestra lo que sacó el parser por etiquetas y el
         // operador completa a mano. Nunca se bloquea el registro por esto.
+        // El motivo REAL va en el aviso, no solo en la consola: sin él, el
+        // caso "falta ANTHROPIC_API_KEY en Vercel" se ve idéntico a "el
+        // mensaje no traía nada" y nadie sabe qué arreglar — mismo criterio
+        // que la pantalla de estado del envío de correos.
         console.error('[IRIS] No se pudo usar la interpretación asistida:', err);
+        const motivo = (err && err.message ? err.message : 'error desconocido').toString().slice(0, 200);
         intakeWhatsappEstado = {
           ...local, origen: 'parcial', textoOriginal: texto,
-          avisos: local.avisos.concat(['No se pudo usar la interpretación asistida — revisa y completa los campos a mano.'])
+          avisos: local.avisos.concat([`No se pudo usar la interpretación asistida (${motivo}) — revisa y completa los campos a mano.`])
         };
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
       }
 
       if (!intakeWhatsappEstado.tutor.nombre && !intakeWhatsappEstado.mascotas.length) {
-        mostrarErrorIntakeWhatsapp('No se reconoció ningún dato en ese texto. Revisa que sea la respuesta del tutor y no otra parte de la conversación.');
+        // Si además falló el respaldo asistido, el motivo va en el mismo
+        // mensaje: "no se reconoció nada" a secas hace buscar el error en el
+        // texto pegado cuando el problema estaba en el servidor.
+        const porQue = intakeWhatsappEstado.origen === 'parcial' && intakeWhatsappEstado.avisos.length
+          ? ` ${intakeWhatsappEstado.avisos[intakeWhatsappEstado.avisos.length - 1]}`
+          : '';
+        mostrarErrorIntakeWhatsapp(`No se reconoció ningún dato en ese texto. Revisa que sea la respuesta del tutor y no otra parte de la conversación.${porQue}`);
         intakeWhatsappEstado = null;
         return;
       }
@@ -31613,6 +32187,27 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank');
     }
 
+    // Tercera vía para hacerle llegar el enlace al tutor, junto a copiar y
+    // WhatsApp. Abre el mismo modal de envío que el resto de la app en vez de
+    // un mailto: así queda registrado en la bandeja de salida y se sabe si
+    // llegó, que es lo que un mailto no permite.
+    function enviarRegistroLinkPorCorreo() {
+      const url = document.getElementById('registro-link-input').value;
+      if (!url) return;
+      const ctx = correoContextoClinica();
+      openEnviarCorreoModal({
+        tipo: 'link_registro',
+        titulo: 'Enviar el enlace de registro',
+        asunto: `Registra tus datos en ${ctx.clinica}`,
+        emailDestino: '',
+        nombreDestino: '',
+        intro: `Para agilizar tu visita, registra tus datos y los de tu mascota desde el enlace de abajo. Toma un par de minutos.`,
+        adjuntos: [],
+        cta: { texto: 'Abrir el formulario', url },
+        referencia: { tabla: 'intake_links', id: url.split('t=')[1] || null }
+      });
+    }
+
     function estadoRegistroLinkTexto(row) {
       if (row.estado === 'completado') return { txt: 'Completado', color: 'var(--success)' };
       if (row.estado === 'sin_vincular') return { txt: 'Recibido · falta vincular', color: 'var(--warning)' };
@@ -32101,7 +32696,8 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
     // factura de 20 ítems saldría cortada.
     const TIRILLA_ANCHO_PT = 226.77;
 
-    async function generarTirillaFactura(factura) {
+    async function generarTirillaFactura(factura, opciones) {
+      const devolverBlob = !!(opciones && opciones.devolverBlob);
       const cliente = ventasClienteById(factura.clienteId) || {};
       const { jsPDF } = window.jspdf;
       const margen = 12;
@@ -32185,6 +32781,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       }
 
       const nombreArchivo = ['tirilla', ...[cliente.nombre, factura.numero].filter(Boolean).map(slugificarIrisPdf)].join('-') + '.pdf';
+      if (devolverBlob) return { blob: doc.output('blob'), nombreArchivo };
       doc.save(nombreArchivo);
       showToast('Tirilla descargada');
     }
@@ -34345,7 +34942,17 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         propietario: r.propietario || null, petKey: r.pet_key || null,
         encargadoId: r.encargado_id != null ? Number(r.encargado_id) : null,
         lugar: r.lugar || '', descripcion: r.descripcion || '',
-        recordatorio24hISO: r.recordatorio_24h ? r.recordatorio_24h.slice(0, 19) : null
+        recordatorio24hISO: r.recordatorio_24h ? r.recordatorio_24h.slice(0, 19) : null,
+        // Destinatarios de notificación. guardarEventoAgenda() los recalcula
+        // en cada guardado (datosNotificacionEventoAgenda), pero se leen igual
+        // para que el objeto en memoria refleje la fila real — los eventos
+        // creados antes de esta función los traen en null y se completan solos
+        // la primera vez que se editen.
+        propietarioId: r.propietario_id || null,
+        propietarioEmail: r.propietario_email || null,
+        encargadoEmail: r.encargado_email || null,
+        encargadoNombre: r.encargado_nombre || null,
+        mascotaNombre: r.mascota_nombre || null
       };
     }
     function filaSupabaseDesdeEventoAgenda(ev) {
@@ -34356,7 +34963,17 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         propietario: ev.propietario || null, pet_key: ev.petKey || null,
         encargado_id: ev.encargadoId || null,
         lugar: ev.lugar || null, descripcion: ev.descripcion || null,
-        recordatorio_24h: ev.recordatorio24hISO || null
+        recordatorio_24h: ev.recordatorio24hISO || null,
+        // Destinatarios resolubles desde el servidor. Sin estas cinco
+        // columnas, el cron que manda los recordatorios (que corre sin
+        // navegador) no tendría a quién escribirle: `encargado_id` es un id
+        // local que se regenera en cada sesión y `propietario` era solo un
+        // nombre en texto. Ver datosNotificacionEventoAgenda().
+        propietario_id: ev.propietarioId || null,
+        propietario_email: ev.propietarioEmail || null,
+        encargado_email: ev.encargadoEmail || null,
+        encargado_nombre: ev.encargadoNombre || null,
+        mascota_nombre: ev.mascotaNombre || null
       };
     }
 
@@ -37329,11 +37946,11 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         <label class="mini-toggle" style="margin-top:14px;">
           <input type="checkbox" id="seg-mensaje-enviar" class="mini-toggle-input" onchange="toggleSeguimientoMensajeTexto()">
           <span class="mini-toggle-slider"></span>
-          <span class="mini-toggle-text">Enviar mensaje al propietario (simulado)</span>
+          <span class="mini-toggle-text">Enviar mensaje al propietario por correo</span>
         </label>
         <div class="input-group" id="seg-mensaje-texto-wrap" style="display:none;margin-top:8px;">
           <label class="input-label">Mensaje para el propietario</label>
-          <textarea class="soap-textarea" id="seg-mensaje-texto" placeholder="Texto del mensaje que se enviaría al propietario..."></textarea>
+          <textarea class="soap-textarea" id="seg-mensaje-texto" placeholder="Texto del mensaje que se le enviará al propietario..."></textarea>
         </div>
       </div>
       <div class="soap-modal-footer">
@@ -37922,6 +38539,9 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           </button>
           <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="abrirWhatsappConRegistroLink()">
             <i data-lucide="message-circle" style="width:14px;height:14px;"></i> WhatsApp
+          </button>
+          <button type="button" class="btn-secondary" style="padding:8px 14px;font-size:13px;" onclick="enviarRegistroLinkPorCorreo()">
+            <i data-lucide="mail" style="width:14px;height:14px;"></i> Correo
           </button>
         </div>
       </div>
@@ -38981,13 +39601,51 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
   <div class="modal-overlay" id="agenda-notif-modal" onclick="handleAgendaNotifModalOverlayClick(event)">
     <div class="modal-card" onclick="event.stopPropagation()" style="width:420px;">
       <div class="modal-header">
-        <span class="modal-title">Notificación enviada</span>
+        <span class="modal-title" id="agenda-notif-modal-titulo">Notificación enviada</span>
         <button class="modal-close" onclick="closeAgendaNotifModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
       </div>
-      <p style="font-size:13px;color:var(--text-1);line-height:1.6;" id="agenda-notif-modal-body"></p>
+      <div style="font-size:13px;color:var(--text-1);line-height:1.6;" id="agenda-notif-modal-body"></div>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
         <button class="btn-outline" id="agenda-notif-ver-consultorio-btn" onclick="abrirPacienteDesdeAgendaNotif()"><i data-lucide="stethoscope" style="width:14px;height:14px;"></i> Ver en consultorio</button>
         <button class="btn-primary" onclick="closeAgendaNotifModal()">Entendido</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Enviar por email — confirmación de "Enviar por email" del menú
+       "..." de cualquier fila y del reenvío de firma. El destinatario se
+       muestra y se puede corregir a propósito: mandar un documento clínico a
+       la dirección equivocada no se deshace, y el correo del tutor puede
+       estar desactualizado o no existir. Ver rowActionEmail(). -->
+  <div class="modal-overlay" id="enviar-correo-modal" onclick="handleEnviarCorreoOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:460px;">
+      <div class="modal-header">
+        <span class="modal-title" id="enviar-correo-titulo">Enviar por correo</span>
+        <button class="modal-close" onclick="closeEnviarCorreoModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="input-group">
+          <label class="input-label">Correo del destinatario *</label>
+          <input type="email" class="input-control" style="padding-left:12px;" id="enviar-correo-destino" placeholder="nombre@correo.com">
+          <span id="enviar-correo-aviso" style="font-size:12px;color:var(--warning);margin-top:4px;display:none;">
+            Este registro no tiene un correo guardado — escríbelo para enviarlo.
+          </span>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Asunto *</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="enviar-correo-asunto">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Mensaje</label>
+          <textarea class="input-control" style="padding-left:12px;min-height:80px;resize:vertical;" id="enviar-correo-mensaje"></textarea>
+        </div>
+        <div id="enviar-correo-adjunto" style="display:none;align-items:center;gap:8px;font-size:12px;color:var(--text-2);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;">
+          <i data-lucide="paperclip" style="width:14px;height:14px;flex:none;"></i><span></span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+        <button class="btn-outline" onclick="closeEnviarCorreoModal()">Cancelar</button>
+        <button class="btn-primary" id="enviar-correo-btn" onclick="confirmarEnviarCorreo()">Enviar</button>
       </div>
     </div>
   </div>
@@ -39103,17 +39761,181 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       }
 
       if (propietario.email) {
-        const { data: signedUrlData, error: signedUrlError } = await window.supabase.storage
-          .from('pdfs')
-          .createSignedUrl(pdfPath, 3600);
-        if (signedUrlError) throw signedUrlError;
-
-        await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: propietario.email, propietario, pdfUrl: signedUrlData.signedUrl })
+        // El PDF va ADJUNTO, no como enlace firmado. La versión anterior
+        // mandaba una URL de Storage que vence en 1 hora: el tutor que abría
+        // el correo al día siguiente encontraba un enlace muerto. Además ese
+        // envío iba por /api/send-email sin mirar la respuesta, así que un
+        // fallo (API key ausente, dominio sin verificar) no dejaba rastro en
+        // ninguna parte — que es justo por lo que "no llegaban los correos".
+        const adjunto = await blobAAdjuntoCorreo(pdfBlob, `registro-${slugificarIrisPdf(propietario.nombre)}.pdf`);
+        await enviarCorreoIris({
+          tipo: 'registro_propietario',
+          mensajeOk: `Confirmación de registro enviada a ${propietario.email}`,
+          destinatarios: [{ email: propietario.email, nombre: propietario.nombre, rol: 'tutor' }],
+          asunto: 'Confirmación de registro',
+          titulo: 'Registro confirmado',
+          intro: 'Recibimos y guardamos tu información correctamente. Estos son los datos registrados:',
+          filas: [
+            ['Nombre / Razón social', propietario.nombre],
+            ['Tipo de identificación', propietario.docTipo],
+            ['Número de identificación', propietario.docNumero],
+            ['Móvil / WhatsApp', propietario.movil],
+            ['Email', propietario.email],
+            ['Dirección', propietario.direccion],
+            ['Ciudad o municipio', propietario.ciudad]
+          ],
+          adjuntos: adjunto ? [adjunto] : [],
+          referencia: { tabla: 'propietarios', id: propietario.id }
         });
       }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // ENVÍO DE CORREO — punto único del lado del navegador
+    // ══════════════════════════════════════════════════════════════
+    // Todo el correo de la app sale por dos endpoints y nada más:
+    //   · /api/agenda-notificar — avisos de cita + programación de los
+    //     recordatorios configurados en Configuración de la veterinaria >
+    //     Agenda y disponibilidad;
+    //   · /api/enviar-correo — el resto (documento por correo, mensaje al
+    //     propietario, invitación de usuario, link de autorregistro, prueba).
+    // Los dos escriben en la tabla `correos` (bandeja de salida + log) y los
+    // manda el mismo procesador. Ver api/_lib/bandeja.js.
+    //
+    // Lo importante de este bloque no es que mande correos, sino que los
+    // fallos DEJEN DE SER SILENCIOSOS. La versión anterior hacía
+    // `await fetch('/api/send-email', …)` sin mirar la respuesta: con la API
+    // key ausente el servidor respondía 500, el navegador lo ignoraba y no
+    // había manera de enterarse de que nada salió. Acá cada llamada revisa el
+    // resultado y avisa con un toast.
+
+    // El backend necesita el access token de Supabase para saber QUIÉN llama
+    // (y a qué clínica pertenece): las funciones usan la Service Role key, que
+    // salta RLS, así que sin esta verificación un usuario podría mandar
+    // correos con el remitente de otra clínica.
+    async function correoAuthHeaders() {
+      if (!window.supabase) return null;
+      const { data } = await window.supabase.auth.getSession();
+      const token = data && data.session && data.session.access_token;
+      if (!token) return null;
+      return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    }
+
+    // Datos de marca que viajan en cada correo para que no se vea genérico:
+    // el nombre real de la clínica, su correo de contacto (que además queda
+    // como Responder a) y el acento del tema activo.
+    function correoContextoClinica() {
+      const estab = currentSession && currentSession.activeMembership
+        ? currentSession.activeMembership.establecimiento : null;
+      const acento = getComputedStyle(document.documentElement).getPropertyValue('--clinic-accent').trim();
+      return {
+        establecimientoId: currentSession && currentSession.activeMembership
+          ? currentSession.activeMembership.establecimientoId : null,
+        clinica: (estab && estab.nombre) || (ESTABLECIMIENTO_CONFIG && ESTABLECIMIENTO_CONFIG.nombre) || 'IRIS',
+        correoClinica: (estab && estab.correo_contacto) || null,
+        acento: /^#[0-9a-fA-F]{6}$/.test(acento) ? acento : null
+      };
+    }
+
+    async function apiCorreo(ruta, body) {
+      const headers = await correoAuthHeaders();
+      if (!headers) return { ok: false, error: 'No hay sesión activa' };
+      try {
+        const res = await fetch(ruta, { method: 'POST', headers, body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return { ok: false, error: data.error || `El servidor respondió ${res.status}` };
+        return { ok: true, ...data };
+      } catch (err) {
+        return { ok: false, error: err.message || 'No se pudo contactar al servidor de correo' };
+      }
+    }
+
+    // Envío genérico. Devuelve el resultado y ADEMÁS avisa por toast, porque
+    // en la práctica todos los llamadores quieren lo mismo. `silencioso: true`
+    // para los casos en que el llamador ya muestra su propio mensaje.
+    async function enviarCorreoIris(opciones) {
+      const ctx = correoContextoClinica();
+      if (!ctx.establecimientoId) {
+        showToast('No hay una clínica activa — no se puede enviar el correo');
+        return { ok: false, error: 'Sin clínica activa' };
+      }
+      const destinatarios = (opciones.destinatarios || []).filter(d => d && d.email);
+      if (!destinatarios.length) {
+        if (!opciones.silencioso) showToast(opciones.mensajeSinDestinatario || 'No hay un correo registrado para enviar');
+        return { ok: false, error: 'Sin destinatarios' };
+      }
+
+      const res = await apiCorreo('/api/enviar-correo', { ...ctx, ...opciones, destinatarios });
+      if (!opciones.silencioso) {
+        if (res.ok && res.enviados) {
+          showToast(opciones.mensajeOk || `Correo enviado a ${destinatarios.map(d => d.email).join(', ')}`);
+        } else {
+          showToast(`No se pudo enviar el correo: ${resumenErrorCorreo(res)}`);
+        }
+      }
+      return res;
+    }
+
+    // Un fallo de correo casi siempre tiene una causa concreta y accionable
+    // (dominio sin verificar, API key ausente). Mostrar "error" a secas
+    // obligaría a abrir los logs de Vercel para saber qué pasó.
+    function resumenErrorCorreo(res) {
+      if (res && res.error) return res.error;
+      const fallo = (res && res.detalle || []).find(d => !d.ok);
+      if (fallo && fallo.error) return fallo.error;
+      return 'revisa el diagnóstico en Configuración de la veterinaria > Agenda';
+    }
+
+    // Adjunto a partir de un Blob (los PDF que ya genera la app con jsPDF).
+    function blobAAdjuntoCorreo(blob, filename) {
+      return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          filename,
+          contentType: blob.type || 'application/pdf',
+          // dataURL → solo la parte base64.
+          contenidoBase64: String(reader.result).split(',')[1] || ''
+        });
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    // ── Agenda ─────────────────────────────────────────────────────
+    // Resuelve, desde el modelo en memoria, los datos que el SERVIDOR no
+    // puede reconstruir por su cuenta: `agenda_eventos.encargado_id` es el id
+    // local numérico de USUARIOS_SISTEMA (se regenera 1..N en cada sesión del
+    // navegador, ver la nota de tareas_pendientes.responsable_id en CLAUDE.md)
+    // y `propietario` era solo un nombre en texto. El cron de recordatorios
+    // corre sin navegador: si estos datos no quedan en la fila, no hay a quién
+    // escribirle.
+    function datosNotificacionEventoAgenda(petKey, propietarioNombre, encargadoId) {
+      const data = petKey ? patientData[petKey] : null;
+      let prop = petKey ? getPropietarioDeMascota(petKey) : null;
+      if (!prop && propietarioNombre) prop = propietarios.find(x => x.nombre === propietarioNombre) || null;
+      const u = USUARIOS_SISTEMA.find(x => x.id === encargadoId) || null;
+      return {
+        propietarioId: (prop && prop.id) || null,
+        propietarioEmail: (prop && prop.email) || null,
+        encargadoEmail: (u && u.email) || null,
+        encargadoNombre: (u && u.nombre) || null,
+        mascotaNombre: (data && data.name) || null
+      };
+    }
+
+    // Llama al endpoint de agenda. Al eliminar hay que llamarlo ANTES de
+    // borrar la fila: el servidor RELEE el evento de la base para armar el
+    // correo (no confía en lo que mande el navegador) y sobre una fila ya
+    // borrada no tendría con qué.
+    async function notificarAgendaEvento(eventoId, accion) {
+      const ctx = correoContextoClinica();
+      if (!ctx.establecimientoId || !eventoId) return { ok: false, error: 'Sin clínica activa' };
+      return apiCorreo('/api/agenda-notificar', {
+        establecimientoId: ctx.establecimientoId,
+        acento: ctx.acento,
+        eventoId,
+        accion
+      });
     }
 
     // Descarga bajo demanda (bucket privado -> URL firmada de 1h) del PDF de
