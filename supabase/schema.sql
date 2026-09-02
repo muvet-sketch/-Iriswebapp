@@ -1226,6 +1226,24 @@ create policy "avatars_delete_own_folder"
 -- el cliente vía getPublicUrl() cuando hace falta.
 alter table public.establecimientos add column if not exists logo_path text;
 
+-- ── Configuración de la veterinaria: "Localización y servicios" y
+-- "Agenda y disponibilidad" (Admin > Configuración de la veterinaria).
+-- Ver migración 20260901_establecimiento_config.sql. Todas nullable o con
+-- default; la query de sesión (`memberships` con `establecimientos(*)`) las
+-- trae sola y establecimientos_update_admin ya las cubre.
+alter table public.establecimientos add column if not exists direccion text;
+alter table public.establecimientos add column if not exists departamento text;
+alter table public.establecimientos add column if not exists pais text;
+alter table public.establecimientos add column if not exists servicios_ofrecidos jsonb not null default '[]'::jsonb;
+alter table public.establecimientos add column if not exists especies_atendidas jsonb not null default '[]'::jsonb;
+alter table public.establecimientos add column if not exists precio_consulta numeric;
+alter table public.establecimientos add column if not exists moneda text;
+alter table public.establecimientos add column if not exists zona_horaria text;
+-- horario_atencion: [{ "dias": ["lun",...], "apertura": "08:00", "cierre": "18:00" }]
+alter table public.establecimientos add column if not exists horario_atencion jsonb not null default '[]'::jsonb;
+alter table public.establecimientos add column if not exists duracion_cita_min integer;
+alter table public.establecimientos add column if not exists prevenir_solapamientos boolean not null default false;
+
 -- ── STORAGE: bucket `logos-clinica` (logo del establecimiento) ──
 -- Público (igual que `fotos-mascotas`) — por establecimiento, path
 -- "<establecimiento_id>/logo.<ext>", mismo patrón "own folder" que

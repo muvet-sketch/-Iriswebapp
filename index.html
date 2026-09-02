@@ -7796,6 +7796,13 @@
             </div>
           </div>
 
+          <!-- Localización y servicios / Agenda y disponibilidad — contenido
+               pintado por JS (renderVetConfigLocalizacion/renderVetConfigAgenda),
+               mismo criterio que renderVetConfigPreferencias. Persisten en
+               columnas de `establecimientos` (migración 20260901). -->
+          <div class="vetconfig-subview" id="vetconfig-view-localizacion"></div>
+          <div class="vetconfig-subview" id="vetconfig-view-agenda"></div>
+
           <!-- Sedes vinculadas — confirmado como uso lejano, sin lógica -->
           <div class="vetconfig-subview" id="vetconfig-view-sedes">
             <div class="placeholder-content" style="padding:48px 0;">
@@ -11035,13 +11042,14 @@
         const d = new Date(prefillDate);
         fechaInicio = fechaFin = isoDateOnly(d);
         horaInicio = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-        const finDate = new Date(d.getTime() + 30 * 60000);
+        // Duración por defecto tomada de Configuración de la veterinaria > Agenda.
+        const finDate = new Date(d.getTime() + getDuracionCitaMin() * 60000);
         horaFin = `${String(finDate.getHours()).padStart(2, '0')}:${String(finDate.getMinutes()).padStart(2, '0')}`;
       } else {
         const d = new Date();
         fechaInicio = fechaFin = isoDateOnly(d);
         horaInicio = '09:00';
-        horaFin = '09:30';
+        horaFin = sumarMinutosHHMM('09:00', getDuracionCitaMin());
       }
       document.getElementById('ag-fecha-inicio').value = fechaInicio;
       document.getElementById('ag-fecha-fin').value = fechaFin;
@@ -11223,13 +11231,25 @@
       const establecimientoId = currentSession.activeMembership.establecimientoId;
 
       const startISO = `${fechaInicio}T${horaInicio}:00`;
+      const endISO = `${fechaFin}T${horaFin}:00`;
+
+      // "Prevenir solapamientos" (Configuración de la veterinaria > Agenda):
+      // bloquea si el encargado ya tiene otro evento con hora en ese rango.
+      if (!sinHora && ESTABLECIMIENTO_CONFIG.prevenirSolapamientos) {
+        const choque = haySolapamientoAgenda(encargadoId, startISO, endISO, agendaEditingId);
+        if (choque) {
+          showToast(`No se puede guardar: el encargado ya tiene "${choque.title}" en ese horario ("Prevenir solapamientos" está activo)`);
+          return;
+        }
+      }
+
       const evento = {
         id: agendaEditingId,
         tipo,
         estado: document.getElementById('ag-estado').value,
         title: titulo,
         startISO,
-        endISO: `${fechaFin}T${horaFin}:00`,
+        endISO,
         sinHora,
         soloEspacio,
         propietario: soloEspacio ? null : propietarioValue,
@@ -11584,8 +11604,11 @@
     }
 
     function getDisponibilidadSlots() {
+      // Rango tomado de "Configuración de la veterinaria > Agenda y
+      // disponibilidad" (horario de atención); fallback 07:00–20:00.
+      const { desdeH, hastaH } = getRangoHorarioAtencion();
       const slots = [];
-      for (let h = 7; h < 20; h++) {
+      for (let h = desdeH; h < hastaH; h++) {
         slots.push(`${String(h).padStart(2, '0')}:00`);
         slots.push(`${String(h).padStart(2, '0')}:30`);
       }
@@ -11638,13 +11661,15 @@
     }
 
     // Redondea "HH:MM" al slot de 30 min más cercano hacia abajo, acotado
-    // al rango 07:00–19:30 que cubre la grilla de Disponibilidad.
+    // al rango que cubre la grilla de Disponibilidad (horario de atención
+    // configurado; fallback 07:00–19:30).
     function redondearHoraASlot30(horaStr) {
       if (!horaStr) return null;
       let [h, m] = horaStr.split(':').map(Number);
       m = m < 30 ? 0 : 30;
-      if (h < 7) h = 7;
-      if (h > 19) h = 19;
+      const { desdeH, hastaH } = getRangoHorarioAtencion();
+      if (h < desdeH) { h = desdeH; m = 0; }
+      if (h >= hastaH) { h = hastaH - 1; m = 30; }
       return `${String(h).padStart(2, '0')}:${m === 0 ? '00' : '30'}`;
     }
 
@@ -11657,9 +11682,27 @@
       seedDisponibilidadMedicos();
       const slot = redondearHoraASlot30(hora);
       const estado = (!sinHora && encargadoId && slot && DISPONIBILIDAD_MEDICOS[encargadoId]) ? DISPONIBILIDAD_MEDICOS[encargadoId][slot] : 'disponible';
-      const advertir = estado === 'no_disponible' || estado === 'bloqueado';
-      warningEl.style.display = advertir ? 'flex' : 'none';
-      if (advertir) {
+      const advertirDisp = estado === 'no_disponible' || estado === 'bloqueado';
+
+      // Solapamiento real contra otro evento del mismo encargado. Si
+      // "Prevenir solapamientos" está activo (Configuración de la veterinaria
+      // > Agenda), guardarEventoAgenda() además lo BLOQUEA — acá solo se avisa.
+      let solape = null;
+      if (!sinHora && encargadoId) {
+        const fi = document.getElementById('ag-fecha-inicio').value;
+        const ff = document.getElementById('ag-fecha-fin').value || fi;
+        const hi = document.getElementById('ag-hora-inicio').value || '00:00';
+        const hf = document.getElementById('ag-hora-fin').value || hi;
+        if (fi) solape = haySolapamientoAgenda(encargadoId, `${fi}T${hi}:00`, `${ff}T${hf}:00`, agendaEditingId);
+      }
+
+      const mostrar = advertirDisp || !!solape;
+      warningEl.style.display = mostrar ? 'flex' : 'none';
+      if (solape) {
+        warningEl.textContent = ESTABLECIMIENTO_CONFIG.prevenirSolapamientos
+          ? `⛔ El encargado ya tiene "${solape.title}" en ese horario. Con "Prevenir solapamientos" activo no se podrá guardar.`
+          : `⚠ El encargado ya tiene "${solape.title}" en ese horario.`;
+      } else if (advertirDisp) {
         warningEl.textContent = `⚠ El médico seleccionado está marcado como "${estado.replace('_', ' ')}" en ese horario. Puedes continuar de todos modos.`;
       }
     }
@@ -24913,10 +24956,16 @@
       });
       const isGeneral = tabKey === 'general';
       const isSedes = tabKey === 'sedes';
+      const isLocalizacion = tabKey === 'localizacion';
+      const isAgenda = tabKey === 'agenda';
       if (isGeneral) renderVetConfigGeneral();
+      if (isLocalizacion) renderVetConfigLocalizacion();
+      if (isAgenda) renderVetConfigAgenda();
       document.getElementById('vetconfig-view-general').classList.toggle('active', isGeneral);
       document.getElementById('vetconfig-view-sedes').classList.toggle('active', isSedes);
-      const showPlaceholder = !isGeneral && !isSedes;
+      document.getElementById('vetconfig-view-localizacion').classList.toggle('active', isLocalizacion);
+      document.getElementById('vetconfig-view-agenda').classList.toggle('active', isAgenda);
+      const showPlaceholder = !isGeneral && !isSedes && !isLocalizacion && !isAgenda;
       const placeholderEl = document.getElementById('vetconfig-view-placeholder');
       placeholderEl.classList.toggle('active', showPlaceholder);
       if (showPlaceholder) {
@@ -25108,6 +25157,359 @@
       renderHeaderClinicLogo();
       renderVetConfigLogoPreview();
       showToast('Logo actualizado');
+    }
+
+    // ── A.1.2 — "Localización y servicios" + "Agenda y disponibilidad" ──
+    // Dos subtabs de "Configuración de la veterinaria" (Admin). A diferencia
+    // de Preferencias (localStorage), persisten en columnas reales de
+    // `establecimientos` (migración 20260901_establecimiento_config): la query
+    // de sesión ya las trae (`memberships` con `establecimientos(*)`) y
+    // establecimientos_update_admin las cubre. La escritura es un update
+    // bloqueante con el mismo chequeo "0 filas = no eres admin" que
+    // subirLogoClinicaReal(). Estos valores además ALIMENTAN el módulo Agenda:
+    //  · duracionCitaMin  -> "Hora de fin" por defecto del modal de evento
+    //  · horarioAtencion  -> rango de la grilla de Disponibilidad
+    //  · prevenirSolapamientos -> bloqueo real (no solo aviso) en guardarEventoAgenda()
+    const CONFIG_SERVICIOS_CATALOGO = ['Consulta general', 'Consulta especializada', 'Vacunación', 'Desparasitación', 'Cirugía', 'Hospitalización / ambulatorio', 'Laboratorio clínico', 'Imágenes diagnósticas', 'Peluquería y spa', 'Guardería', 'Domicilios', 'Urgencias 24h', 'Eutanasia', 'Etología', 'Odontología'];
+    const CONFIG_ESPECIES_CATALOGO = ['Canino', 'Felino', 'Aves', 'Roedores', 'Reptiles', 'Conejos', 'Équidos', 'Exóticos', 'Otros'];
+    const CONFIG_MONEDAS = [['COP', 'COP · Peso colombiano'], ['USD', 'USD · Dólar'], ['MXN', 'MXN · Peso mexicano'], ['EUR', 'EUR · Euro'], ['PEN', 'PEN · Sol peruano'], ['CLP', 'CLP · Peso chileno'], ['ARS', 'ARS · Peso argentino'], ['BOB', 'BOB · Boliviano']];
+    const CONFIG_ZONAS_HORARIAS = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'America/Santiago', 'America/Argentina/Buenos_Aires', 'America/Caracas', 'America/La_Paz', 'America/Guayaquil', 'America/New_York'];
+    const CONFIG_DIAS_SEMANA = [['lun', 'Lun'], ['mar', 'Mar'], ['mie', 'Mié'], ['jue', 'Jue'], ['vie', 'Vie'], ['sab', 'Sáb'], ['dom', 'Dom']];
+
+    function establecimientoConfigDefaults() {
+      return {
+        direccion: '', ciudad: '', departamento: '', pais: 'Colombia',
+        serviciosOfrecidos: [], especiesAtendidas: [],
+        precioConsulta: '', moneda: 'COP', zonaHoraria: 'America/Bogota',
+        horarioAtencion: [{ dias: ['lun', 'mar', 'mie', 'jue', 'vie'], apertura: '08:00', cierre: '18:00' }],
+        duracionCitaMin: 30, prevenirSolapamientos: false
+      };
+    }
+
+    let ESTABLECIMIENTO_CONFIG = establecimientoConfigDefaults();
+    // Borrador editable del horario mientras la pestaña Agenda está abierta
+    // (agregar/quitar filas no persiste hasta pulsar "Guardar").
+    let vetConfigHorarioDraft = [];
+
+    // Sincroniza ESTABLECIMIENTO_CONFIG con las columnas del establecimiento
+    // activo — se llama desde renderHeaderFromSession() (mismo punto donde ya
+    // se sincroniza el logo), así queda al día tras login o cambio de sede.
+    function cargarEstablecimientoConfigDesdeSesion() {
+      const estab = currentSession && currentSession.activeMembership && currentSession.activeMembership.establecimiento;
+      const d = establecimientoConfigDefaults();
+      if (!estab) { ESTABLECIMIENTO_CONFIG = d; return; }
+      const arr = v => Array.isArray(v) ? v : [];
+      const horario = arr(estab.horario_atencion)
+        .filter(b => b && Array.isArray(b.dias) && b.apertura && b.cierre)
+        .map(b => ({ dias: b.dias.slice(), apertura: b.apertura, cierre: b.cierre }));
+      ESTABLECIMIENTO_CONFIG = {
+        direccion: estab.direccion || '',
+        ciudad: estab.ciudad || '',
+        departamento: estab.departamento || '',
+        pais: estab.pais || d.pais,
+        serviciosOfrecidos: arr(estab.servicios_ofrecidos),
+        especiesAtendidas: arr(estab.especies_atendidas),
+        precioConsulta: estab.precio_consulta != null ? estab.precio_consulta : '',
+        moneda: estab.moneda || d.moneda,
+        zonaHoraria: estab.zona_horaria || d.zonaHoraria,
+        horarioAtencion: horario.length ? horario : d.horarioAtencion,
+        duracionCitaMin: Number(estab.duracion_cita_min) > 0 ? Number(estab.duracion_cita_min) : d.duracionCitaMin,
+        prevenirSolapamientos: !!estab.prevenir_solapamientos
+      };
+    }
+
+    async function persistirEstablecimientoConfig(patch, okMsg) {
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar'); return false;
+      }
+      const estabId = currentSession.activeMembership.establecimientoId;
+      const { data, error } = await window.supabase.from('establecimientos')
+        .update(patch).eq('id', estabId).select('id');
+      if (error) {
+        console.error('[IRIS] Error guardando la configuración del establecimiento:', error);
+        showToast('No se pudo guardar: ' + (error.message || 'error desconocido')); return false;
+      }
+      // establecimientos_update_admin exige ser admin: un no-admin completa el
+      // update sin error pero afecta 0 filas (RLS lo filtra en silencio) —
+      // mismo caso que subirLogoClinicaReal().
+      if (!data || !data.length) {
+        showToast('Solo un administrador puede cambiar la configuración del establecimiento'); return false;
+      }
+      if (currentSession.activeMembership.establecimiento) {
+        Object.assign(currentSession.activeMembership.establecimiento, patch);
+      }
+      cargarEstablecimientoConfigDesdeSesion();
+      if (okMsg) showToast(okMsg);
+      return true;
+    }
+
+    // ── Helpers compartidos con el módulo Agenda (declaración `function`
+    // para que estén hoisted — getDisponibilidadSlots/abrirAgendaEventoModalInterno
+    // viven mucho más arriba en el mismo script). ────────────────────
+    function getDuracionCitaMin() {
+      const n = Number(ESTABLECIMIENTO_CONFIG && ESTABLECIMIENTO_CONFIG.duracionCitaMin);
+      return (isFinite(n) && n > 0) ? Math.round(n) : 30;
+    }
+
+    function sumarMinutosHHMM(hhmm, minutos) {
+      const [h, m] = String(hhmm || '00:00').split(':').map(Number);
+      let total = ((h * 60 + m + minutos) % (24 * 60) + 24 * 60) % (24 * 60);
+      return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    }
+
+    // Rango horario de la grilla de Disponibilidad: min apertura / max cierre
+    // de los bloques configurados. Fallback al rango histórico fijo 07:00–20:00.
+    function getRangoHorarioAtencion() {
+      const bloques = (ESTABLECIMIENTO_CONFIG && ESTABLECIMIENTO_CONFIG.horarioAtencion) || [];
+      let minH = null, maxH = null;
+      bloques.forEach(b => {
+        const ah = parseInt(String(b.apertura || '').split(':')[0], 10);
+        const cParts = String(b.cierre || '').split(':');
+        const ch = parseInt(cParts[0], 10);
+        const cm = parseInt(cParts[1], 10) || 0;
+        if (isFinite(ah)) minH = (minH === null) ? ah : Math.min(minH, ah);
+        if (isFinite(ch)) { const ceil = cm > 0 ? ch + 1 : ch; maxH = (maxH === null) ? ceil : Math.max(maxH, ceil); }
+      });
+      if (minH === null || maxH === null || minH >= maxH) return { desdeH: 7, hastaH: 20 };
+      return { desdeH: Math.max(0, minH), hastaH: Math.min(24, maxH) };
+    }
+
+    // ¿[startISO,endISO) choca con otro evento del mismo encargado? Las cadenas
+    // son locales ingenuas 'YYYY-MM-DDTHH:MM:SS', comparables lexicográficamente
+    // (mismo criterio que el resto del módulo Agenda). exceptId = evento en edición.
+    function haySolapamientoAgenda(encargadoId, startISO, endISO, exceptId) {
+      if (!encargadoId || !startISO || !endISO) return null;
+      return (AGENDA_EVENTOS || []).find(e =>
+        e && e.id !== exceptId && !e.soloEspacio && !e.sinHora &&
+        Number(e.encargadoId) === Number(encargadoId) &&
+        e.startISO && e.endISO && startISO < e.endISO && e.startISO < endISO
+      ) || null;
+    }
+
+    // ── Subtab: Localización y servicios ───────────────────────────
+    function renderVetConfigLocalizacion() {
+      const cont = document.getElementById('vetconfig-view-localizacion');
+      if (!cont) return;
+      const c = ESTABLECIMIENTO_CONFIG;
+      const chk = (list, val) => list.indexOf(val) !== -1 ? 'checked' : '';
+      const gridStyle = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;';
+      const itemStyle = 'display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-1);cursor:pointer;';
+      cont.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="map-pin" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Localización</span>
+          </div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:16px;max-width:640px;">
+            <div class="input-group">
+              <label class="input-label">Dirección</label>
+              <input type="text" class="input-control" style="padding-left:12px;" id="cfg-loc-direccion" value="${escapeHtml(c.direccion)}" placeholder="Calle 00 # 00-00, barrio...">
+            </div>
+            <div class="med-block-grid">
+              <div class="input-group">
+                <label class="input-label">Ciudad / Municipio</label>
+                <input type="text" class="input-control" style="padding-left:12px;" id="cfg-loc-ciudad" value="${escapeHtml(c.ciudad)}">
+              </div>
+              <div class="input-group">
+                <label class="input-label">Departamento</label>
+                <input type="text" class="input-control" style="padding-left:12px;" id="cfg-loc-departamento" value="${escapeHtml(c.departamento)}">
+              </div>
+            </div>
+            <div class="input-group" style="max-width:300px;">
+              <label class="input-label">País</label>
+              <input type="text" class="input-control" style="padding-left:12px;" id="cfg-loc-pais" value="${escapeHtml(c.pais)}">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="stethoscope" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Servicios y especies</span>
+          </div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:20px;">
+            <div>
+              <label class="input-label" style="display:block;margin-bottom:8px;">Servicios ofrecidos</label>
+              <div style="${gridStyle}">
+                ${CONFIG_SERVICIOS_CATALOGO.map(s => `<label style="${itemStyle}"><input type="checkbox" data-cfg-servicio value="${escapeHtml(s)}" ${chk(c.serviciosOfrecidos, s)}> <span>${s}</span></label>`).join('')}
+              </div>
+            </div>
+            <div>
+              <label class="input-label" style="display:block;margin-bottom:8px;">Especies que atiende</label>
+              <div style="${gridStyle}">
+                ${CONFIG_ESPECIES_CATALOGO.map(s => `<label style="${itemStyle}"><input type="checkbox" data-cfg-especie value="${escapeHtml(s)}" ${chk(c.especiesAtendidas, s)}> <span>${s}</span></label>`).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="globe" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Precio e internacionalización</span>
+          </div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:16px;max-width:640px;">
+            <div class="med-block-grid">
+              <div class="input-group">
+                <label class="input-label">Precio de consulta</label>
+                <input type="number" min="0" step="1000" class="input-control" style="padding-left:12px;" id="cfg-loc-precio" value="${c.precioConsulta !== '' ? Number(c.precioConsulta) : ''}" placeholder="0">
+              </div>
+              <div class="input-group">
+                <label class="input-label">Moneda</label>
+                <select class="soap-select-control" id="cfg-loc-moneda">
+                  ${CONFIG_MONEDAS.map(([v, l]) => `<option value="${v}" ${c.moneda === v ? 'selected' : ''}>${l}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Zona horaria</label>
+              <select class="soap-select-control" id="cfg-loc-zona">
+                ${CONFIG_ZONAS_HORARIAS.map(z => `<option value="${z}" ${c.zonaHoraria === z ? 'selected' : ''}>${z}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:4px 0 24px;">
+          <button type="button" class="btn-primary" onclick="guardarVetConfigLocalizacion()">Guardar cambios</button>
+        </div>
+      `;
+      lucide.createIcons();
+    }
+
+    async function guardarVetConfigLocalizacion() {
+      const servicios = Array.from(document.querySelectorAll('[data-cfg-servicio]:checked')).map(el => el.value);
+      const especies = Array.from(document.querySelectorAll('[data-cfg-especie]:checked')).map(el => el.value);
+      const precioRaw = document.getElementById('cfg-loc-precio').value.trim();
+      const precio = precioRaw === '' ? null : Number(precioRaw);
+      if (precio !== null && (!isFinite(precio) || precio < 0)) { showToast('El precio de consulta no es válido'); return; }
+      const patch = {
+        direccion: document.getElementById('cfg-loc-direccion').value.trim() || null,
+        ciudad: document.getElementById('cfg-loc-ciudad').value.trim() || null,
+        departamento: document.getElementById('cfg-loc-departamento').value.trim() || null,
+        pais: document.getElementById('cfg-loc-pais').value.trim() || null,
+        servicios_ofrecidos: servicios,
+        especies_atendidas: especies,
+        precio_consulta: precio,
+        moneda: document.getElementById('cfg-loc-moneda').value,
+        zona_horaria: document.getElementById('cfg-loc-zona').value
+      };
+      const btn = document.querySelector('#vetconfig-view-localizacion .btn-primary');
+      if (btn) btn.disabled = true;
+      const ok = await persistirEstablecimientoConfig(patch, 'Localización y servicios guardados');
+      if (btn) btn.disabled = false;
+      if (ok) renderVetConfigLocalizacion();
+    }
+
+    // ── Subtab: Agenda y disponibilidad ───────────────────────────
+    function renderVetConfigAgenda() {
+      const cont = document.getElementById('vetconfig-view-agenda');
+      if (!cont) return;
+      const c = ESTABLECIMIENTO_CONFIG;
+      vetConfigHorarioDraft = c.horarioAtencion.map(b => ({ dias: b.dias.slice(), apertura: b.apertura, cierre: b.cierre }));
+      cont.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="clock" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Horario de atención</span>
+          </div>
+          <div style="padding:20px;">
+            <div id="cfg-horario-rows" style="display:flex;flex-direction:column;gap:14px;"></div>
+            <button type="button" class="btn-outline" style="margin-top:14px;" onclick="cfgHorarioAgregarFila()"><i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar horario</button>
+            <p style="font-size:12px;color:var(--text-2);margin-top:12px;">Define el rango visible en Agenda &gt; Disponibilidad / Programador.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="calendar-clock" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Citas</span>
+          </div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:18px;max-width:640px;">
+            <div class="input-group" style="max-width:260px;">
+              <label class="input-label">Duración de cita (minutos)</label>
+              <input type="number" min="5" step="5" class="input-control" style="padding-left:12px;" id="cfg-ag-duracion" value="${getDuracionCitaMin()}">
+              <span style="font-size:12px;color:var(--text-2);margin-top:4px;">Fija la "Hora de fin" por defecto al crear un evento en Agenda.</span>
+            </div>
+            <label class="mini-toggle">
+              <input type="checkbox" id="cfg-ag-solapamientos" class="mini-toggle-input" ${c.prevenirSolapamientos ? 'checked' : ''}>
+              <span class="mini-toggle-slider"></span>
+              <span class="mini-toggle-text">Prevenir solapamientos — no permitir dos eventos del mismo encargado en el mismo horario</span>
+            </label>
+          </div>
+        </div>
+
+        <div style="padding:4px 0 24px;">
+          <button type="button" class="btn-primary" onclick="guardarVetConfigAgenda()">Guardar cambios</button>
+        </div>
+      `;
+      cfgHorarioRenderRows();
+      lucide.createIcons();
+    }
+
+    function cfgHorarioRenderRows() {
+      const cont = document.getElementById('cfg-horario-rows');
+      if (!cont) return;
+      if (!vetConfigHorarioDraft.length) {
+        cont.innerHTML = `<p style="font-size:13px;color:var(--text-2);">Sin horario definido. Agrega al menos un bloque.</p>`;
+        return;
+      }
+      cont.innerHTML = vetConfigHorarioDraft.map((b, i) => `
+        <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;padding:12px;border:1px solid var(--border);border-radius:8px;">
+          <div style="flex:1 1 260px;">
+            <label class="input-label" style="display:block;margin-bottom:6px;">Días</label>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              ${CONFIG_DIAS_SEMANA.map(([v, l]) => {
+                const on = b.dias.indexOf(v) !== -1;
+                return `<button type="button" onclick="cfgHorarioToggleDia(${i}, '${v}')" style="padding:5px 10px;border-radius:999px;border:1px solid ${on ? 'var(--clinic-accent)' : 'var(--border)'};background:${on ? 'rgba(var(--clinic-accent-rgb),0.12)' : 'transparent'};color:${on ? 'var(--clinic-accent)' : 'var(--text-2)'};font-size:12px;font-weight:600;cursor:pointer;">${l}</button>`;
+              }).join('')}
+            </div>
+          </div>
+          <div class="input-group" style="flex:0 0 120px;">
+            <label class="input-label">Apertura</label>
+            <input type="time" class="input-control" style="padding-left:12px;" value="${b.apertura}" onchange="cfgHorarioSetHora(${i}, 'apertura', this.value)">
+          </div>
+          <div class="input-group" style="flex:0 0 120px;">
+            <label class="input-label">Cierre</label>
+            <input type="time" class="input-control" style="padding-left:12px;" value="${b.cierre}" onchange="cfgHorarioSetHora(${i}, 'cierre', this.value)">
+          </div>
+          <button type="button" title="Quitar bloque" onclick="cfgHorarioQuitarFila(${i})" style="flex:0 0 auto;background:none;border:none;cursor:pointer;color:var(--danger);padding:8px;"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function cfgHorarioAgregarFila() {
+      vetConfigHorarioDraft.push({ dias: [], apertura: '08:00', cierre: '18:00' });
+      cfgHorarioRenderRows();
+    }
+    function cfgHorarioQuitarFila(i) { vetConfigHorarioDraft.splice(i, 1); cfgHorarioRenderRows(); }
+    function cfgHorarioToggleDia(i, dia) {
+      const b = vetConfigHorarioDraft[i];
+      if (!b) return;
+      const idx = b.dias.indexOf(dia);
+      if (idx === -1) b.dias.push(dia); else b.dias.splice(idx, 1);
+      cfgHorarioRenderRows();
+    }
+    function cfgHorarioSetHora(i, campo, val) { if (vetConfigHorarioDraft[i]) vetConfigHorarioDraft[i][campo] = val; }
+
+    async function guardarVetConfigAgenda() {
+      const horario = vetConfigHorarioDraft
+        .filter(b => b.dias.length && b.apertura && b.cierre)
+        .map(b => ({ dias: b.dias.slice(), apertura: b.apertura, cierre: b.cierre }));
+      for (const b of horario) {
+        if (b.apertura >= b.cierre) { showToast('En cada bloque la apertura debe ser antes del cierre'); return; }
+      }
+      const dur = Number(document.getElementById('cfg-ag-duracion').value);
+      if (!isFinite(dur) || dur < 5) { showToast('La duración de cita debe ser de al menos 5 minutos'); return; }
+      const patch = {
+        horario_atencion: horario,
+        duracion_cita_min: Math.round(dur),
+        prevenir_solapamientos: document.getElementById('cfg-ag-solapamientos').checked
+      };
+      const btn = document.querySelector('#vetconfig-view-agenda .btn-primary');
+      if (btn) btn.disabled = true;
+      const ok = await persistirEstablecimientoConfig(patch, 'Agenda y disponibilidad guardada');
+      if (btn) btn.disabled = false;
+      if (ok) {
+        renderVetConfigAgenda();
+        if (document.getElementById('disponibilidad-grid-table')) renderDisponibilidadGrid();
+      }
     }
 
     // ── A.3 — TUTORES (vista administrativa) ───────────────────────
@@ -31425,6 +31827,11 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         : null;
       CLINIC_INFO.logoPath = (estab && estab.logo_path) || null;
       renderHeaderClinicLogo();
+
+      // Configuración de "Localización y servicios" / "Agenda y disponibilidad"
+      // — mismo criterio que el logo: se deriva SIEMPRE de las columnas reales
+      // del establecimiento, también para la clínica semilla de demo.
+      cargarEstablecimientoConfigDesdeSesion();
 
       const displayName = currentSession.user.nombre || currentSession.user.email || 'Usuario';
       document.querySelectorAll('.user-name').forEach(el => { el.textContent = displayName; });
