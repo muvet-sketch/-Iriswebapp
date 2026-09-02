@@ -11276,9 +11276,11 @@
         encargadoId,
         lugar: document.getElementById('ag-lugar').value.trim(),
         descripcion: document.getElementById('ag-descripcion').value.trim(),
-        // Tarea 3 (mock): recordatorio 24h antes del evento — no hay envío
-        // real, solo se calcula y se muestra en el detalle del evento.
-        recordatorio24hISO: new Date(new Date(startISO).getTime() - 24 * 60 * 60000).toISOString().slice(0, 19)
+        // Tarea 3 (mock): recordatorio antes del evento — no hay envío real,
+        // solo se calcula y se muestra en el detalle. El lead time sale del
+        // recordatorio configurado en "Agenda y disponibilidad" que se
+        // dispara primero (getRecordatorioLeadMs(); 24 h si no hay ninguno).
+        recordatorio24hISO: new Date(new Date(startISO).getTime() - getRecordatorioLeadMs()).toISOString().slice(0, 19)
       };
 
       const btnGuardar = document.getElementById('agenda-evento-guardar-btn');
@@ -11362,7 +11364,9 @@
       const wasEditing = !!agendaEditingId;
       closeAgendaEventoModal();
       showToast(wasEditing ? 'Evento actualizado' : 'Evento creado');
-      abrirAgendaNotifModal(evento);
+      // "Notificaciones" (Configuración de la veterinaria > Agenda): el aviso
+      // mock de calendario solo se muestra si el establecimiento lo tiene activo.
+      if (ESTABLECIMIENTO_CONFIG.notifEmailEvento) abrirAgendaNotifModal(evento);
     }
 
     // ── Tarea 3 (mock): notificación de correo al guardar un evento ────
@@ -11374,8 +11378,10 @@
         clinica,
         medico ? medico.nombre : 'Médico por definir'
       ];
+      const canales = [...new Set((ESTABLECIMIENTO_CONFIG.recordatorios || []).flatMap(r => r.canales))];
+      const via = canales.length ? ` · Recordatorios vía ${canales.map(recordatorioCanalLabel).join(', ')}` : '';
       document.getElementById('agenda-notif-modal-body').textContent =
-        `📧 Notificación enviada a: ${destinatarios.join(' · ')}`;
+        `📧 Notificación enviada a: ${destinatarios.join(' · ')}${via}`;
 
       // Atajo "Ver en consultorio" justo después de agendar: mismo criterio
       // de rol/mascota real que en abrirAgendaEventoModalInterno, para no
@@ -25200,6 +25206,11 @@
     const CONFIG_MONEDAS = [['COP', 'COP · Peso colombiano'], ['USD', 'USD · Dólar'], ['MXN', 'MXN · Peso mexicano'], ['EUR', 'EUR · Euro'], ['PEN', 'PEN · Sol peruano'], ['CLP', 'CLP · Peso chileno'], ['ARS', 'ARS · Peso argentino'], ['BOB', 'BOB · Boliviano']];
     const CONFIG_ZONAS_HORARIAS = ['America/Bogota', 'America/Mexico_City', 'America/Lima', 'America/Santiago', 'America/Argentina/Buenos_Aires', 'America/Caracas', 'America/La_Paz', 'America/Guayaquil', 'America/New_York'];
     const CONFIG_DIAS_SEMANA = [['lun', 'Lun'], ['mar', 'Mar'], ['mie', 'Mié'], ['jue', 'Jue'], ['vie', 'Vie'], ['sab', 'Sáb'], ['dom', 'Dom']];
+    const CONFIG_RECORDATORIO_CANALES = [['email', 'Email'], ['whatsapp', 'WhatsApp'], ['sms', 'SMS']];
+    function recordatorioCanalLabel(c) {
+      const f = CONFIG_RECORDATORIO_CANALES.find(x => x[0] === c);
+      return f ? f[1] : c;
+    }
 
     function establecimientoConfigDefaults() {
       return {
@@ -25208,6 +25219,13 @@
         precioConsulta: '', moneda: 'COP', zonaHoraria: 'America/Bogota',
         horarioAtencion: [{ dias: ['lun', 'mar', 'mie', 'jue', 'vie'], apertura: '08:00', cierre: '18:00' }],
         duracionCitaMin: 30, prevenirSolapamientos: false,
+
+        // Agenda > Notificaciones y solicitudes de agendamiento.
+        // recordatorios: [{ cantidad, unidad:'dias'|'horas', canales:[...] }]
+        notifEmailEvento: true,
+        recordatorios: [],
+        solicitudesRecibir: false,
+        solicitudesAntelacionMin: 300,
 
         // Perfil fiscal — con qué identidad factura la clínica. Es
         // deliberadamente distinto de CLINIC_INFO.nombre/nit ("Información
@@ -25256,9 +25274,10 @@
     }
 
     let ESTABLECIMIENTO_CONFIG = establecimientoConfigDefaults();
-    // Borrador editable del horario mientras la pestaña Agenda está abierta
+    // Borradores editables mientras la pestaña Agenda está abierta
     // (agregar/quitar filas no persiste hasta pulsar "Guardar").
     let vetConfigHorarioDraft = [];
+    let vetConfigRecordatoriosDraft = [];
 
     // Sincroniza ESTABLECIMIENTO_CONFIG con las columnas del establecimiento
     // activo — se llama desde renderHeaderFromSession() (mismo punto donde ya
@@ -25289,6 +25308,17 @@
         horarioAtencion: horario.length ? horario : d.horarioAtencion,
         duracionCitaMin: Number(estab.duracion_cita_min) > 0 ? Number(estab.duracion_cita_min) : d.duracionCitaMin,
         prevenirSolapamientos: !!estab.prevenir_solapamientos,
+
+        notifEmailEvento: bool(estab.notif_email_evento, d.notifEmailEvento),
+        recordatorios: arr(estab.recordatorios)
+          .filter(r => r && Number(r.cantidad) > 0)
+          .map(r => ({
+            cantidad: Math.round(Number(r.cantidad)),
+            unidad: r.unidad === 'horas' ? 'horas' : 'dias',
+            canales: Array.isArray(r.canales) ? r.canales.filter(c => CONFIG_RECORDATORIO_CANALES.some(x => x[0] === c)) : []
+          })),
+        solicitudesRecibir: bool(estab.solicitudes_recibir, d.solicitudesRecibir),
+        solicitudesAntelacionMin: Number(estab.solicitudes_antelacion_min) >= 0 ? Number(estab.solicitudes_antelacion_min) : d.solicitudesAntelacionMin,
 
         fiscalTipoPersona: estab.fiscal_tipo_persona || d.fiscalTipoPersona,
         fiscalTipoIdentificacion: estab.fiscal_tipo_identificacion || d.fiscalTipoIdentificacion,
@@ -25360,6 +25390,16 @@
     function getDuracionCitaMin() {
       const n = Number(ESTABLECIMIENTO_CONFIG && ESTABLECIMIENTO_CONFIG.duracionCitaMin);
       return (isFinite(n) && n > 0) ? Math.round(n) : 30;
+    }
+
+    // Lead time (ms antes del evento) del recordatorio configurado que se
+    // dispara PRIMERO — alimenta el cálculo mock de recordatorio_24h en
+    // guardarEventoAgenda(). Sin recordatorios configurados: 24 h, el
+    // comportamiento histórico.
+    function getRecordatorioLeadMs() {
+      const rs = (ESTABLECIMIENTO_CONFIG && ESTABLECIMIENTO_CONFIG.recordatorios || []).filter(r => Number(r.cantidad) > 0);
+      if (!rs.length) return 24 * 60 * 60000;
+      return Math.max(...rs.map(r => Number(r.cantidad) * (r.unidad === 'horas' ? 3600000 : 86400000)));
     }
 
     function sumarMinutosHHMM(hhmm, minutos) {
@@ -25515,6 +25555,7 @@
       if (!cont) return;
       const c = ESTABLECIMIENTO_CONFIG;
       vetConfigHorarioDraft = c.horarioAtencion.map(b => ({ dias: b.dias.slice(), apertura: b.apertura, cierre: b.cierre }));
+      vetConfigRecordatoriosDraft = c.recordatorios.map(r => ({ cantidad: r.cantidad, unidad: r.unidad, canales: r.canales.slice() }));
       cont.innerHTML = `
         <div class="card">
           <div class="card-header">
@@ -25545,11 +25586,49 @@
           </div>
         </div>
 
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="bell" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Notificaciones</span>
+          </div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:18px;">
+            <label class="mini-toggle">
+              <input type="checkbox" id="cfg-ag-notif-email" class="mini-toggle-input" ${c.notifEmailEvento ? 'checked' : ''}>
+              <span class="mini-toggle-slider"></span>
+              <span class="mini-toggle-text">Enviar un evento de calendario al correo del propietario y del responsable al crear, editar o eliminar un agendamiento</span>
+            </label>
+            <div>
+              <label class="input-label" style="display:block;margin-bottom:8px;">Recordatorios al propietario</label>
+              <div id="cfg-recordatorios-rows" style="display:flex;flex-direction:column;gap:12px;"></div>
+              <button type="button" class="btn-outline" style="margin-top:12px;" onclick="cfgRecordatorioAgregar()"><i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar recordatorio</button>
+              <p style="font-size:12px;color:var(--text-2);margin-top:10px;">El recordatorio de mayor antelación fija cuándo se programa el aviso de cada evento. El envío real todavía no está conectado.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i data-lucide="inbox" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Solicitudes de agendamiento</span>
+          </div>
+          <div style="padding:20px;display:flex;flex-direction:column;gap:18px;max-width:640px;">
+            <label class="mini-toggle">
+              <input type="checkbox" id="cfg-ag-solicitudes" class="mini-toggle-input" ${c.solicitudesRecibir ? 'checked' : ''}>
+              <span class="mini-toggle-slider"></span>
+              <span class="mini-toggle-text">Recibir solicitudes de agendamiento de los propietarios</span>
+            </label>
+            <div class="input-group" style="max-width:280px;">
+              <label class="input-label">Antelación mínima (minutos)</label>
+              <input type="number" min="0" step="15" class="input-control" style="padding-left:12px;" id="cfg-ag-antelacion" value="${Number(c.solicitudesAntelacionMin) >= 0 ? Number(c.solicitudesAntelacionMin) : 300}">
+              <span style="font-size:12px;color:var(--text-2);margin-top:4px;">Tiempo mínimo entre la solicitud y el horario pedido.</span>
+            </div>
+          </div>
+        </div>
+
         <div style="padding:4px 0 24px;">
           <button type="button" class="btn-primary" onclick="guardarVetConfigAgenda()">Guardar cambios</button>
         </div>
       `;
       cfgHorarioRenderRows();
+      cfgRecordatoriosRenderRows();
       lucide.createIcons();
     }
 
@@ -25599,6 +25678,60 @@
     }
     function cfgHorarioSetHora(i, campo, val) { if (vetConfigHorarioDraft[i]) vetConfigHorarioDraft[i][campo] = val; }
 
+    function cfgRecordatoriosRenderRows() {
+      const cont = document.getElementById('cfg-recordatorios-rows');
+      if (!cont) return;
+      if (!vetConfigRecordatoriosDraft.length) {
+        cont.innerHTML = `<p style="font-size:13px;color:var(--text-2);">Sin recordatorios configurados.</p>`;
+        return;
+      }
+      cont.innerHTML = vetConfigRecordatoriosDraft.map((r, i) => `
+        <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;padding:12px;border:1px solid var(--border);border-radius:8px;">
+          <div class="input-group" style="flex:0 0 90px;">
+            <label class="input-label">Cantidad</label>
+            <input type="number" min="1" step="1" class="input-control" style="padding-left:12px;" value="${Number(r.cantidad) || 1}" onchange="cfgRecordatorioSet(${i}, 'cantidad', this.value)">
+          </div>
+          <div class="input-group" style="flex:0 0 130px;">
+            <label class="input-label">Unidad</label>
+            <select class="soap-select-control" onchange="cfgRecordatorioSet(${i}, 'unidad', this.value)">
+              <option value="dias" ${r.unidad !== 'horas' ? 'selected' : ''}>Días antes</option>
+              <option value="horas" ${r.unidad === 'horas' ? 'selected' : ''}>Horas antes</option>
+            </select>
+          </div>
+          <div style="flex:1 1 220px;">
+            <label class="input-label" style="display:block;margin-bottom:6px;">Canales</label>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              ${CONFIG_RECORDATORIO_CANALES.map(([v, l]) => {
+                const on = r.canales.indexOf(v) !== -1;
+                return `<button type="button" onclick="cfgRecordatorioToggleCanal(${i}, '${v}')" style="padding:5px 10px;border-radius:999px;border:1px solid ${on ? 'var(--clinic-accent)' : 'var(--border)'};background:${on ? 'rgba(var(--clinic-accent-rgb),0.12)' : 'transparent'};color:${on ? 'var(--clinic-accent)' : 'var(--text-2)'};font-size:12px;font-weight:600;cursor:pointer;">${l}</button>`;
+              }).join('')}
+            </div>
+          </div>
+          <button type="button" title="Quitar recordatorio" onclick="cfgRecordatorioQuitar(${i})" style="flex:0 0 auto;background:none;border:none;cursor:pointer;color:var(--danger);padding:8px;"><i data-lucide="trash-2" style="width:16px;height:16px;"></i></button>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function cfgRecordatorioAgregar() {
+      vetConfigRecordatoriosDraft.push({ cantidad: 1, unidad: 'dias', canales: ['email'] });
+      cfgRecordatoriosRenderRows();
+    }
+    function cfgRecordatorioQuitar(i) { vetConfigRecordatoriosDraft.splice(i, 1); cfgRecordatoriosRenderRows(); }
+    function cfgRecordatorioSet(i, campo, val) {
+      const r = vetConfigRecordatoriosDraft[i];
+      if (!r) return;
+      r[campo] = campo === 'cantidad' ? Math.max(1, Math.round(Number(val) || 1)) : val;
+      if (campo === 'cantidad') cfgRecordatoriosRenderRows();
+    }
+    function cfgRecordatorioToggleCanal(i, canal) {
+      const r = vetConfigRecordatoriosDraft[i];
+      if (!r) return;
+      const idx = r.canales.indexOf(canal);
+      if (idx === -1) r.canales.push(canal); else r.canales.splice(idx, 1);
+      cfgRecordatoriosRenderRows();
+    }
+
     async function guardarVetConfigAgenda() {
       const horario = vetConfigHorarioDraft
         .filter(b => b.dias.length && b.apertura && b.cierre)
@@ -25608,10 +25741,24 @@
       }
       const dur = Number(document.getElementById('cfg-ag-duracion').value);
       if (!isFinite(dur) || dur < 5) { showToast('La duración de cita debe ser de al menos 5 minutos'); return; }
+
+      if (vetConfigRecordatoriosDraft.some(r => Number(r.cantidad) > 0 && !r.canales.length)) {
+        showToast('Cada recordatorio necesita al menos un canal'); return;
+      }
+      const recordatorios = vetConfigRecordatoriosDraft
+        .filter(r => Number(r.cantidad) > 0 && r.canales.length)
+        .map(r => ({ cantidad: Math.round(Number(r.cantidad)), unidad: r.unidad === 'horas' ? 'horas' : 'dias', canales: r.canales.slice() }));
+      const antelacion = Number(document.getElementById('cfg-ag-antelacion').value);
+      if (!isFinite(antelacion) || antelacion < 0) { showToast('La antelación mínima no es válida'); return; }
+
       const patch = {
         horario_atencion: horario,
         duracion_cita_min: Math.round(dur),
-        prevenir_solapamientos: document.getElementById('cfg-ag-solapamientos').checked
+        prevenir_solapamientos: document.getElementById('cfg-ag-solapamientos').checked,
+        notif_email_evento: document.getElementById('cfg-ag-notif-email').checked,
+        recordatorios: recordatorios,
+        solicitudes_recibir: document.getElementById('cfg-ag-solicitudes').checked,
+        solicitudes_antelacion_min: Math.round(antelacion)
       };
       const btn = document.querySelector('#vetconfig-view-agenda .btn-primary');
       if (btn) btn.disabled = true;
