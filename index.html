@@ -3113,8 +3113,9 @@
        export (los tres renders ya saltan los null). NO existe una columna
        "no_evaluado" en `consultas` y no hay que crearla: el requisito es
        que no quede rastro de la variable, no dejar constancia de que se
-       omitió. El estado del interruptor es de PANTALLA — se resetea al
-       abrir el Tablero (resetVitalesNoEvaluados()) y nunca se persiste. */
+       omitió. El estado del interruptor es de PANTALLA — se va al repintar
+       la grilla al abrir cada pantalla (montarVitalesGrid) y nunca se
+       persiste. */
     .tablero-vital-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
     .tablero-vital-head .tablero-vital-label { min-width: 0; }
 
@@ -6785,123 +6786,13 @@
                   <div class="tablero-card-head">
                     <span class="tablero-card-title">Objetivo · signos vitales</span>
                   </div>
-                  <!-- Cada tile numérico trae un slider bajo el número
-                       (ver resetVitalSliders()/setVitalDesdeSlider()): min/max/
-                       step y el valor neutro salen de estos atributos, el JS
-                       no duplica los rangos. TLLC no lleva slider porque es
-                       texto libre ("< 2s"). -->
-                  <div class="tablero-vitals-grid">
-                    <div class="tablero-vital-tile">
-                      <div class="tablero-vital-head">
-                        <label class="tablero-vital-label" for="tablero-soap-vital-temp"><i data-lucide="thermometer" style="width:13px;height:13px;"></i> Temp</label>
-                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
-                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-temp" aria-label="Marcar temperatura como no evaluada" onchange="toggleVitalNoEvaluado(this)">
-                          <span class="mini-toggle-slider"></span>
-                        </label>
-                      </div>
-                      <span class="tablero-vital-ne-msg">No evaluado</span>
-                      <span class="tablero-vital-input-row">
-                        <input type="number" step="0.1" id="tablero-soap-vital-temp" class="tablero-vital-input" placeholder="38.5">
-                        <span class="tablero-vital-unit">°C</span>
-                      </span>
-                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-temp" data-neutro="38.5" min="32" max="43" step="0.1" value="38.5" aria-label="Temperatura" oninput="setVitalDesdeSlider(this)">
-                      <span class="tablero-vital-scale"><span>32</span><span>43</span></span>
-                    </div>
-                    <div class="tablero-vital-tile">
-                      <div class="tablero-vital-head">
-                        <label class="tablero-vital-label" for="tablero-soap-vital-fc"><i data-lucide="heart-pulse" style="width:13px;height:13px;"></i> FC</label>
-                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
-                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-fc" aria-label="Marcar frecuencia cardíaca como no evaluada" onchange="toggleVitalNoEvaluado(this)">
-                          <span class="mini-toggle-slider"></span>
-                        </label>
-                      </div>
-                      <span class="tablero-vital-ne-msg">No evaluado</span>
-                      <span class="tablero-vital-input-row">
-                        <input type="number" id="tablero-soap-vital-fc" class="tablero-vital-input" placeholder="140">
-                        <span class="tablero-vital-unit">lpm</span>
-                      </span>
-                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-fc" data-neutro="140" min="40" max="300" step="1" value="140" aria-label="Frecuencia cardíaca" oninput="setVitalDesdeSlider(this)">
-                      <span class="tablero-vital-scale"><span>40</span><span>300</span></span>
-                    </div>
-                    <div class="tablero-vital-tile">
-                      <div class="tablero-vital-head">
-                        <label class="tablero-vital-label" for="tablero-soap-vital-fr"><i data-lucide="wind" style="width:13px;height:13px;"></i> FR</label>
-                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
-                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-fr" aria-label="Marcar frecuencia respiratoria como no evaluada" onchange="toggleVitalNoEvaluado(this)">
-                          <span class="mini-toggle-slider"></span>
-                        </label>
-                      </div>
-                      <span class="tablero-vital-ne-msg">No evaluado</span>
-                      <span class="tablero-vital-input-row">
-                        <input type="number" id="tablero-soap-vital-fr" class="tablero-vital-input" placeholder="28">
-                        <span class="tablero-vital-unit">rpm</span>
-                      </span>
-                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-fr" data-neutro="28" min="6" max="120" step="1" value="28" aria-label="Frecuencia respiratoria" oninput="setVitalDesdeSlider(this)">
-                      <span class="tablero-vital-scale"><span>6</span><span>120</span></span>
-                    </div>
-                    <div class="tablero-vital-tile">
-                      <div class="tablero-vital-head">
-                        <label class="tablero-vital-label" for="tablero-soap-vital-crt"><i data-lucide="droplet" style="width:13px;height:13px;"></i> TLLC</label>
-                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
-                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-crt" aria-label="Marcar tiempo de llenado capilar como no evaluado" onchange="toggleVitalNoEvaluado(this)">
-                          <span class="mini-toggle-slider"></span>
-                        </label>
-                      </div>
-                      <span class="tablero-vital-ne-msg">No evaluado</span>
-                      <span class="tablero-vital-input-row">
-                        <input type="text" id="tablero-soap-vital-crt" class="tablero-vital-input" placeholder="< 2s">
-                      </span>
-                      <span class="tablero-vital-hint">Texto libre</span>
-                    </div>
-                    <div class="tablero-vital-tile">
-                      <div class="tablero-vital-head">
-                        <label class="tablero-vital-label" for="tablero-soap-vital-pas"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAS</label>
-                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
-                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-pas" aria-label="Marcar presión arterial sistólica como no evaluada" onchange="toggleVitalNoEvaluado(this)">
-                          <span class="mini-toggle-slider"></span>
-                        </label>
-                      </div>
-                      <span class="tablero-vital-ne-msg">No evaluado</span>
-                      <span class="tablero-vital-input-row">
-                        <input type="number" id="tablero-soap-vital-pas" class="tablero-vital-input" placeholder="120">
-                        <span class="tablero-vital-unit">mmHg</span>
-                      </span>
-                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-pas" data-neutro="120" min="40" max="260" step="1" value="120" aria-label="Presión arterial sistólica" oninput="setVitalDesdeSlider(this)">
-                      <span class="tablero-vital-scale"><span>40</span><span>260</span></span>
-                    </div>
-                    <div class="tablero-vital-tile">
-                      <div class="tablero-vital-head">
-                        <label class="tablero-vital-label" for="tablero-soap-vital-pad"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAD</label>
-                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
-                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-pad" aria-label="Marcar presión arterial diastólica como no evaluada" onchange="toggleVitalNoEvaluado(this)">
-                          <span class="mini-toggle-slider"></span>
-                        </label>
-                      </div>
-                      <span class="tablero-vital-ne-msg">No evaluado</span>
-                      <span class="tablero-vital-input-row">
-                        <input type="number" id="tablero-soap-vital-pad" class="tablero-vital-input" placeholder="80">
-                        <span class="tablero-vital-unit">mmHg</span>
-                      </span>
-                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-pad" data-neutro="80" min="20" max="180" step="1" value="80" aria-label="Presión arterial diastólica" oninput="setVitalDesdeSlider(this)">
-                      <span class="tablero-vital-scale"><span>20</span><span>180</span></span>
-                    </div>
-                    <div class="tablero-vital-tile">
-                      <div class="tablero-vital-head">
-                        <label class="tablero-vital-label" for="tablero-soap-vital-pam"><i data-lucide="activity" style="width:13px;height:13px;"></i> PAM</label>
-                        <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
-                          <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="tablero-soap-vital-pam" aria-label="Marcar presión arterial media como no evaluada" onchange="toggleVitalNoEvaluado(this)">
-                          <span class="mini-toggle-slider"></span>
-                        </label>
-                      </div>
-                      <span class="tablero-vital-ne-msg">No evaluado</span>
-                      <span class="tablero-vital-input-row">
-                        <input type="number" id="tablero-soap-vital-pam" class="tablero-vital-input" placeholder="93">
-                        <span class="tablero-vital-unit">mmHg</span>
-                      </span>
-                      <input type="range" class="tablero-vital-range" data-vital-for="tablero-soap-vital-pam" data-neutro="93" min="30" max="200" step="1" value="93" aria-label="Presión arterial media" oninput="setVitalDesdeSlider(this)">
-                      <span class="tablero-vital-scale"><span>30</span><span>200</span></span>
-                    </div>
-                  </div>
+                  <!-- Los 7 tiles los pinta montarVitalesGrid() desde
+                       SOAP_VITALES (fuente única, compartida con el bloque
+                       Objetivo del modal de consulta) al abrir el Tablero
+                       — ver abrirTableroTrabajo(). Los ids que genera
+                       (tablero-soap-vital-*) siguen siendo el contrato con
+                       guardarConsulta() y con AUDIO_SOIP_VITALES. -->
+                  <div class="tablero-vitals-grid" id="tablero-vitals-grid"></div>
                   <textarea class="soap-textarea" id="tablero-soap-o" placeholder="Hallazgos del examen físico, mucosas, hidratación, etc."></textarea>
                   <div style="margin-top:8px;">
                     <div class="soap-exam-toggle" id="tablero-soap-exam-toggle" onclick="toggleExamSystems('tablero-soap-exam-toggle', 'tablero-soap-exam-body')">
@@ -13980,6 +13871,86 @@
       'Musculoesquelético', 'Nervioso', 'Piel y anexos', 'Ojos', 'Oídos'
     ];
 
+    // ── SIGNOS VITALES: FUENTE ÚNICA (Tablero + modal de consulta) ──
+    // Los 7 vitales de una consulta se pintan en DOS pantallas: el bloque
+    // Objetivo del Tablero de trabajo (alta de consulta) y el mismo bloque
+    // del modal clásico (crear/EDITAR una consulta ya guardada). Antes solo
+    // existían como HTML estático dentro del Tablero, así que al editar una
+    // consulta los vitales guardados no se veían ni se podían corregir.
+    // Esta constante es lo único que define los 7 (rótulo, unidad, rango del
+    // slider y campo del registro en memoria): de acá salen los tiles de las
+    // dos pantallas vía vitalesGridHTML(). Es el mismo criterio de
+    // ANESTESIA_VITALES — no repitas las filas a mano en cada render.
+    //
+    // `id` es el sufijo que va después del prefijo de la pantalla
+    // ('tablero-soap-' o 'soap-'): esos ids son contrato con
+    // guardarConsulta(idPrefix), que lee `idPrefix + 'vital-' + id`.
+    // `campo` es la propiedad del registro en memoria (ver
+    // construirConsultaDesdeFila) que precarga el modal al editar.
+    // TLLC no lleva slider porque es texto libre ("< 2s").
+    const SOAP_VITALES = [
+      { id: 'temp', campo: 'vitalTemp', label: 'Temp',  aria: 'Temperatura',                    icon: 'thermometer', unidad: '°C',   placeholder: '38.5', tipo: 'number', step: '0.1', min: 32, max: 43,  neutro: 38.5 },
+      { id: 'fc',   campo: 'vitalFc',   label: 'FC',    aria: 'Frecuencia cardíaca',            icon: 'heart-pulse', unidad: 'lpm',  placeholder: '140',  tipo: 'number', step: '1',   min: 40, max: 300, neutro: 140 },
+      { id: 'fr',   campo: 'vitalFr',   label: 'FR',    aria: 'Frecuencia respiratoria',        icon: 'wind',        unidad: 'rpm',  placeholder: '28',   tipo: 'number', step: '1',   min: 6,  max: 120, neutro: 28 },
+      { id: 'crt',  campo: 'vitalCrt',  label: 'TLLC',  aria: 'Tiempo de llenado capilar',      icon: 'droplet',     unidad: '',     placeholder: '< 2s', tipo: 'text' },
+      { id: 'pas',  campo: 'vitalPas',  label: 'PAS',   aria: 'Presión arterial sistólica',     icon: 'activity',    unidad: 'mmHg', placeholder: '120',  tipo: 'number', step: '1',   min: 40, max: 260, neutro: 120 },
+      { id: 'pad',  campo: 'vitalPad',  label: 'PAD',   aria: 'Presión arterial diastólica',    icon: 'activity',    unidad: 'mmHg', placeholder: '80',   tipo: 'number', step: '1',   min: 20, max: 180, neutro: 80 },
+      { id: 'pam',  campo: 'vitalPam',  label: 'PAM',   aria: 'Presión arterial media',         icon: 'activity',    unidad: 'mmHg', placeholder: '93',   tipo: 'number', step: '1',   min: 30, max: 200, neutro: 93 }
+    ];
+
+    // Tiles de los 7 vitales para el prefijo de ids que se le pase. Cada
+    // tile numérico trae su slider bajo el número (ver
+    // setVitalDesdeSlider()/syncVitalSliderDesdeInput()): min/max/step y el
+    // valor neutro viajan como atributos, el JS de los sliders no duplica
+    // los rangos — los lee del DOM.
+    function vitalesGridHTML(idPrefix) {
+      return SOAP_VITALES.map(v => {
+        const inputId = `${idPrefix}vital-${v.id}`;
+        const slider = v.tipo === 'number' ? `
+          <input type="range" class="tablero-vital-range" data-vital-for="${inputId}" data-neutro="${v.neutro}"
+                 min="${v.min}" max="${v.max}" step="${v.step}" value="${v.neutro}"
+                 aria-label="${v.aria}" oninput="setVitalDesdeSlider(this)">
+          <span class="tablero-vital-scale"><span>${v.min}</span><span>${v.max}</span></span>` : `
+          <span class="tablero-vital-hint">Texto libre</span>`;
+        const stepAttr = v.tipo === 'number' && v.step !== '1' ? ` step="${v.step}"` : '';
+        return `
+          <div class="tablero-vital-tile">
+            <div class="tablero-vital-head">
+              <label class="tablero-vital-label" for="${inputId}"><i data-lucide="${v.icon}" style="width:13px;height:13px;"></i> ${v.label}</label>
+              <label class="mini-toggle tablero-vital-ne" title="No evaluado — no se guarda ni queda en la historia">
+                <input type="checkbox" class="mini-toggle-input" data-vital-ne-for="${inputId}" aria-label="Marcar ${v.aria.toLowerCase()} como no evaluada" onchange="toggleVitalNoEvaluado(this)">
+                <span class="mini-toggle-slider"></span>
+              </label>
+            </div>
+            <span class="tablero-vital-ne-msg">No evaluado</span>
+            <span class="tablero-vital-input-row">
+              <input type="${v.tipo}"${stepAttr} id="${inputId}" class="tablero-vital-input" placeholder="${v.placeholder}" oninput="syncVitalSliderDesdeInput(this)">
+              ${v.unidad ? `<span class="tablero-vital-unit">${v.unidad}</span>` : ''}
+            </span>
+            ${slider}
+          </div>`;
+      }).join('');
+    }
+
+    // Monta la grilla en su contenedor y precarga los valores que traiga
+    // `valores` (mapa campo → valor del registro; null/undefined = vacío,
+    // que es exactamente "no se midió"). Repintar el contenedor entero es
+    // lo que resetea el estado de pantalla de los tiles (interruptores "No
+    // evaluado", sliders, .has-value) sin necesidad de una función de reset
+    // aparte por pantalla.
+    function montarVitalesGrid(containerId, idPrefix, valores) {
+      const cont = document.getElementById(containerId);
+      if (!cont) return;
+      cont.innerHTML = vitalesGridHTML(idPrefix);
+      SOAP_VITALES.forEach(v => {
+        const input = document.getElementById(`${idPrefix}vital-${v.id}`);
+        if (!input) return;
+        const valor = valores ? valores[v.campo] : null;
+        input.value = (valor === null || valor === undefined) ? '' : valor;
+        syncVitalSliderDesdeInput(input);
+      });
+    }
+
     function renderExamSystems(bodyId) {
       bodyId = bodyId || 'soap-exam-body';
       const body = document.getElementById(bodyId);
@@ -14048,6 +14019,11 @@
         el.classList.remove('field-error');
         el.oninput = () => { if (el.value.trim() !== '' || (id === 'soap-i' && getDiagSelected('soap').length > 0)) el.classList.remove('field-error'); };
       });
+
+      // Signos vitales en blanco. Repintar la grilla es el reset: se lleva
+      // los interruptores de "No evaluado" y los sliders de la apertura
+      // anterior sin necesidad de una función de reset propia.
+      montarVitalesGrid('soap-vitals-grid', 'soap-', null);
 
       // Reset examen físico por sistema
       renderExamSystems();
@@ -14123,6 +14099,12 @@
         el.classList.remove('field-error');
         el.oninput = () => { if (el.value.trim() !== '' || (id === 'soap-i' && getDiagSelected('soap').length > 0)) el.classList.remove('field-error'); };
       });
+
+      // Los signos vitales guardados llegan precargados y editables. Un
+      // vital que quedó en null se muestra vacío — es lo mismo que "no se
+      // midió", que es justamente lo que se persiste (no hay marca de
+      // omisión en `consultas`, ver toggleVitalNoEvaluado).
+      montarVitalesGrid('soap-vitals-grid', 'soap-', record);
 
       renderExamSystems();
       aplicarExamFindingsAlFormulario('soap-exam-body', record.examenFisico);
@@ -14220,7 +14202,10 @@
         })
         .filter(Boolean);
 
-      // Signos vitales (solo presentes en el Tablero de trabajo, no en el modal clásico)
+      // Signos vitales. Las dos pantallas que capturan una consulta (el
+      // Tablero y el modal clásico de crear/editar) montan la misma grilla
+      // desde SOAP_VITALES, así que este bloque sirve para ambas: la
+      // presencia del primer tile es lo que decide si la pantalla los trae.
       const vitalTempEl = document.getElementById(idPrefix + 'vital-temp');
       let vitals = { temp: null, fc: null, fr: null, crt: null, pas: null, pad: null, pam: null };
       let vitalsLine = '';
@@ -14311,6 +14296,14 @@
             diagnosticosPresuntivos: diagPresuntivos,
             plan: pEl.value.trim(),
             examenFisico: examFindings, usuario
+          });
+          // Los vitales solo se tocan si la pantalla que guardó los tiene
+          // (mismo criterio que el payload de Supabase): así una pantalla
+          // futura sin grilla de vitales edita el resto de la consulta sin
+          // borrar en memoria lo que sí quedó guardado en la base.
+          if (registro && vitalTempEl) Object.assign(registro, {
+            vitalTemp: vitals.temp, vitalFc: vitals.fc, vitalFr: vitals.fr, vitalCrt: vitals.crt,
+            vitalPas: vitals.pas, vitalPad: vitals.pad, vitalPam: vitals.pam
           });
           const tItem = data.timeline.find(t => t.dbId === dbId);
           if (tItem) Object.assign(tItem, {
@@ -14772,31 +14765,12 @@
       tile.classList.toggle('no-evaluado', checkbox.checked);
     }
 
-    // Reset al abrir el Tablero — tiene que correr ANTES de
-    // resetVitalSliders(), que no toca el atributo disabled.
-    function resetVitalesNoEvaluados() {
-      document.querySelectorAll('#tablero-view [data-vital-ne-for]').forEach(cb => {
-        cb.checked = false;
-        const inputId = cb.getAttribute('data-vital-ne-for');
-        const input = document.getElementById(inputId);
-        if (input) {
-          input.disabled = false;
-          tableroVitalTileDe(input).classList.remove('no-evaluado');
-        }
-        const range = document.querySelector(`.tablero-vital-range[data-vital-for="${inputId}"]`);
-        if (range) range.disabled = false;
-      });
-    }
-
-    // Reset al abrir el Tablero — corre DESPUÉS de vaciar los inputs.
-    function resetVitalSliders() {
-      document.querySelectorAll('#tablero-view .tablero-vital-range').forEach(range => {
-        range.value = range.getAttribute('data-neutro');
-        tableroVitalTileDe(range).classList.remove('has-value');
-        const input = document.getElementById(range.getAttribute('data-vital-for'));
-        if (input) input.oninput = () => syncVitalSliderDesdeInput(input);
-      });
-    }
+    // Ya no existen resetVitalesNoEvaluados()/resetVitalSliders(): la
+    // grilla de vitales se repinta entera al abrir cada pantalla
+    // (montarVitalesGrid), y eso deja los interruptores sin marcar, los
+    // campos habilitados y los sliders en su posición neutra. Si alguna
+    // pantalla futura reusa los tiles SIN repintarlos, va a necesitar un
+    // reset propio — no lo resuelvas dejando estado viejo en pantalla.
 
     // ── Grabar la consulta y precargar el SOIP ─────────────────────────
     // Cierra el flujo audio → Whisper → LLM → formulario; todo el pipeline
@@ -16152,11 +16126,11 @@
           if (step) step.classList.toggle('filled', lleno);
         };
       });
-      resetVitalesNoEvaluados();
-      ['tablero-soap-vital-temp', 'tablero-soap-vital-fc', 'tablero-soap-vital-fr', 'tablero-soap-vital-crt', 'tablero-soap-vital-pas', 'tablero-soap-vital-pad', 'tablero-soap-vital-pam'].forEach(id => {
-        document.getElementById(id).value = '';
-      });
-      resetVitalSliders();
+      // La grilla de vitales se pinta acá (ya no es HTML estático): el
+      // Tablero siempre abre una consulta NUEVA, así que va en blanco.
+      // Repintarla deja los 7 tiles limpios — interruptores "No evaluado"
+      // sin marcar, sliders en su posición neutra y campos vacíos.
+      montarVitalesGrid('tablero-vitals-grid', 'tablero-soap-', null);
 
       renderExamSystems('tablero-soap-exam-body');
       document.getElementById('tablero-soap-exam-toggle').classList.remove('expanded');
@@ -36954,8 +36928,13 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         <div class="soap-block">
           <div class="soap-letter">O</div>
           <div class="soap-block-body">
-            <label class="soap-block-label">Objetivo</label>
-            <textarea class="soap-textarea" id="soap-o" placeholder="Hallazgos del examen físico, constantes vitales (peso, temperatura, FC, FR, mucosas, TLLC)"></textarea>
+            <label class="soap-block-label">Objetivo · signos vitales</label>
+            <!-- Mismos tiles que el Tablero, generados por montarVitalesGrid()
+                 desde SOAP_VITALES. Al EDITAR una consulta ya guardada llegan
+                 precargados con lo que se midió, que es lo que permite leerlos
+                 y corregirlos sin volver a abrir el Tablero. -->
+            <div class="tablero-vitals-grid" id="soap-vitals-grid"></div>
+            <textarea class="soap-textarea" id="soap-o" placeholder="Hallazgos del examen físico, mucosas, hidratación, etc."></textarea>
           </div>
         </div>
 

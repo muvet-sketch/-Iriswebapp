@@ -110,15 +110,22 @@ class ConsultaExtraida(BaseModel):
     motivo: str = Field(description=f"Exactamente uno de: {', '.join(MOTIVOS)}")
     subjetivo: str = Field(
         description="Anamnesis: lo que relata el propietario, duracion de los signos, "
-                    "medicamentos dados en casa, cambios de comportamiento/apetito."
+                    "medicamentos dados en casa, cambios de comportamiento/apetito. "
+                    "TERCERA persona (regla 9): el sujeto es el tutor o el paciente, "
+                    "nunca el veterinario. Ej: 'El tutor refiere que el paciente "
+                    "vomita desde hace dos dias'."
     )
     objetivo: str = Field(
         description="Hallazgos del examen fisico dichos por el veterinario. "
-                    "NO incluir los signos vitales numericos, esos van aparte."
+                    "NO incluir los signos vitales numericos, esos van aparte. "
+                    "PRIMERA persona (regla 9). Ej: 'Encuentro mucosas palidas y "
+                    "dolor a la palpacion abdominal'."
     )
     interpretacion: str = Field(
         description="Diagnostico presuntivo o definitivo y diferenciales. "
-                    "Si en el audio no se dice ninguno, cadena vacia."
+                    "Si en el audio no se dice ninguno, cadena vacia. "
+                    "PRIMERA persona (regla 9). Ej: 'Considero una gastroenteritis "
+                    "aguda; descarto cuerpo extrano'."
     )
     diagnosticos_presuntivos: List[str] = Field(
         default_factory=list,
@@ -126,7 +133,9 @@ class ConsultaExtraida(BaseModel):
     )
     plan: str = Field(
         description="Plan terapeutico, procedimientos, proximo control, recomendaciones. "
-                    "Si no se dice, cadena vacia."
+                    "Si no se dice, cadena vacia. "
+                    "PRIMERA persona (regla 9). Ej: 'Indico meloxicam por tres dias "
+                    "y cito a control en una semana'."
     )
     vitales: SignosVitales
     examen_sistemas: List[HallazgoSistema] = Field(
@@ -198,6 +207,26 @@ REGLAS QUE NO PUEDES ROMPER:
    nunca para agregar medicamentos, dosis o diagnosticos que no se
    mencionaron. Y las citas de los vitales siguen la regla 3: LITERALES,
    nunca corrijas el texto dentro de 'cita'.
+
+9. PERSONA GRAMATICAL. Quien firma la historia clinica es el veterinario, asi que
+   escribe como si el la estuviera redactando:
+   - Objetivo, Interpretacion y Plan van en PRIMERA persona del singular, el
+     veterinario hablando de lo que el mismo hizo, encontro o decidio:
+     "Encuentro mucosas palidas", "Considero una gastroenteritis aguda",
+     "Indico meloxicam por tres dias y cito a control en una semana".
+     No escribas "se observa", "se recomienda" ni "el veterinario indica".
+   - Subjetivo va en TERCERA persona, refiriendote al tutor y al paciente:
+     "El tutor refiere que el paciente vomita desde hace dos dias y que le dio
+     un medicamento en casa". El sujeto ahi nunca es el veterinario.
+   - En el audio el veterinario y el tutor se tutean y hablan en desorden
+     (segunda persona, plural, etc.). Reescribe lo que se dijo a la persona que
+     corresponde a cada campo; eso es reformular, no inventar: el contenido
+     sigue siendo unicamente lo que se dice en el audio (regla 1).
+   - Si en el audio se dice el nombre de la mascota, usalo en el Subjetivo en
+     vez de "el paciente". Si no se dice, escribe "el paciente" — no inventes
+     un nombre.
+   - Las citas literales de los vitales (regla 3) NO se tocan: van tal cual se
+     oyeron, sin cambiar la persona.
 
 Motivos validos (usa exactamente uno): {', '.join(MOTIVOS)}
 Sistemas validos: {', '.join(SISTEMAS)}

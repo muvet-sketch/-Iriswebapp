@@ -504,6 +504,33 @@ cierra el script") en vez del literal `</script>`.
     la maqueta cambió, los ids no. Los inputs de vitales usan
     `.tablero-vital-input` dentro de `.tablero-vital-tile` (ya no
     `.input-control`), pero siguen siendo los mismos ids.
+  - **Los 7 tiles de vitales ya no son HTML estático y no viven solo acá.**
+    Salen de `SOAP_VITALES` (rótulo, unidad, placeholder, rango y valor
+    neutro del slider, y el campo del registro en memoria) vía
+    `vitalesGridHTML(idPrefix)` / `montarVitalesGrid(containerId, idPrefix,
+    valores)`, y se montan en DOS pantallas: el contenedor
+    `#tablero-vitals-grid` del Tablero (`abrirTableroTrabajo()`, siempre en
+    blanco: el Tablero solo da de alta consultas nuevas) y
+    `#soap-vitals-grid`, el bloque Objetivo del modal clásico de
+    crear/**editar** una consulta. Antes los vitales solo existían en el
+    Tablero, así que una consulta ya guardada se editaba sin poder ver ni
+    corregir lo que se había medido. Agregar un vital es agregar una
+    entrada a esa constante más su columna `vital_*` en `consultas` — mismo
+    criterio que `ANESTESIA_VITALES`; no repitas los tiles a mano.
+    Corolario: **repintar la grilla ES el reset**, por eso ya no existen
+    `resetVitalesNoEvaluados()`/`resetVitalSliders()` — los interruptores
+    "No evaluado", el `disabled` y la posición de los sliders se van con el
+    `innerHTML`. Una pantalla futura que reuse los tiles sin repintarlos
+    necesita su propio reset. Los ids que genera
+    (`<prefijo>vital-<id>`) siguen siendo el contrato con
+    `guardarConsulta(idPrefix)` y con `AUDIO_SOIP_VITALES`.
+  - Al EDITAR, `guardarConsulta()` actualiza los `vital*` del registro en
+    memoria **solo si la pantalla que guardó trae la grilla** (misma
+    condición que ya gobernaba el payload de Supabase): así una pantalla sin
+    vitales edita el resto de la consulta sin borrar en memoria lo que sí
+    quedó en la base. Efecto secundario que se corrigió de paso: editar
+    desde el modal ya no borra los vitales de la línea `summary` del
+    timeline.
   - Los 6 vitales numéricos (todos menos TLLC, que es texto libre) tienen
     además un `<input type="range">` bajo el número
     (`.tablero-vital-range`), sincronizado en ambos sentidos con
@@ -598,6 +625,17 @@ del modal, para cuando el equipo de la oficina está apagado.
   coincide, muestra el grabador con un aviso. El guard por nombre que ya
   tenía `renderAudioSoipPreview()` (el audio menciona a otra mascota) sigue
   igual y es independiente de este.
+- **Persona gramatical del borrador (regla 9 de `SYSTEM` en
+  `extraer_soip.py`).** Objetivo, Interpretación y Plan se redactan en
+  PRIMERA persona del singular ("Encuentro mucosas pálidas", "Indico
+  meloxicam"), porque quien firma la historia es el veterinario; Subjetivo
+  va en TERCERA persona refiriéndose al tutor y al paciente ("El tutor
+  refiere que Canela vomita desde hace dos días"), que es lo que ese campo
+  es: el relato de otro. Reescribir a la persona correcta es reformular, no
+  inventar — el contenido sigue limitado a lo que se dijo en el audio
+  (regla 1), y las citas literales de los vitales (regla 3) no se tocan.
+  Las descripciones de los campos del modelo repiten la persona esperada a
+  propósito: el `messages.parse()` las usa tanto como al `SYSTEM`.
 - Lo que este bloque **no** hace no cambió: solo PRECARGA los campos. No
   guarda, no finaliza y no toca `consultas`. Un LLM no cierra una historia
   clínica.
