@@ -16327,16 +16327,41 @@
     // remotas (pedirlo en el asset local, mismo origen, puede bloquear el
     // canvas sin necesidad). Si falla (red, CORS, etc.) el llamador debe
     // seguir sin logo en vez de romper la generacion del PDF.
-    function imageUrlToDataURL(url) {
+    // `maxPx` acota el lado mayor del raster ANTES de exportarlo, y NO es
+    // cosmetico. jsPDF.addImage() embebe los bytes TAL CUAL: reducir el
+    // rectangulo de dibujo a 44 pt no reduce en nada el peso de la imagen
+    // que queda dentro del PDF. El logo que sube cada clinica es el archivo
+    // original (en produccion, un PNG de 1,36 MB), asi que TODO PDF de la
+    // app pesaba mas de 1,3 MB solo por el encabezado — incluida la ficha de
+    // propietario, que fuera del logo es puro texto vectorial.
+    // Donde eso deja de ser un desperdicio y pasa a romper una funcion es en
+    // "Enviar por email": el adjunto viaja en base64 DENTRO del JSON de
+    // /api/enviar-correo, y Vercel rechaza cualquier request de mas de
+    // 4,5 MB ANTES de invocar la funcion — el correo no se encolaba, no
+    // quedaba fila en `correos` y el boton se quedaba en "Enviando...".
+    // Si se agrega otro generador de PDF que embeba una imagen del usuario,
+    // pasa por aca con su propio tope; no uses la imagen original.
+    function imageUrlToDataURL(url, maxPx) {
       return new Promise((resolve, reject) => {
         const img = new Image();
         if (/^https?:\/\//i.test(url)) img.crossOrigin = 'anonymous';
         img.onload = () => {
           try {
+            const anchoOriginal = img.naturalWidth || img.width;
+            const altoOriginal = img.naturalHeight || img.height;
+            const limite = Number(maxPx) > 0 ? Number(maxPx) : 0;
+            const escala = limite
+              ? Math.min(1, limite / Math.max(anchoOriginal, altoOriginal))
+              : 1;
             const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth || img.width;
-            canvas.height = img.naturalHeight || img.height;
-            canvas.getContext('2d').drawImage(img, 0, 0);
+            canvas.width = Math.max(1, Math.round(anchoOriginal * escala));
+            canvas.height = Math.max(1, Math.round(altoOriginal * escala));
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            // PNG y no JPEG: un logo suele traer fondo transparente y en
+            // JPEG saldria sobre un rectangulo negro.
             resolve(canvas.toDataURL('image/png'));
           } catch (err) { reject(err); }
         };
@@ -16345,13 +16370,19 @@
       });
     }
 
+    // Lado maximo (px) de los dos logos del encabezado de los PDF. Se dibujan
+    // a 44 pt y 26 pt; 240 y 160 px dan ~4x esa medida, o sea mas de 280 dpi
+    // al imprimir, que es de sobra. Subirlos vuelve a inflar todos los PDF.
+    const PDF_LOGO_CLINICA_MAX_PX = 240;
+    const PDF_LOGO_IRIS_MAX_PX = 160;
+
     // No cachea un fallo de forma permanente: un fallo transitorio (red
     // lenta, bucket momentaneamente inalcanzable) no debe dejar el logo de
     // IRIS ausente del resto de la sesion — el proximo PDF vuelve a
     // intentarlo.
     function getIrisLogoDataURL() {
       if (!irisLogoDataUrlPromise) {
-        irisLogoDataUrlPromise = imageUrlToDataURL(IRIS_LOGO_URL).catch(() => {
+        irisLogoDataUrlPromise = imageUrlToDataURL(IRIS_LOGO_URL, PDF_LOGO_IRIS_MAX_PX).catch(() => {
           irisLogoDataUrlPromise = null;
           return null;
         });
@@ -16389,7 +16420,7 @@
 
       let clinicLogoDataUrl = null;
       if (CLINIC_INFO.logoUrl) {
-        try { clinicLogoDataUrl = await imageUrlToDataURL(CLINIC_INFO.logoUrl); } catch (err) { clinicLogoDataUrl = null; }
+        try { clinicLogoDataUrl = await imageUrlToDataURL(CLINIC_INFO.logoUrl, PDF_LOGO_CLINICA_MAX_PX); } catch (err) { clinicLogoDataUrl = null; }
       }
       const irisLogoDataUrl = await getIrisLogoDataURL();
 
@@ -16505,13 +16536,25 @@
           const sliceCanvas = document.createElement('canvas');
           sliceCanvas.width = canvas.width;
           sliceCanvas.height = slicePx;
-          sliceCanvas.getContext('2d').drawImage(
+          const sliceCtx = sliceCanvas.getContext('2d');
+          // Fondo blanco explicito: el recorte se exporta como JPEG, que no
+          // tiene transparencia, y sin esto cualquier pixel transparente
+          // saldria negro.
+          sliceCtx.fillStyle = '#ffffff';
+          sliceCtx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+          sliceCtx.drawImage(
             canvas, 0, renderedPx, canvas.width, slicePx, 0, 0, canvas.width, slicePx
           );
 
           if (!firstSlice) doc.addPage();
           const y = firstSlice ? contentStartY : marginX;
-          doc.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginX, y, imgWidth, slicePx / pxPerPt);
+          // JPEG y no PNG: el contenido es una pagina de texto sobre blanco
+          // rasterizada a scale 2, y a calidad 0.92 se ve igual en pantalla y
+          // al imprimir. Medido sobre una pagina tipo formula: 103 KB en PNG
+          // contra 64 KB en JPEG, y la diferencia se multiplica por pagina.
+          // El grueso del peso del PDF era el logo, no esto (ver
+          // imageUrlToDataURL), pero un documento largo lo sumaba igual.
+          doc.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', marginX, y, imgWidth, slicePx / pxPerPt);
 
           renderedPx += slicePx;
           firstSlice = false;
@@ -16703,22 +16746,33 @@
       const btn = document.getElementById('enviar-correo-btn');
       btn.disabled = true;
       btn.textContent = 'Enviando…';
-      const res = await enviarCorreoIris({
-        tipo: enviarCorreoPendiente.tipo || 'documento',
-        asunto,
-        titulo: asunto,
-        intro: document.getElementById('enviar-correo-mensaje').value.trim() || null,
-        destinatarios: [{ email, nombre: enviarCorreoPendiente.nombreDestino, rol: 'tutor' }],
-        adjuntos: enviarCorreoPendiente.adjuntos || [],
-        // Botón del correo (el enlace de autorregistro, por ejemplo). No todos
-        // los envíos lo traen: un documento adjunto no necesita botón.
-        cta: enviarCorreoPendiente.cta || null,
-        referencia: enviarCorreoPendiente.referencia || null,
-        mensajeOk: `Correo enviado a ${email}`
-      });
-      btn.disabled = false;
-      btn.textContent = 'Enviar';
-      if (res.ok && res.enviados) closeEnviarCorreoModal();
+      // try/finally obligatorio: sin el, cualquier excepcion o cualquier
+      // promesa que no resuelva dejaba el boton en "Enviando..." PARA
+      // SIEMPRE y sin un solo mensaje — el usuario no tenia forma de saber
+      // si el correo salio, y reintentar exigia cerrar y reabrir el modal.
+      // Si algo se rompe adentro, la unica regla es que se vea.
+      try {
+        const res = await enviarCorreoIris({
+          tipo: enviarCorreoPendiente.tipo || 'documento',
+          asunto,
+          titulo: asunto,
+          intro: document.getElementById('enviar-correo-mensaje').value.trim() || null,
+          destinatarios: [{ email, nombre: enviarCorreoPendiente.nombreDestino, rol: 'tutor' }],
+          adjuntos: enviarCorreoPendiente.adjuntos || [],
+          // Botón del correo (el enlace de autorregistro, por ejemplo). No todos
+          // los envíos lo traen: un documento adjunto no necesita botón.
+          cta: enviarCorreoPendiente.cta || null,
+          referencia: enviarCorreoPendiente.referencia || null,
+          mensajeOk: `Correo enviado a ${email}`
+        });
+        if (res && res.ok && res.enviados) closeEnviarCorreoModal();
+      } catch (err) {
+        console.error('[IRIS] Error inesperado enviando el correo:', err);
+        showToast(`No se pudo enviar el correo: ${err.message || err}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Enviar';
+      }
     }
 
     // Descarga bajo demanda (bucket privado `pdfs` -> URL firmada de 1h) del
@@ -39977,17 +40031,51 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       };
     }
 
+    // Tope real del adjunto, en bytes ya decodificados. NO es el limite de
+    // Resend (40 MB) ni el que declara la funcion: es el de la PLATAFORMA.
+    // Vercel rechaza un request de mas de 4,5 MB antes siquiera de invocar
+    // la funcion serverless, y el adjunto viaja en base64 (x1,37) dentro del
+    // JSON. 3 MB decodificados ~ 4,1 MB de cuerpo, que entra con margen.
+    // Se revisa ACA, en el navegador, porque del otro lado del limite no hay
+    // nadie que pueda contestar: el request muere en el borde y el usuario
+    // se queda sin ningun mensaje. Mismo numero en MAX_ADJUNTOS_BYTES de
+    // api/enviar-correo.js — si se cambia uno, cambiar el otro.
+    const LIMITE_ADJUNTOS_CORREO_BYTES = 3 * 1024 * 1024;
+
+    // Un envio no puede quedarse colgado sin fin: si el request se estanca
+    // (subida lenta, la funcion se murio a mitad, el borde corto la
+    // conexion) hay que soltar la promesa y decirlo. 90 s cubre de sobra un
+    // adjunto de pocos MB por una conexion de clinica.
+    const TIMEOUT_CORREO_MS = 90000;
+
     async function apiCorreo(ruta, body) {
       const headers = await correoAuthHeaders();
       if (!headers) return { ok: false, error: 'No hay sesión activa' };
+      const control = new AbortController();
+      const reloj = setTimeout(() => control.abort(), TIMEOUT_CORREO_MS);
       try {
-        const res = await fetch(ruta, { method: 'POST', headers, body: JSON.stringify(body) });
+        const res = await fetch(ruta, {
+          method: 'POST', headers, body: JSON.stringify(body), signal: control.signal
+        });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) return { ok: false, error: data.error || `El servidor respondió ${res.status}` };
         return { ok: true, ...data };
       } catch (err) {
+        if (err && err.name === 'AbortError') {
+          return { ok: false, error: 'el servidor de correo no respondió a tiempo — vuelve a intentarlo' };
+        }
         return { ok: false, error: err.message || 'No se pudo contactar al servidor de correo' };
+      } finally {
+        clearTimeout(reloj);
       }
+    }
+
+    // Peso total de los adjuntos, en bytes decodificados (el campo viene en
+    // base64, que ocupa 4 caracteres por cada 3 bytes).
+    function pesoAdjuntosCorreo(adjuntos) {
+      return (adjuntos || []).reduce(
+        (total, a) => total + Math.floor(String((a && a.contenidoBase64) || '').length * 0.75), 0
+      );
     }
 
     // Envío genérico. Devuelve el resultado y ADEMÁS avisa por toast, porque
@@ -40003,6 +40091,18 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       if (!destinatarios.length) {
         if (!opciones.silencioso) showToast(opciones.mensajeSinDestinatario || 'No hay un correo registrado para enviar');
         return { ok: false, error: 'Sin destinatarios' };
+      }
+
+      // Mandarlo igual no serviria de nada: el borde de Vercel corta el
+      // request y la funcion nunca corre, asi que ni siquiera queda la fila
+      // en `correos` para saber que se intento. Mejor decirlo con el peso
+      // real, que es accionable (casi siempre es un logo de clinica enorme).
+      const pesoAdjuntos = pesoAdjuntosCorreo(opciones.adjuntos);
+      if (pesoAdjuntos > LIMITE_ADJUNTOS_CORREO_BYTES) {
+        const mb = (pesoAdjuntos / (1024 * 1024)).toFixed(1);
+        const error = `el adjunto pesa ${mb} MB y el máximo es ${Math.round(LIMITE_ADJUNTOS_CORREO_BYTES / (1024 * 1024))} MB`;
+        if (!opciones.silencioso) showToast(`No se pudo enviar el correo: ${error}`);
+        return { ok: false, error };
       }
 
       const res = await apiCorreo('/api/enviar-correo', { ...ctx, ...opciones, destinatarios });

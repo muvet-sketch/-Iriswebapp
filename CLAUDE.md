@@ -1350,6 +1350,49 @@ estar en Colombia y el error sería de una hora entera en el recordatorio.
 clínica y parsearla la movería a la zona del servidor (misma trampa que
 `dashDiaLocalDeISO()`).
 
+### El adjunto no puede pesar — el límite real es el de Vercel, no el de Resend
+Enviar una fórmula médica por correo **no hacía nada**: el botón se quedaba en
+"Enviando…" para siempre, sin toast, y en `correos` no quedaba ni una fila de
+tipo `documento` (ni un solo `POST /rest/v1/correos` en los logs de Supabase —
+la función serverless nunca llegó a ejecutarse). Tres causas encadenadas, las
+tres corregidas; ninguna se puede reintroducir:
+
+- **El logo de la clínica se embebía en tamaño original en TODOS los PDF.**
+  `jspdf.addImage()` guarda los bytes TAL CUAL: dibujarlo en un recuadro de
+  44 pt no lo achica ni un byte. En producción `logos-clinica/<id>/logo.png`
+  pesa 1,36 MB, así que hasta la ficha de propietario —que fuera del logo es
+  puro texto vectorial— pesaba 1,35 MB, y había PDFs de 5,5 MB en el bucket.
+  Ahora `imageUrlToDataURL(url, maxPx)` reescala antes de exportar y el
+  encabezado pasa `PDF_LOGO_CLINICA_MAX_PX` (240) / `PDF_LOGO_IRIS_MAX_PX`
+  (160) — más de 280 dpi a la medida en que se imprimen. **Cualquier
+  generador nuevo que embeba una imagen del usuario pasa por ahí con su
+  propio tope**; nunca la imagen original. Sigue siendo PNG y no JPEG a
+  propósito: un logo suele traer fondo transparente.
+- **El cuerpo del PDF se rasterizaba en PNG.** `generarPdfRegistroImpresion()`
+  exporta cada recorte con `toDataURL('image/jpeg', 0.92)` (y pinta blanco
+  primero, porque JPEG no tiene transparencia). Medido sobre una página tipo
+  fórmula: 103 KB en PNG contra 64 KB en JPEG, y la diferencia se multiplica
+  por página.
+- **El tope declarado en `api/enviar-correo.js` era inalcanzable.** Decía
+  8 MB, pero **Vercel rechaza cualquier request de más de 4,5 MB en el borde,
+  antes de invocar la función**: no hay fila en `correos`, no hay log y no hay
+  nada que responderle al navegador. Como el adjunto viaja en base64 (×1,37)
+  dentro del JSON, el límite quedó en **3 MB decodificados**, y está en DOS
+  lugares que hay que mantener iguales: `MAX_ADJUNTOS_BYTES`
+  (api/enviar-correo.js) y `LIMITE_ADJUNTOS_CORREO_BYTES` (index.html). El del
+  navegador es el que de verdad sirve — es el único lado del límite donde
+  todavía hay alguien que pueda avisar.
+
+Y dos guardas de UI que valen para cualquier botón que dispare una llamada
+larga, no solo para este:
+- **`confirmarEnviarCorreo()` envuelve todo en `try/catch/finally`.** Sin el
+  `finally`, una sola excepción dejaba el botón en "Enviando…" de forma
+  permanente y sin mensaje: no había manera de saber si el correo salió, y
+  reintentar exigía cerrar y reabrir el modal.
+- **`apiCorreo()` aborta a los 90 s** (`AbortController`, `TIMEOUT_CORREO_MS`).
+  Un `fetch` sin timeout que se estanca es indistinguible de un cuelgue de la
+  app.
+
 ### Los demás disparadores
 - **"Enviar por email" del menú "..."** (`rowActionEmail`) abre
   `#enviar-correo-modal` con el destinatario **a la vista y editable**:

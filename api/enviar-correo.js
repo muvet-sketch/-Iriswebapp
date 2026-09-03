@@ -20,10 +20,15 @@ const { autorizar } = require('./_lib/supabase');
 const { encolar, procesarPendientes } = require('./_lib/bandeja');
 const { emailValido } = require('./_lib/correo');
 
-// Tope de adjuntos. Resend rechaza por encima de 40 MB y un PDF de la app pesa
-// unos pocos cientos de KB; 8 MB deja margen de sobra y evita que un envío
-// accidental de 30 archivos tumbe la función.
-const MAX_ADJUNTOS_BYTES = 8 * 1024 * 1024;
+// Tope de adjuntos, en bytes ya decodificados. El limite que manda NO es el de
+// Resend (40 MB) sino el de Vercel: un request de mas de 4,5 MB se rechaza en
+// el borde y esta funcion no llega a ejecutarse nunca — sin fila en `correos`,
+// sin log y sin nada que responderle al navegador. Como el adjunto viaja en
+// base64 (x1,37) dentro del JSON, 3 MB decodificados dejan el cuerpo en ~4,1 MB.
+// El valor de 8 MB que habia aca era inalcanzable: cualquier adjunto que lo
+// hubiera activado ya habia muerto en el borde. Mismo numero en
+// LIMITE_ADJUNTOS_CORREO_BYTES de index.html — si se cambia uno, cambiar el otro.
+const MAX_ADJUNTOS_BYTES = 3 * 1024 * 1024;
 
 const TIPOS_VALIDOS = new Set([
   'documento', 'mensaje_propietario', 'invitacion_usuario', 'link_registro',
@@ -82,7 +87,7 @@ module.exports = async function handler(req, res) {
     .filter(a => a.content);
 
   if (pesoAdjuntos > MAX_ADJUNTOS_BYTES) {
-    res.status(413).json({ error: 'Los adjuntos superan el límite de 8 MB' });
+    res.status(413).json({ error: `Los adjuntos superan el límite de ${Math.round(MAX_ADJUNTOS_BYTES / (1024 * 1024))} MB` });
     return;
   }
 
