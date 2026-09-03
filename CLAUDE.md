@@ -634,6 +634,53 @@ del modal, para cuando el equipo de la oficina está apagado.
     avisa con los minutos reales. Sin esto un audio inservible se sube, viaja
     al PC de la oficina, se transcribe varios minutos y vuelve como un SOIP
     vacío.
+  Detectar el corte no alcanzaba: avisado el problema, **no había forma de
+  volver a grabar**. Pausar y reanudar no sirve —y es lo primero que intenta
+  quien lo sufre— porque el problema no es el grabador sino la fuente: un
+  `MediaRecorder` queda atado al `MediaStream` que se le pasó al construirlo
+  y no existe API para cambiarle el track. De ahí el reenganche en caliente:
+  - **Lo que se graba NO es el micrófono, es la salida de un nodo de mezcla**
+    (`audioSoipMezclaDest`, un `MediaStreamAudioDestinationNode`). El
+    micrófono es solo una entrada de ese grafo
+    (`audioSoipConectarMicrofonoAlGrafo()`), así que se puede soltar y pedir
+    otro con `getUserMedia` sin tocar el `MediaRecorder`: el archivo sigue
+    siendo UNO solo y continuo, que es innegociable — el pipeline asocia el
+    resultado por el *stem* del nombre y no admite partes sueltas. Concatenar
+    dos `.webm` no es una salida: ffmpeg solo lee el primer segmento.
+  - **`audioSoipAnclaSilencio` (un `ConstantSourceNode` en 0, conectado de
+    punta a punta) es obligatorio, no decorativo.** Medido en el navegador:
+    un destino sin NINGUNA entrada deja de emitir muestras y el grabador no
+    graba el hueco — 8,6 s reales daban un archivo de 5,3 s con los dos
+    tramos de voz pegados y sin rastro del tiempo sin micrófono. Con el ancla
+    el archivo dura lo mismo que el cronómetro y el hueco queda como silencio
+    en su lugar, que es lo que la contabilidad de tiempo mudo y la
+    `cobertura_habla` del pipeline dan por sentado. También evita que un
+    reenganche fallido deje el grabador colgado sin ninguna fuente.
+  - **Un `AudioContext` suspendido mata la grabación entera**, no la degrada:
+    la mezcla no entrega nada. Se crea después de `await getUserMedia`, así
+    que puede haber perdido el gesto del click — por eso se hace `resume()`
+    explícito antes de `rec.start()` y otra vez al volver de segundo plano.
+    Si aun así no arranca se suelta el grafo y se graba el micrófono directo
+    (sin medidor ni reenganche, pero graba).
+  - **El reenganche se dispara solo en los dos casos que no vuelven nunca**:
+    al volver a la app con el micrófono todavía mudo (`visibilitychange`) y
+    al terminarse el track (`onended` — permiso revocado, otra app se quedó
+    con el dispositivo). Los automáticos pasan por un cooldown
+    (`AUDIO_SOIP_REENGANCHE_COOLDOWN_MS`) porque un track que muere apenas se
+    abre haría un bucle de `getUserMedia`; el botón manual no, y está SIEMPRE
+    visible mientras se graba, no solo con el corte ya detectado.
+  - **Un track TERMINADO no está `muted`** (`muted` queda en `false` y lo que
+    cambia es `readyState`). El vigía miraba solo `muted`, así que el corte
+    más duro de todos —el micrófono muerto— no se contaba hasta que el
+    medidor acumulara sus 8 s, o nunca con la página en segundo plano.
+  - **Un reenganche fallido abre el corte a mano** (`audioSoipAbrirCorte()`):
+    el micrófono viejo ya se soltó y el vigía quedó apagado, así que si no,
+    ese tiempo sin señal no se sumaría y la grabación parecería sana al
+    momento de enviarla. La grabación NO se detiene: sigue corriendo y el
+    usuario puede reintentar o enviar lo que sirva.
+  - El aviso de un reenganche fallido vive en `audioSoipAvisoReenganche`, no
+    en `audioSoipError()`: `renderAudioSoipGrabador()` reescribe
+    `#audio-soip-error` entero en cada repintado y lo borraría al instante.
   Del otro lado, `vigilante.py` mide `cobertura_habla` (de
   `info.duration_after_vad`, no de la suma de duraciones de segmento, que
   sobreestima porque Whisper estira el `end` sobre el silencio) y escribe

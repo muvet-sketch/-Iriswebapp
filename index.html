@@ -14835,9 +14835,26 @@
     let audioSoipMsAcumulados = 0;    // duración de los tramos ya cerrados (pausas)
     let audioSoipInicioTramo = 0;
     let audioSoipTicker = null;
-    let audioSoipAudioCtx = null;     // medidor de nivel
+    let audioSoipAudioCtx = null;     // medidor de nivel + mezcla de grabación
     let audioSoipAnalyser = null;
     let audioSoipNivelRaf = null;
+    // Lo que MediaRecorder graba NO es el micrófono, es la salida de este
+    // nodo de mezcla. Es lo que permite reemplazar el micrófono en caliente
+    // sin cortar el archivo (ver reconectarMicrofonoAudioSoip): un
+    // MediaRecorder queda atado al MediaStream que se le pasó al construirlo
+    // y no existe forma de cambiarle el track — por eso pausar y reanudar no
+    // revive una grabación cuyo micrófono el sistema ya mató.
+    let audioSoipMezclaDest = null;   // MediaStreamAudioDestinationNode grabado
+    let audioSoipMicSource = null;    // nodo del micrófono ACTUAL dentro del grafo
+    // Fuente muda conectada al destino de punta a punta. NO es decorativa y
+    // no se puede quitar: medido en este navegador, un destino sin ninguna
+    // entrada DEJA DE EMITIR muestras, y entonces MediaRecorder no graba el
+    // hueco — 8,6 s reales daban un archivo de 5,3 s con los dos tramos de
+    // voz pegados, sin rastro del tiempo sin micrófono. Con el ancla el
+    // archivo dura lo mismo que el cronómetro y el hueco queda como silencio
+    // en su lugar, que es lo que la contabilidad de tiempo mudo y la
+    // cobertura del pipeline dan por sentado.
+    let audioSoipAnclaSilencio = null;
     let audioSoipPendiente = null;    // {id, petKey, petName, enviadoEn, estado, resultado}
     let audioSoipPoller = null;
     let audioSoipSubiendo = false;
@@ -14859,6 +14876,13 @@
     let audioSoipVigia = null;         // setInterval del vigía (NO rAF, ver audioSoipArrancarVigiaMicrofono)
     let audioSoipSilencioDesde = null; // primer instante bajo el piso del medidor
     let audioSoipEnvioForzado = false; // el usuario ya confirmó enviar un audio mudo
+    let audioSoipReconectando = false; // reenganche del micrófono en curso
+    // El aviso de un reenganche fallido vive acá y no en #audio-soip-error:
+    // renderAudioSoipGrabador() reescribe ese contenedor entero en cada
+    // repintado, así que escribirlo directo lo borraría al instante.
+    let audioSoipAvisoReenganche = '';
+    let audioSoipReconexiones = 0;     // cuántas veces se reenganchó en esta grabación
+    let audioSoipUltimoReenganche = 0; // ms del último intento automático (cooldown)
 
     const AUDIO_SOIP_PENDIENTE_KEY = 'iris_audio_soip_pendiente';
     const AUDIO_SOIP_POLL_MS = 15000;
@@ -14875,6 +14899,17 @@
     const AUDIO_SOIP_PISO_RMS = 0.004;
     // Por debajo de esta fracción con sonido, "Enviar" pide confirmación.
     const AUDIO_SOIP_COBERTURA_MINIMA = 0.5;
+    // Cooldown entre reenganches AUTOMÁTICOS del micrófono. Un track que
+    // muere apenas se abre (permiso revocado, otra app se quedó con el
+    // dispositivo) haría un bucle de getUserMedia sin esto. El botón manual
+    // no pasa por el cooldown: si el usuario lo pulsa, lo pulsó a propósito.
+    const AUDIO_SOIP_REENGANCHE_COOLDOWN_MS = 5000;
+    // Restricciones del micrófono: se piden igual al abrir y al reenganchar,
+    // así que viven en un solo lugar (voz lejana con picos que saturan es el
+    // problema medido de los audios reales; el AGC ayuda justo con eso).
+    const AUDIO_SOIP_CONSTRAINTS = {
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    };
 
     // MediaRecorder no acepta el mismo contenedor en todos los navegadores:
     // Chrome/Edge/Firefox dan webm/opus y Safari solo mp4. Se toma el primero
@@ -15019,14 +15054,20 @@
       }
       // Aviso de corte de micrófono: mientras graba y también después, sobre
       // la grabación ya cerrada (ver audioSoipRevisarMicrofono).
+      if (audioSoipAvisoReenganche) {
+        notas.push(`<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span>${audioSoipAvisoReenganche}</span></div>`);
+      }
       if (grabando && audioSoipMicrofonoMudo()) {
-        notas.push(`<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span><strong>El micrófono no está captando nada.</strong> No bloquees la pantalla ni cambies de app: el celular corta el micrófono y la grabación queda muda. Desbloquea el equipo y vuelve a esta pantalla.</span></div>`);
+        notas.push(`<div class="audio-soip-alert danger"><i data-lucide="alert-triangle"></i><span><strong>El micrófono no está captando nada.</strong> El celular lo corta al bloquear la pantalla o cambiar de app, y no vuelve solo. Pulsa <strong>«Reconectar micrófono»</strong>: la grabación continúa en el mismo archivo, sin perder lo ya grabado.</span></div>`);
       } else if (grabando) {
         notas.push(`<div class="audio-soip-alert info"><i data-lucide="info"></i><span>Deja esta pantalla abierta mientras grabas. Si bloqueas el celular o cambias de app, el micrófono se corta y la grabación queda muda.</span></div>`);
       }
       if (!grabando && audioSoipBlob && audioSoipMsMudos > 0) {
         const sospechosa = audioSoipGrabacionSospechosa();
-        notas.push(`<div class="audio-soip-alert ${sospechosa ? 'danger' : 'warn'}"><i data-lucide="${sospechosa ? 'alert-triangle' : 'info'}"></i><span>El micrófono estuvo sin captar <strong>${audioSoipFormatTiempo(audioSoipMsMudos)}</strong> de los ${audioSoipFormatTiempo(audioSoipMsAcumulados)} grabados${audioSoipCortes.length > 1 ? ` (${audioSoipCortes.length} cortes)` : ''}. ${sospechosa ? 'Enviarla así devolvería un borrador casi vacío.' : 'Esa parte llegará en silencio.'}</span></div>`);
+        const reeng = audioSoipReconexiones > 0
+          ? ` Se reconectó ${audioSoipReconexiones === 1 ? 'una vez' : audioSoipReconexiones + ' veces'} y lo grabado después de cada reconexión sí tiene sonido.`
+          : '';
+        notas.push(`<div class="audio-soip-alert ${sospechosa ? 'danger' : 'warn'}"><i data-lucide="${sospechosa ? 'alert-triangle' : 'info'}"></i><span>El micrófono estuvo sin captar <strong>${audioSoipFormatTiempo(audioSoipMsMudos)}</strong> de los ${audioSoipFormatTiempo(audioSoipMsAcumulados)} grabados${audioSoipCortes.length > 1 ? ` (${audioSoipCortes.length} cortes)` : ''}. ${sospechosa ? 'Enviarla así devolvería un borrador casi vacío.' : 'Esa parte llegará en silencio.'}${reeng}</span></div>`);
       }
       document.getElementById('audio-soip-error').innerHTML = notas.join('');
 
@@ -15034,13 +15075,19 @@
         estado.textContent = 'Enviando el audio…';
         acciones.innerHTML = '';
       } else if (audioSoipRec && audioSoipRec.state === 'recording') {
-        estado.textContent = audioSoipMicrofonoMudo()
-          ? 'Grabando, pero sin sonido: el micrófono no está entregando audio.'
-          : 'Grabando. Puedes cerrar esta ventana y seguir escribiendo.';
-        acciones.innerHTML = `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()"><i data-lucide="pause" style="width:14px;height:14px;"></i> Pausar</button>`;
+        estado.textContent = audioSoipReconectando
+          ? 'Reconectando el micrófono…'
+          : audioSoipMicrofonoMudo()
+            ? 'Grabando, pero sin sonido: el micrófono no está entregando audio.'
+            : 'Grabando. Puedes cerrar esta ventana y seguir escribiendo.';
+        acciones.innerHTML =
+          `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()" ${audioSoipReconectando ? 'disabled' : ''}><i data-lucide="pause" style="width:14px;height:14px;"></i> Pausar</button>` +
+          audioSoipBotonReconectarHTML();
       } else if (audioSoipRec && audioSoipRec.state === 'paused') {
         estado.textContent = 'En pausa — el micrófono sigue tomado, nada se está grabando.';
-        acciones.innerHTML = `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()"><i data-lucide="play" style="width:14px;height:14px;"></i> Reanudar</button>`;
+        acciones.innerHTML =
+          `<button class="btn-secondary" onclick="pausarGrabacionAudioSoip()" ${audioSoipReconectando ? 'disabled' : ''}><i data-lucide="play" style="width:14px;height:14px;"></i> Reanudar</button>` +
+          audioSoipBotonReconectarHTML();
       } else if (audioSoipBlob) {
         const mb = (audioSoipBlob.size / (1024 * 1024)).toFixed(1);
         // Con cortes se anuncia el tiempo REAL con sonido: decir "31 minutos"
@@ -15063,6 +15110,19 @@
       lucide.createIcons();
     }
 
+    // Está SIEMPRE visible mientras se graba, no solo con el micrófono ya
+    // detectado como mudo: el corte puede ser parcial (una app se llevó el
+    // micrófono un rato) y quien está en la consulta se da cuenta antes que
+    // el vigía. Se pinta con el acento cuando ya hay corte, porque ahí es la
+    // acción que hay que hacer.
+    function audioSoipBotonReconectarHTML() {
+      if (!audioSoipPuedeReconectar()) return '';
+      const urgente = audioSoipMicrofonoMudo();
+      return `<button class="${urgente ? 'btn-primary' : 'btn-secondary'}" onclick="reconectarMicrofonoAudioSoip()" ${audioSoipReconectando ? 'disabled' : ''}>` +
+        `<i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> ` +
+        `${audioSoipReconectando ? 'Reconectando…' : 'Reconectar micrófono'}</button>`;
+    }
+
     function toggleGrabacionAudioSoip() {
       if (audioSoipGrabando()) detenerGrabacionAudioSoip();
       else iniciarGrabacionAudioSoip();
@@ -15079,13 +15139,9 @@
       audioSoipFormato = AUDIO_SOIP_FORMATOS.find(f => MediaRecorder.isTypeSupported(f.mime)) || null;
 
       try {
-        audioSoipStream = await navigator.mediaDevices.getUserMedia({
-          // El problema medido de los audios reales es voz lejana con picos
-          // que saturan (ver README de scripts/transcripcion): el control
-          // automático de ganancia ayuda justo con eso. La limpieza fuerte
-          // (loudnorm + VAD) la sigue haciendo ffmpeg del otro lado.
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-        });
+        // La limpieza fuerte (loudnorm + VAD) la sigue haciendo ffmpeg del
+        // otro lado; acá solo las restricciones de captura.
+        audioSoipStream = await navigator.mediaDevices.getUserMedia(AUDIO_SOIP_CONSTRAINTS);
       } catch (err) {
         const msg = (err && err.name === 'NotAllowedError')
           ? 'No diste permiso al micrófono. Habilítalo en el candado de la barra de direcciones y vuelve a intentar.'
@@ -15104,8 +15160,31 @@
       audioSoipMudoDesde = null;
       audioSoipSilencioDesde = null;
       audioSoipEnvioForzado = false;
+      audioSoipReconectando = false;
+      audioSoipReconexiones = 0;
+      audioSoipUltimoReenganche = 0;
+      audioSoipAvisoReenganche = '';
+
+      // El grafo se monta ANTES del MediaRecorder porque lo que se graba es
+      // su salida, no el micrófono. Si el navegador no da AudioContext se
+      // graba el micrófono directo (comportamiento anterior) y el reenganche
+      // en caliente no está disponible — lo dice audioSoipPuedeReconectar().
+      audioSoipMontarGrafoAudio();
+      // Un AudioContext suspendido no entrega NADA a la mezcla: el archivo
+      // saldría cortado desde el primer segundo. El contexto se crea después
+      // de await getUserMedia, así que puede haber perdido el gesto del
+      // click que lo habilitaba; hay que reanudarlo a mano antes de grabar.
+      if (audioSoipAudioCtx && audioSoipAudioCtx.state === 'suspended') {
+        try { await audioSoipAudioCtx.resume(); } catch (e) { /* se evalúa abajo */ }
+      }
+      // Si aun así no arrancó, se graba el micrófono directo: peor (no hay
+      // reenganche en caliente) pero graba, que es lo que no se puede perder.
+      if (audioSoipAudioCtx && audioSoipAudioCtx.state !== 'running') {
+        audioSoipSoltarGrafoAudio();
+      }
+      const fuenteGrabacion = (audioSoipMezclaDest && audioSoipMezclaDest.stream) || audioSoipStream;
       try {
-        audioSoipRec = new MediaRecorder(audioSoipStream, {
+        audioSoipRec = new MediaRecorder(fuenteGrabacion, {
           ...(audioSoipFormato ? { mimeType: audioSoipFormato.mime } : {}),
           // Voz mono: 32 kbps en Opus alcanza de sobra y mantiene una
           // consulta de 40 min por debajo de 10 MB (el bucket corta en 50).
@@ -15169,6 +15248,8 @@
       audioSoipMsMudos = 0;
       audioSoipCortes = [];
       audioSoipEnvioForzado = false;
+      audioSoipReconexiones = 0;
+      audioSoipAvisoReenganche = '';
       renderAudioSoipGrabador();
       actualizarBotonAudioSoip();
     }
@@ -15179,24 +15260,126 @@
       // Cerrar el corte que estuviera abierto ANTES de soltar el track: si no,
       // el tiempo mudo final no se suma y la grabación parece mejor de lo que es.
       audioSoipCerrarCorte();
-      if (audioSoipVigia) { clearInterval(audioSoipVigia); audioSoipVigia = null; }
-      if (audioSoipTrack) {
-        audioSoipTrack.onmute = null;
-        audioSoipTrack.onunmute = null;
-        audioSoipTrack = null;
-      }
+      audioSoipSoltarSoloMicrofono();
       document.removeEventListener('visibilitychange', audioSoipAlCambiarVisibilidad);
       audioSoipSoltarWakeLock();
-      if (audioSoipStream) {
-        audioSoipStream.getTracks().forEach(t => t.stop());
-        audioSoipStream = null;
-      }
+      audioSoipSoltarGrafoAudio();
+    }
+
+    // Desmonta el grafo (medidor + mezcla) sin tocar el micrófono ni el
+    // MediaRecorder. Se usa al terminar y también como degradación cuando el
+    // AudioContext no arranca: ahí se graba el micrófono directo, sin
+    // medidor de nivel ni reenganche en caliente, pero se graba.
+    function audioSoipSoltarGrafoAudio() {
       if (audioSoipNivelRaf) { cancelAnimationFrame(audioSoipNivelRaf); audioSoipNivelRaf = null; }
+      if (audioSoipMicSource) {
+        try { audioSoipMicSource.disconnect(); } catch (e) { /* ya suelto */ }
+        audioSoipMicSource = null;
+      }
+      if (audioSoipAnclaSilencio) {
+        try { audioSoipAnclaSilencio.stop(); } catch (e) { /* ya detenida */ }
+        try { audioSoipAnclaSilencio.disconnect(); } catch (e) { /* ya suelta */ }
+        audioSoipAnclaSilencio = null;
+      }
       if (audioSoipAudioCtx) {
         try { audioSoipAudioCtx.close(); } catch (e) { /* ya cerrado */ }
         audioSoipAudioCtx = null;
         audioSoipAnalyser = null;
+        audioSoipMezclaDest = null;
       }
+    }
+
+    // Suelta SOLO el micrófono (track + vigía + nodo del grafo), dejando en
+    // pie el AudioContext, la mezcla y el MediaRecorder. Es la mitad que el
+    // reenganche necesita: si acá se cerrara el contexto, la grabación en
+    // curso moriría, que es justo lo que hay que evitar.
+    function audioSoipSoltarSoloMicrofono() {
+      if (audioSoipVigia) { clearInterval(audioSoipVigia); audioSoipVigia = null; }
+      if (audioSoipTrack) {
+        audioSoipTrack.onmute = null;
+        audioSoipTrack.onunmute = null;
+        audioSoipTrack.onended = null;
+        audioSoipTrack = null;
+      }
+      if (audioSoipMicSource) {
+        try { audioSoipMicSource.disconnect(); } catch (e) { /* ya suelto */ }
+        audioSoipMicSource = null;
+      }
+      if (audioSoipStream) {
+        audioSoipStream.getTracks().forEach(t => t.stop());
+        audioSoipStream = null;
+      }
+    }
+
+    // ── Forzar el micrófono ─────────────────────────────────────────────
+    // Caso real: salir del navegador a otra app en el celular. El sistema
+    // corta el micrófono, IRIS lo detecta y avisa, pero al volver el track
+    // sigue mudo PARA SIEMPRE — pausar y reanudar no lo revive, porque el
+    // problema no es el grabador sino la fuente. Acá se pide un micrófono
+    // nuevo con getUserMedia y se engancha al mismo grafo, así que el
+    // MediaRecorder ni se entera y el archivo sigue siendo uno solo (el
+    // pipeline asocia por el stem del nombre, no admite partes sueltas).
+    async function reconectarMicrofonoAudioSoip(auto) {
+      if (!audioSoipRec || audioSoipReconectando) return false;
+      if (!audioSoipPuedeReconectar()) {
+        if (!auto) {
+          audioSoipAvisoReenganche = 'Este navegador no permite reenganchar el micrófono sin cortar la grabación. Detén la grabación y vuelve a empezar.';
+          renderAudioSoipGrabador();
+        }
+        return false;
+      }
+      // El cooldown solo frena los intentos automáticos: un micrófono que
+      // muere apenas se abre no puede convertirse en un bucle de permisos.
+      if (auto && Date.now() - audioSoipUltimoReenganche < AUDIO_SOIP_REENGANCHE_COOLDOWN_MS) return false;
+      audioSoipUltimoReenganche = Date.now();
+
+      audioSoipReconectando = true;
+      audioSoipAvisoReenganche = '';
+      renderAudioSoipGrabador();
+      actualizarBotonAudioSoip();
+
+      audioSoipSoltarSoloMicrofono();
+
+      let nuevo = null;
+      try {
+        nuevo = await navigator.mediaDevices.getUserMedia(AUDIO_SOIP_CONSTRAINTS);
+      } catch (err) {
+        audioSoipReconectando = false;
+        // La grabación NO se detiene: sigue corriendo (en silencio) y el
+        // usuario puede reintentar o detenerla y enviar lo que sirva. Pero el
+        // micrófono viejo ya se soltó y el vigía quedó apagado, así que hay
+        // que abrir el corte a mano: si no, este tiempo sin señal no se
+        // contaría y la grabación parecería sana al momento de enviarla.
+        audioSoipAbrirCorte();
+        audioSoipAvisoReenganche = 'No se pudo volver a tomar el micrófono: ' +
+          escapeHtml((err && err.message) || 'permiso denegado') +
+          '. Cierra las otras apps que lo estén usando y vuelve a intentar.';
+        renderAudioSoipGrabador();
+        actualizarBotonAudioSoip();
+        return false;
+      }
+
+      audioSoipStream = nuevo;
+      audioSoipConectarMicrofonoAlGrafo();
+      // Al volver de segundo plano el contexto puede haber quedado suspendido
+      // en móvil; sin esto la mezcla no vuelve a entregar nada.
+      if (audioSoipAudioCtx && audioSoipAudioCtx.state === 'suspended') {
+        try { await audioSoipAudioCtx.resume(); } catch (e) { /* sigue suspendido */ }
+      }
+      audioSoipArrancarVigiaMicrofono();
+      audioSoipPedirWakeLock();
+      audioSoipReconectando = false;
+      audioSoipReconexiones++;
+      audioSoipAvisoReenganche = '';
+      // Cerrar el corte a mano (suma el hueco al tiempo mudo) y limpiar el
+      // contador de silencio: si quedara el de antes, la primera vuelta del
+      // vigía reabriría el corte al instante.
+      audioSoipCerrarCorte();
+      audioSoipSilencioDesde = null;
+      showToast('Micrófono reconectado — la grabación sigue en el mismo archivo');
+      renderAudioSoipGrabador();
+      actualizarBotonAudioSoip();
+      return true;
     }
 
     function audioSoipAvisoSalida(e) {
@@ -15220,19 +15403,62 @@
 
     // Medidor de nivel — es lo único que avisa ANTES de grabar 40 minutos
     // inservibles que el micrófono está demasiado lejos.
-    function audioSoipArrancarMedidorNivel() {
+    // ── Grafo de audio: micrófono → (analizador + mezcla grabada) ────────
+    // El nodo de mezcla existe para UNA cosa: que el micrófono se pueda
+    // desconectar y volver a conectar sin tocar el MediaRecorder, que graba
+    // la salida de la mezcla. Mientras no hay micrófono conectado, la mezcla
+    // sigue emitiendo silencio, así que el archivo conserva la duración real
+    // y el hueco queda alineado con el tiempo que el vigía contó como mudo.
+    function audioSoipMontarGrafoAudio() {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx || !audioSoipStream) return;
       try {
-        audioSoipAudioCtx = new Ctx();
-        const fuente = audioSoipAudioCtx.createMediaStreamSource(audioSoipStream);
-        audioSoipAnalyser = audioSoipAudioCtx.createAnalyser();
-        audioSoipAnalyser.fftSize = 512;
-        fuente.connect(audioSoipAnalyser);
+        if (!audioSoipAudioCtx) audioSoipAudioCtx = new Ctx();
+        if (!audioSoipAnalyser) {
+          audioSoipAnalyser = audioSoipAudioCtx.createAnalyser();
+          audioSoipAnalyser.fftSize = 512;
+        }
+        if (!audioSoipMezclaDest) audioSoipMezclaDest = audioSoipAudioCtx.createMediaStreamDestination();
+        if (!audioSoipAnclaSilencio && audioSoipAudioCtx.createConstantSource) {
+          audioSoipAnclaSilencio = audioSoipAudioCtx.createConstantSource();
+          audioSoipAnclaSilencio.offset.value = 0;
+          audioSoipAnclaSilencio.start();
+          audioSoipAnclaSilencio.connect(audioSoipMezclaDest);
+        }
       } catch (e) {
         audioSoipAnalyser = null;
+        audioSoipMezclaDest = null;
+        audioSoipAnclaSilencio = null;
+        audioSoipAudioCtx = null;
         return;
       }
+      audioSoipConectarMicrofonoAlGrafo();
+    }
+
+    // Engancha `audioSoipStream` al grafo ya montado, soltando el nodo del
+    // micrófono anterior. Es el único punto por el que entra audio a la
+    // grabación, tanto al empezar como en cada reenganche.
+    function audioSoipConectarMicrofonoAlGrafo() {
+      if (!audioSoipAudioCtx || !audioSoipStream) return;
+      if (audioSoipMicSource) {
+        try { audioSoipMicSource.disconnect(); } catch (e) { /* ya suelto */ }
+        audioSoipMicSource = null;
+      }
+      try {
+        audioSoipMicSource = audioSoipAudioCtx.createMediaStreamSource(audioSoipStream);
+        if (audioSoipAnalyser) audioSoipMicSource.connect(audioSoipAnalyser);
+        if (audioSoipMezclaDest) audioSoipMicSource.connect(audioSoipMezclaDest);
+      } catch (e) {
+        audioSoipMicSource = null;
+      }
+    }
+
+    function audioSoipPuedeReconectar() {
+      return !!(audioSoipMezclaDest && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    }
+
+    function audioSoipArrancarMedidorNivel() {
+      if (!audioSoipAnalyser) return;
       const datos = new Uint8Array(audioSoipAnalyser.fftSize);
       const pintar = () => {
         if (!audioSoipAnalyser) return;
@@ -15290,7 +15516,16 @@
       // intervalo: con la página oculta los timers van estrangulados.
       if (audioSoipRec && audioSoipRec.state === 'recording') {
         audioSoipPedirWakeLock();
+        // El contexto de audio se suspende al pasar a segundo plano en móvil
+        // y con él se corta la mezcla que alimenta al grabador.
+        if (audioSoipAudioCtx && audioSoipAudioCtx.state === 'suspended') {
+          audioSoipAudioCtx.resume().catch(() => { /* sigue suspendido */ });
+        }
         audioSoipRevisarMicrofono();
+        // Volver a la app con el micrófono todavía mudo es EXACTAMENTE el
+        // caso que pausar/reanudar no arregla. Se reengancha solo, sin
+        // esperar a que el usuario descubra el botón.
+        if (audioSoipMicrofonoMudo()) reconectarMicrofonoAudioSoip(true);
       }
     }
 
@@ -15311,6 +15546,13 @@
       if (audioSoipTrack) {
         audioSoipTrack.onmute = () => audioSoipRevisarMicrofono();
         audioSoipTrack.onunmute = () => audioSoipRevisarMicrofono();
+        // Un track que TERMINA (dispositivo desconectado, permiso revocado,
+        // otra app se quedó con el micrófono) nunca vuelve solo: ni siquiera
+        // dispara `unmute`. Es el caso que más claramente necesita reenganche.
+        audioSoipTrack.onended = () => {
+          audioSoipRevisarMicrofono();
+          reconectarMicrofonoAudioSoip(true);
+        };
       }
       audioSoipVigia = setInterval(audioSoipRevisarMicrofono, 1000);
     }
@@ -15324,7 +15566,15 @@
         return;
       }
 
-      let sinSenal = !!(audioSoipTrack && audioSoipTrack.muted);
+      // Un track TERMINADO no está `muted` (queda en false) pero tampoco
+      // entrega nada nunca más, así que hay que mirar las dos cosas: sin
+      // esto, un micrófono que el sistema mata del todo no se contaba como
+      // corte y el tiempo sin señal no se sumaba hasta que el medidor
+      // acumulara sus 8 segundos — o nunca, con la página en segundo plano.
+      // Sin micrófono (reenganche fallido) también es ausencia de señal.
+      let sinSenal = !audioSoipTrack ||
+        audioSoipTrack.muted ||
+        audioSoipTrack.readyState === 'ended';
 
       if (!sinSenal && audioSoipAnalyser && document.visibilityState === 'visible') {
         const datos = new Uint8Array(audioSoipAnalyser.fftSize);
