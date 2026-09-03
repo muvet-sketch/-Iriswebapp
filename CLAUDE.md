@@ -1374,6 +1374,62 @@ clínica y parsearla la movería a la zona del servidor (misma trampa que
   firma, **no un enlace**: no existe una pantalla pública de firma (el tutor
   firma en el consultorio, ver el patrón de Documentos).
 
+## Agenda > Tareas + "Tipo de tarea" (Tareas Pendientes)
+Quinta sub-vista de Agenda (`#agenda-view-tareas`,
+`renderAgendaTareasTable()`) más un campo nuevo en el módulo de Tareas
+Pendientes del Consultorio. Las tareas se seguían creando por paciente y
+solo se veían abriendo la ficha de esa mascota: nadie tenía la lista de lo
+que el equipo debe hacer hoy.
+
+- **El módulo del Consultorio sigue siendo el DUEÑO de los datos.** Agenda
+  no tiene array propio: `getTareasPendientesTodas()` recorre
+  `patientData[petKey].tareasPendientes` al vuelo, y completar/reabrir llama
+  a la MISMA `toggleEstadoTareaPendiente()` del módulo. Mismo criterio que
+  Agenda > Eventos. Crear/editar/eliminar siguen viviendo solo en el
+  Consultorio — desde acá se consulta y se completa, nada más.
+- **`renderTareasPendientesTable(petKey)` ahora sale temprano si `petKey !==
+  selectedPetKey`, y esa guarda no es opcional:** pinta el tbody y el
+  contador del sidebar del paciente ABIERTO, y desde Agenda se completa la
+  tarea de cualquier paciente. Sin la guarda, esa llamada pintaba los
+  registros de otra mascota en la tabla del Consultorio.
+- **Toda mutación de una tarea pasa por `refrescarAgendaTareasSi()`**
+  (guardar/toggle/eliminar y el final de `cargarDatosClinicaDesdeSupabase()`):
+  repinta la tabla si esa sub-vista está abierta y vuelve a sumar las tareas
+  a los dos calendarios. Importante en el borrado: los `onclick` de la tabla
+  y los ids de los eventos del calendario llevan el ÍNDICE del array
+  (`tarea:<petKey>:<idx>`, misma convención que los `recordId` de
+  `renderRowActionsMenu`), que se corre al hacer `splice`.
+- **En el calendario una tarea es un evento de DÍA COMPLETO** en su fecha
+  límite (`tareaPendienteToFcEvent()`, borde punteado, color por prioridad):
+  no tiene hora ni duración, y meterla en la grilla horaria ocuparía
+  visualmente un slot que sí está libre para agendar. Solo se pintan las SIN
+  completar y con fecha límite. El `eventClick` de los dos calendarios pasó a
+  `agendaFcEventClick()`, que separa por el prefijo `tarea:` del id — si
+  agregás otra fuente de eventos al calendario, va por ahí.
+- El interruptor "Mostrar tareas pendientes" (`agendaMostrarTareas`) es de
+  PANTALLA, no persiste nada, y gobierna los dos calendarios **y** la lista
+  de la Agenda personal. La Agenda personal filtra por `responsableId` de la
+  tarea, igual que filtra los eventos por `encargadoId`; con
+  `getCurrentSimUserId()` en null no se pinta ninguna (`null` significa
+  "todas" en `getTareasPendientesCalendario`, y ahí eso sería mostrarle a
+  cada quien las del equipo entero).
+- **"Completar/Reabrir" no se gatea por rol a propósito**: es la misma acción
+  extra que el menú "..." del módulo ya ofrece a todos los roles que ven el
+  Consultorio, y el Auxiliar —que ejecuta la mayoría de estas tareas— entra a
+  Agenda (`TAB_ROLE_RESTRICTIONS`). El atajo a la mascota sí usa
+  `rolPuedeVerTab('consultorio')`, como en Eventos.
+- **`TAREA_TIPOS` es un catálogo FIJO** (Enviar documentos / Agendar cita con
+  especialista / Agendar ecografía / Agendar rayos X / …), no uno ampliable
+  con "+ Registrar" como Vacunas o Desparasitaciones: lo que le da valor es
+  poder filtrar por él acá, y un catálogo libre por clínica haría que el
+  filtro dejara de ser comparable. Lo que no encaje va en `otro` y se detalla
+  en la descripción. El campo es OPCIONAL y la columna
+  `tareas_pendientes.tipo` (migración `20260902c_tareas_pendientes_tipo.sql`)
+  es nullable y sin `check`: las tareas anteriores traen null y se muestran
+  "Sin tipo" (`tareaTipoChipHTML()`), que además es una opción propia del
+  filtro. Agregar un tipo nuevo es agregar una entrada a esa constante —
+  ninguna migración.
+
 ## Sidebar de Consultorio (18 módulos, orden fijo)
 Historia · Consultas · Vacunaciones · Fórmulas médicas ·
 Desparasitaciones · Hospitalizaciones/ambulatorios ·
@@ -1421,7 +1477,7 @@ vacunación"/"próximo control" ya están resueltas vía Agenda > Eventos
 (ver más abajo) — el TODO que existía sobre esto ya no aplica.
 
 Agenda ampliada con sub-navegación (`.admin-subview-tabs`, función
-`switchAgendaView()`) en 4 vistas: **Agenda general** (la vista
+`switchAgendaView()`) en 5 vistas: **Agenda general** (la vista
 FullCalendar original, sin cambios), **Agenda personal** (filtrada al
 usuario simulado actual vía `CURRENT_SIM_USER_ID_BY_ROLE`/
 `getCurrentSimUserId()` — extensión del mismo criterio que
@@ -1438,7 +1494,9 @@ generados automáticamente por `crearEventoSeguimiento()` desde
 Vacunaciones/Desparasitaciones/Seguimientos al guardar con fecha de
 próximo control diligenciada — create-only, mismo criterio que el
 timeline; acción "Agendar" reabre `#agenda-evento-modal` precargado y
-vincula el ítem al evento creado). `guardarEventoAgenda()` también
+vincula el ítem al evento creado) y **Tareas** (las Tareas Pendientes de
+TODOS los pacientes — ver su propia sección más abajo).
+`guardarEventoAgenda()` también
 calcula `recordatorio24hISO` (mock, Tarea 3) y abre `#agenda-notif-modal`
 listando destinatarios simulados (tutor/clínica/médico) — sin envío
 real.
@@ -1590,7 +1648,7 @@ digita UNA vez por método de pago.** Dos invariantes del módulo
 El botón **"Registrar propietario"** del buscador de Consultorio está
 también en el header del pane de Agenda (`#btn-registrar-propietario-agenda`),
 reusando el mismo `openRegistrarPropietarioModal()` — va en el header
-del pane, no en el toolbar de una sub-vista, para verse en las 4 vistas.
+del pane, no en el toolbar de una sub-vista, para verse en las 5 vistas.
 `applySimRole()` ya no los toca por id sino por
 `[data-btn-registrar-propietario]`: cualquier botón nuevo que abra ese
 modal solo necesita ese atributo para heredar la restricción por rol

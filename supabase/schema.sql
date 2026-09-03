@@ -1888,6 +1888,11 @@ create table if not exists public.tareas_pendientes (
   establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
   mascota_id          uuid not null references public.mascotas (id) on delete cascade,
   descripcion         text not null,
+  -- Tipo de tarea (catálogo fijo del front, TAREA_TIPOS en index.html:
+  -- Enviar documentos / Agendar cita con especialista / Agendar ecografía /
+  -- Agendar rayos X / …). Nullable y sin `check` a propósito —
+  -- ver migrations/20260902c_tareas_pendientes_tipo.sql.
+  tipo                text,
   responsable_id      integer,
   responsable_nombre  text,
   prioridad           text not null default 'media',

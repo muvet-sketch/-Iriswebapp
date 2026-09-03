@@ -913,6 +913,18 @@
     .priority-option-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; }
     .priority-option-desc { font-size: 11px; color: var(--text-2); margin-left: 16px; margin-top: 2px; line-height: 1.35; }
 
+    /* Tipo de tarea (Tareas Pendientes) — misma pastilla en la tabla del
+       Consultorio y en Agenda > Tareas. Color derivado del acento del tema,
+       nunca un hex nuevo. */
+    .tarea-tipo-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: 999px;
+      background-color: rgba(var(--clinic-accent-rgb), 0.09);
+      color: var(--clinic-accent); font-size: 11.5px; font-weight: 600;
+      white-space: nowrap;
+    }
+    .tarea-tipo-chip-vacio { background-color: rgba(100, 116, 139, 0.1); color: var(--text-2); font-weight: 500; }
+
     /* MÓDULO: DOCUMENTOS */
     .doc-badge {
       display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px;
@@ -2020,6 +2032,22 @@
     }
     .evento-pet-btn:hover { filter: brightness(0.88); }
     .eventos-row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+
+    /* Agenda > Tareas (Tareas Pendientes de todos los pacientes) */
+    .agenda-tareas-toggle {
+      display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 12px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      font-size: 13px; font-weight: 500; color: var(--text-1);
+      background-color: var(--surface); cursor: pointer; user-select: none;
+    }
+    .agenda-tareas-toggle input { cursor: pointer; accent-color: var(--clinic-accent); }
+    .agenda-tareas-resumen { font-size: 12px; font-weight: 500; color: var(--text-2); }
+    .agenda-tarea-desc { font-weight: 500; color: var(--text-1); }
+    .agenda-tarea-cell { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; max-width: 320px; }
+    .agenda-tarea-fecha-vencida { color: var(--danger); font-weight: 600; }
+    /* Tarea pintada en el calendario: misma burbuja de FullCalendar pero con
+       borde punteado, para que no se confunda con una cita agendada. */
+    .fc .agenda-tarea-fc-event { border-style: dashed; }
 
     .btn-outline {
       background: none;
@@ -5475,7 +5503,7 @@
                acá para poder dar de alta al tutor sin salir de la Agenda
                cuando llama alguien que todavía no existe en el sistema. Va en
                el header del pane (no en el toolbar de una sub-vista) para que
-               esté visible en las 4 vistas de Agenda. Su visibilidad por rol
+               esté visible en las 5 vistas de Agenda. Su visibilidad por rol
                la maneja applySimRole() vía data-btn-registrar-propietario,
                igual que el de Consultorio. -->
           <button class="btn-primary" id="btn-registrar-propietario-agenda" data-btn-registrar-propietario onclick="openRegistrarPropietarioModal()">
@@ -5488,6 +5516,7 @@
           <button type="button" class="admin-subview-tab-btn" data-agenda-view="personal" onclick="switchAgendaView('personal')">Agenda personal</button>
           <button type="button" class="admin-subview-tab-btn" data-agenda-view="disponibilidad" onclick="switchAgendaView('disponibilidad')">Disponibilidad / Programador</button>
           <button type="button" class="admin-subview-tab-btn" data-agenda-view="eventos" onclick="switchAgendaView('eventos')">Eventos</button>
+          <button type="button" class="admin-subview-tab-btn" data-agenda-view="tareas" onclick="switchAgendaView('tareas')">Tareas</button>
         </div>
 
         <!-- Vista: Agenda general -->
@@ -5496,6 +5525,15 @@
             <select class="agenda-filtro-select" id="agenda-filtro-encargado" onchange="onCambiarFiltroAgenda()">
               <option value="todos">Todos los usuarios</option>
             </select>
+            <!-- Las tareas pendientes con fecha límite se pintan como
+                 eventos de día completo en el calendario (ver
+                 tareaPendienteToFcEvent). El interruptor es de PANTALLA:
+                 no persiste nada, solo deja despejar la grilla cuando se
+                 está agendando. -->
+            <label class="agenda-tareas-toggle" title="Mostrar en el calendario las tareas pendientes con fecha límite">
+              <input type="checkbox" id="agenda-mostrar-tareas" checked onchange="onCambiarMostrarTareasAgenda()">
+              Mostrar tareas pendientes
+            </label>
             <button type="button" class="btn-primary" id="btn-crear-evento-agenda" onclick="openCrearEventoAgendaModal()">
               <i data-lucide="plus" style="width: 16px; height: 16px;"></i> Crear evento
             </button>
@@ -5591,6 +5629,49 @@
             <table class="results-table">
               <thead><tr><th>Fecha sugerida</th><th>Propietario</th><th>Mascota</th><th>Tipo</th><th>Origen</th><th>Estado</th><th style="text-align:right;">Acciones</th></tr></thead>
               <tbody id="eventos-seguimiento-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Vista: Tareas (las Tareas Pendientes de TODOS los pacientes,
+             mismo patrón de tabla con filtros que Eventos; los registros
+             siguen viviendo en patientData[petKey].tareasPendientes, acá
+             solo se leen — ver renderAgendaTareasTable) -->
+        <div class="admin-subview" id="agenda-view-tareas">
+          <div class="card" style="margin-top:16px;">
+            <div class="card-header">
+              <span class="card-title"><i data-lucide="list-checks" style="width:16px;height:16px;color:var(--clinic-accent);"></i> Tareas pendientes del equipo</span>
+              <span class="agenda-tareas-resumen" id="agenda-tareas-resumen"></span>
+            </div>
+            <div class="search-grid" style="grid-template-columns:1fr 1fr 1fr 1.4fr;margin-bottom:14px;">
+              <div class="input-group">
+                <label class="input-label" for="agenda-tareas-filtro-tipo">Tipo de tarea</label>
+                <select class="soap-select-control" id="agenda-tareas-filtro-tipo" onchange="renderAgendaTareasTable()"></select>
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="agenda-tareas-filtro-estado">Estado</label>
+                <select class="soap-select-control" id="agenda-tareas-filtro-estado" onchange="renderAgendaTareasTable()">
+                  <option value="pendiente" selected>Pendientes</option>
+                  <option value="vencida">Vencidas</option>
+                  <option value="completada">Completadas</option>
+                  <option value="todos">Todas</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="agenda-tareas-filtro-responsable">Responsable</label>
+                <select class="soap-select-control" id="agenda-tareas-filtro-responsable" onchange="renderAgendaTareasTable()"></select>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Rango de fecha límite</label>
+                <div style="display:flex;gap:6px;">
+                  <input type="date" class="input-control" style="padding-left:10px;" id="agenda-tareas-filtro-desde" onchange="renderAgendaTareasTable()">
+                  <input type="date" class="input-control" style="padding-left:10px;" id="agenda-tareas-filtro-hasta" onchange="renderAgendaTareasTable()">
+                </div>
+              </div>
+            </div>
+            <table class="results-table">
+              <thead><tr><th>Fecha límite</th><th>Tarea</th><th>Mascota</th><th>Propietario</th><th>Responsable</th><th>Prioridad</th><th>Estado</th><th style="text-align:right;">Acciones</th></tr></thead>
+              <tbody id="agenda-tareas-tbody"></tbody>
             </table>
           </div>
         </div>
@@ -6168,6 +6249,7 @@
                     <thead>
                       <tr>
                         <th>Descripción</th>
+                        <th>Tipo</th>
                         <th>Responsable</th>
                         <th>Prioridad</th>
                         <th>Fecha límite</th>
@@ -11595,6 +11677,12 @@
       if (!agendaCalendar) return;
       agendaCalendar.removeAllEvents();
       getAgendaEventosFiltrados().forEach(ev => agendaCalendar.addEvent(agendaEventoToFcEvent(ev)));
+      // Las tareas pendientes con fecha límite se suman como eventos de día
+      // completo, respetando el MISMO filtro de usuario del toolbar (el
+      // responsable de una tarea y el encargado de un evento salen del mismo
+      // roster, USUARIOS_SISTEMA).
+      const filtroTareas = agendaFiltroEncargado === 'todos' ? null : agendaFiltroEncargado;
+      getTareasPendientesCalendario(filtroTareas).forEach(it => agendaCalendar.addEvent(tareaPendienteToFcEvent(it)));
       aplicarHorarioAgendaACalendarios();
     }
 
@@ -11681,7 +11769,7 @@
         nowIndicator: true,
         buttonText: { today: 'Hoy', month: 'Mes', week: 'Semana', day: 'Día' },
         dateClick: agendaDateClick,
-        eventClick: (info) => abrirEventoAgendaPorId(info.event.id),
+        eventClick: agendaFcEventClick,
         eventDidMount: agendaFcEventDidMount
       });
       agendaCalendar.render();
@@ -11700,6 +11788,7 @@
       if (viewKey === 'personal') renderAgendaPersonalActiveView();
       if (viewKey === 'disponibilidad') renderDisponibilidadGrid();
       if (viewKey === 'eventos') renderEventosSeguimientoTable();
+      if (viewKey === 'tareas') renderAgendaTareasTable();
     }
 
     // ── Agenda personal — filtrada al usuario simulado actual (ver
@@ -11753,7 +11842,7 @@
         nowIndicator: true,
         buttonText: { today: 'Hoy' },
         dateClick: (info) => abrirAgendaEventoModalInterno('create', null, info.date),
-        eventClick: (info) => abrirEventoAgendaPorId(info.event.id),
+        eventClick: agendaFcEventClick,
         eventDidMount: agendaFcEventDidMount
       });
       agendaPersonalCalendar.render();
@@ -11763,6 +11852,15 @@
       if (!agendaPersonalCalendar) return;
       agendaPersonalCalendar.removeAllEvents();
       getAgendaEventosPersonales().forEach(ev => agendaPersonalCalendar.addEvent(agendaEventoToFcEvent(ev)));
+      // Mis tareas: mismo criterio que los eventos de esta vista, pero por
+      // responsable de la tarea en vez de encargado del evento. Sin usuario
+      // resuelto no se pinta ninguna — `null` significa "todas" en
+      // getTareasPendientesCalendario y acá eso sería mostrar las del equipo
+      // entero en la agenda personal.
+      const uidPersonal = getCurrentSimUserId();
+      if (uidPersonal != null) {
+        getTareasPendientesCalendario(uidPersonal).forEach(it => agendaPersonalCalendar.addEvent(tareaPendienteToFcEvent(it)));
+      }
       aplicarHorarioAgendaACalendarios();
     }
 
@@ -11777,24 +11875,35 @@
 
     function renderAgendaPersonalLista() {
       const eventos = getAgendaEventosPersonales().slice().sort((a, b) => a.startISO.localeCompare(b.startISO));
+      // Mis tareas pendientes con fecha límite, en el día que vencen. Mismo
+      // interruptor "Mostrar tareas pendientes" del toolbar de Agenda
+      // general: es una preferencia de pantalla del módulo, no de una vista.
+      const uid = getCurrentSimUserId();
+      const tareas = uid == null ? [] : getTareasPendientesCalendario(uid);
       const cont = document.getElementById('agenda-personal-lista');
-      if (!eventos.length) {
-        cont.innerHTML = '<p style="font-size:13px;color:var(--text-2);padding:20px 0;">No tienes eventos asignados como encargado.</p>';
+      if (!eventos.length && !tareas.length) {
+        cont.innerHTML = '<p style="font-size:13px;color:var(--text-2);padding:20px 0;">No tienes eventos ni tareas asignadas.</p>';
         return;
       }
       const grupos = {};
-      eventos.forEach(ev => {
-        const fecha = ev.startISO.split('T')[0];
-        (grupos[fecha] = grupos[fecha] || []).push(ev);
-      });
+      const grupo = fecha => (grupos[fecha] = grupos[fecha] || { eventos: [], tareas: [] });
+      eventos.forEach(ev => grupo(ev.startISO.split('T')[0]).eventos.push(ev));
+      tareas.forEach(it => grupo(it.t.fechaLimiteISO).tareas.push(it));
       cont.innerHTML = Object.keys(grupos).sort().map(fecha => `
         <div class="agenda-personal-day-group">
           <div class="agenda-personal-day-header"><span>${formatAgendaDiaHeader(fecha)}</span></div>
-          ${grupos[fecha].map(ev => `
+          ${grupos[fecha].eventos.map(ev => `
             <div class="agenda-personal-row" onclick="abrirEventoAgendaPorId('${ev.id}')">
               <span class="agenda-personal-row-hora">${ev.sinHora ? 'Sin hora' : `${ev.startISO.slice(11, 16)}–${ev.endISO.slice(11, 16)}`}</span>
               <span class="agenda-legend-dot" style="background:${AGENDA_TIPO_COLORS[ev.tipo]};"></span>
               <span class="agenda-personal-row-text">${ev.propietario || 'Sin propietario'}${ev.petKey && patientData[ev.petKey] ? ` (${patientData[ev.petKey].name})` : ''} - ${AGENDA_TIPO_LABELS[ev.tipo]}</span>
+            </div>
+          `).join('')}
+          ${grupos[fecha].tareas.map(it => `
+            <div class="agenda-personal-row" onclick="abrirTareaDesdeAgenda('${it.petKey}', ${it.idx})">
+              <span class="agenda-personal-row-hora">Tarea</span>
+              <span class="agenda-legend-dot" style="background:${tareaPrioridadInfo(it.t.prioridad).color};"></span>
+              <span class="agenda-personal-row-text">${it.t.descripcion} (${it.data.name})${tareaTipoInfo(it.t.tipo) ? ` - ${tareaTipoLabel(it.t.tipo)}` : ''}</span>
             </div>
           `).join('')}
         </div>
@@ -12242,6 +12351,231 @@
       const [fecha, hora] = ev.startISO.split('T');
       const [y, m, d] = fecha.split('-');
       return ev.sinHora ? `${d}/${m}/${y}` : `${d}/${m}/${y} · ${hora.slice(0, 5)}`;
+    }
+
+    // ── AGENDA > TAREAS — las Tareas Pendientes de TODOS los pacientes ──
+    // El módulo del Consultorio sigue siendo el DUEÑO de los datos: las
+    // tareas viven en patientData[petKey].tareasPendientes y se crean/editan/
+    // eliminan allá. Acá solo se leen, se filtran y se completan/reabren con
+    // la MISMA función del módulo (toggleEstadoTareaPendiente) — no hay un
+    // segundo camino que escriba el estado de una tarea. Mismo criterio que
+    // Agenda > Eventos, que tampoco duplica los datos de su origen.
+    function getTareasPendientesTodas() {
+      const out = [];
+      Object.keys(patientData).forEach(petKey => {
+        const data = patientData[petKey];
+        (data.tareasPendientes || []).forEach((t, idx) => out.push({ petKey, idx, t, data }));
+      });
+      return out;
+    }
+
+    function tareaPendienteVencida(t) {
+      return t.estado !== 'completada' && !!t.fechaLimiteISO && t.fechaLimiteISO < isoDateOnly(new Date());
+    }
+
+    // Pendientes primero (por fecha límite, las sin fecha al final y dentro
+    // del mismo día por prioridad); las completadas se van abajo.
+    function ordenarTareasParaAgenda(items) {
+      const PRIO_ORDEN = { alta: 0, media: 1, baja: 2 };
+      return items.slice().sort((a, b) => {
+        const ca = a.t.estado === 'completada' ? 1 : 0;
+        const cb = b.t.estado === 'completada' ? 1 : 0;
+        if (ca !== cb) return ca - cb;
+        const fa = a.t.fechaLimiteISO || '9999-12-31';
+        const fb = b.t.fechaLimiteISO || '9999-12-31';
+        if (fa !== fb) return fa.localeCompare(fb);
+        const pa = PRIO_ORDEN[a.t.prioridad] === undefined ? 1 : PRIO_ORDEN[a.t.prioridad];
+        const pb = PRIO_ORDEN[b.t.prioridad] === undefined ? 1 : PRIO_ORDEN[b.t.prioridad];
+        return pa - pb;
+      });
+    }
+
+    // El roster (USUARIOS_SISTEMA) se carga de forma asíncrona al iniciar
+    // sesión, así que el select se rellena en cada render conservando lo que
+    // el usuario ya había elegido — mismo criterio que
+    // poblarSelectResponsableTarea().
+    function poblarSelectResponsableFiltroTareas() {
+      const sel = document.getElementById('agenda-tareas-filtro-responsable');
+      if (!sel) return;
+      const prev = sel.value || 'todos';
+      const activos = USUARIOS_SISTEMA.filter(u => u.estado === 'activo');
+      sel.innerHTML = '<option value="todos">Todos</option><option value="mias">Solo mías</option>'
+        + activos.map(u => `<option value="${u.id}">${u.nombre}</option>`).join('');
+      const sigueExistiendo = prev === 'todos' || prev === 'mias' || activos.some(u => String(u.id) === prev);
+      sel.value = sigueExistiendo ? prev : 'todos';
+    }
+
+    function renderAgendaTareasTable() {
+      const tbody = document.getElementById('agenda-tareas-tbody');
+      if (!tbody) return;
+      const selTipo = document.getElementById('agenda-tareas-filtro-tipo');
+      poblarSelectTipoTarea('agenda-tareas-filtro-tipo', selTipo.value, true);
+      poblarSelectResponsableFiltroTareas();
+
+      const tipo = selTipo.value;
+      const estado = document.getElementById('agenda-tareas-filtro-estado').value;
+      const responsable = document.getElementById('agenda-tareas-filtro-responsable').value;
+      const desde = document.getElementById('agenda-tareas-filtro-desde').value;
+      const hasta = document.getElementById('agenda-tareas-filtro-hasta').value;
+      const uid = getCurrentSimUserId();
+      const puedeIrAlConsultorio = rolPuedeVerTab('consultorio');
+
+      const items = ordenarTareasParaAgenda(getTareasPendientesTodas().filter(it => {
+        const t = it.t;
+        if (tipo === 'sin-tipo' && t.tipo) return false;
+        if (tipo !== 'todos' && tipo !== 'sin-tipo' && t.tipo !== tipo) return false;
+        if (estado === 'pendiente' && t.estado === 'completada') return false;
+        if (estado === 'vencida' && !tareaPendienteVencida(t)) return false;
+        if (estado === 'completada' && t.estado !== 'completada') return false;
+        if (responsable === 'mias' && (uid == null || String(t.responsableId) !== String(uid))) return false;
+        if (responsable !== 'todos' && responsable !== 'mias' && String(t.responsableId) !== responsable) return false;
+        // El rango filtra por fecha límite: una tarea sin fecha no puede
+        // estar dentro de un rango, así que queda fuera en cuanto se use.
+        if ((desde || hasta) && !t.fechaLimiteISO) return false;
+        if (desde && t.fechaLimiteISO < desde) return false;
+        if (hasta && t.fechaLimiteISO > hasta) return false;
+        return true;
+      }));
+
+      const resumen = document.getElementById('agenda-tareas-resumen');
+      if (resumen) {
+        const abiertas = getTareasPendientesTodas().filter(it => it.t.estado !== 'completada');
+        const vencidas = abiertas.filter(it => tareaPendienteVencida(it.t)).length;
+        resumen.textContent = `${abiertas.length} sin completar${vencidas ? ` · ${vencidas} vencida${vencidas === 1 ? '' : 's'}` : ''}`;
+      }
+
+      tbody.innerHTML = items.length ? items.map(it => {
+        const t = it.t;
+        const vencida = tareaPendienteVencida(t);
+        const prio = tareaPrioridadInfo(t.prioridad);
+        const propietario = getPropietarioDeMascota(it.petKey);
+        const propietarioNombre = (propietario && propietario.nombre) || it.data.owner || '—';
+        const badgeClass = t.estado === 'completada' ? 'status-badge-completado' : (vencida ? 'status-badge-vencido' : 'status-badge-pendiente');
+        const badgeLabel = t.estado === 'completada' ? 'Completada' : (vencida ? 'Vencida' : 'Pendiente');
+        const fechaCell = t.fechaLimite
+          ? `${vencida ? '<i data-lucide="alert-circle" style="width:13px;height:13px;color:var(--danger);vertical-align:-2px;margin-right:4px;"></i>' : ''}<span class="${vencida ? 'agenda-tarea-fecha-vencida' : ''}">${t.fechaLimite}</span>`
+          : '<span style="color:var(--text-2);">Sin fecha</span>';
+        // La mascota lleva al Consultorio solo si el rol puede entrar ahí,
+        // igual que en Agenda > Eventos (ver rolPuedeVerTab).
+        const mascotaCell = puedeIrAlConsultorio
+          ? `<button type="button" class="evento-pet-btn" onclick="abrirPacienteDesdeEventos('${it.petKey}')" title="Abrir en el Consultorio">
+               <i data-lucide="stethoscope" style="width:12px;height:12px;"></i>${it.data.name}
+             </button>`
+          : it.data.name;
+        // "Completar/Reabrir" no se gatea por rol a propósito: es la misma
+        // acción extra que ya ofrece el menú "..." del módulo a todos los
+        // roles que ven el Consultorio, y el Auxiliar —que es quien ejecuta
+        // la mayoría de estas tareas— entra a Agenda (TAB_ROLE_RESTRICTIONS).
+        return `
+          <tr>
+            <td>${fechaCell}</td>
+            <td>
+              <div class="agenda-tarea-cell">
+                <span class="agenda-tarea-desc">${t.descripcion}</span>
+                ${tareaTipoChipHTML(t.tipo)}
+              </div>
+            </td>
+            <td>${mascotaCell}</td>
+            <td>${propietarioNombre}</td>
+            <td>${t.responsableNombre}</td>
+            <td><span class="priority-tag"><span class="priority-dot" style="background:${prio.color};"></span>${prio.label}</span></td>
+            <td><span class="status-badge ${badgeClass}">${badgeLabel}</span></td>
+            <td style="text-align:right;">
+              <div class="eventos-row-actions">
+                <button type="button" class="btn-outline" style="padding:6px 12px;font-size:12px;" onclick="abrirTareaDesdeAgenda('${it.petKey}', ${it.idx})"><i data-lucide="eye" style="width:12px;height:12px;"></i> Ver</button>
+                <button type="button" class="btn-secondary" style="padding:6px 12px;font-size:12px;" onclick="toggleEstadoTareaDesdeAgenda('${it.petKey}', ${it.idx})">${t.estado === 'completada' ? 'Reabrir' : 'Completar'}</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-2);padding:20px 0;">No hay tareas con estos filtros.</td></tr>';
+      lucide.createIcons();
+    }
+
+    // Reusa el modal "Ver" genérico del módulo (getRegistroViewData → 'tarea'),
+    // así el detalle es EXACTAMENTE el mismo que se ve en el Consultorio.
+    function abrirTareaDesdeAgenda(petKey, idx) {
+      if (!patientData[petKey] || !patientData[petKey].tareasPendientes[Number(idx)]) {
+        showToast('Esta tarea ya no está disponible');
+        return;
+      }
+      rowActionVer('tarea', `${petKey}:${idx}`);
+    }
+
+    async function toggleEstadoTareaDesdeAgenda(petKey, idx) {
+      if (!patientData[petKey] || !patientData[petKey].tareasPendientes[Number(idx)]) {
+        showToast('Esta tarea ya no está disponible');
+        return;
+      }
+      await toggleEstadoTareaPendiente(petKey, Number(idx));
+    }
+
+    // Toda mutación de una tarea tiene que repintar Agenda: la tabla (si esa
+    // sub-vista está abierta) y los dos calendarios, donde la tarea vive como
+    // evento de día completo. Los refresh de calendario salen temprano solos
+    // si su calendario todavía no se creó (Agenda nunca se abrió).
+    function refrescarAgendaTareasSi() {
+      const pane = document.getElementById('agenda-view-tareas');
+      if (pane && pane.classList.contains('active')) renderAgendaTareasTable();
+      refreshAgendaCalendarEvents();
+      refreshAgendaPersonalCalendarEvents();
+      if (document.getElementById('agenda-view-personal').classList.contains('active')) renderAgendaPersonalActiveView();
+    }
+
+    // ── Tareas pendientes DENTRO de los calendarios de Agenda ──────────
+    // Interruptor de PANTALLA (no persiste nada): deja despejar la grilla
+    // cuando se está agendando. Gobierna las dos vistas de calendario y la
+    // lista de la Agenda personal, que es donde aparecen las tareas.
+    let agendaMostrarTareas = true;
+    function onCambiarMostrarTareasAgenda() {
+      const chk = document.getElementById('agenda-mostrar-tareas');
+      agendaMostrarTareas = !chk || chk.checked;
+      refreshAgendaCalendarEvents();
+      refreshAgendaPersonalCalendarEvents();
+      if (document.getElementById('agenda-view-personal').classList.contains('active')) renderAgendaPersonalActiveView();
+    }
+
+    // Tareas que se pintan en un calendario: solo las SIN completar y con
+    // fecha límite (una tarea sin fecha no tiene dónde ir). `responsableId`
+    // null = todas.
+    function getTareasPendientesCalendario(responsableId) {
+      if (!agendaMostrarTareas) return [];
+      return getTareasPendientesTodas().filter(it => {
+        if (!it.t.fechaLimiteISO || it.t.estado === 'completada') return false;
+        if (responsableId != null && String(it.t.responsableId) !== String(responsableId)) return false;
+        return true;
+      });
+    }
+
+    // Una tarea en el calendario es un evento de DÍA COMPLETO en su fecha
+    // límite: no tiene hora ni duración, y meterla en la grilla horaria
+    // ocuparía visualmente un slot que sí está libre para agendar. El id
+    // lleva el prefijo `tarea:` para que agendaFcEventClick() sepa que no es
+    // un evento de AGENDA_EVENTOS; el índice que trae solo es válido hasta el
+    // próximo repintado (igual que los recordId de renderRowActionsMenu), y
+    // toda mutación repinta — ver refrescarAgendaTareasSi().
+    function tareaPendienteToFcEvent(item) {
+      const prio = tareaPrioridadInfo(item.t.prioridad);
+      const tipoLabel = tareaTipoInfo(item.t.tipo) ? tareaTipoLabel(item.t.tipo) : item.t.descripcion;
+      return {
+        id: `tarea:${item.petKey}:${item.idx}`,
+        title: `✓ ${tipoLabel} — ${item.data.name}`,
+        start: item.t.fechaLimiteISO,
+        allDay: true,
+        backgroundColor: prio.color,
+        borderColor: prio.color,
+        classNames: ['agenda-tarea-fc-event'],
+        extendedProps: { petKey: item.petKey, esTarea: true }
+      };
+    }
+
+    function agendaFcEventClick(info) {
+      if (info.event.extendedProps && info.event.extendedProps.esTarea) {
+        const partes = info.event.id.split(':');
+        abrirTareaDesdeAgenda(partes[1], Number(partes[2]));
+        return;
+      }
+      abrirEventoAgendaPorId(info.event.id);
     }
 
     // ── Tab "Citas" en Historia clínica: vista filtrada de AGENDA_EVENTOS
@@ -18388,6 +18722,53 @@
       return TAREA_PRIORIDADES.find(p => p.value === value) || TAREA_PRIORIDADES[1];
     }
 
+    // Tipo de tarea — catálogo FIJO, no ampliable con "+ Registrar" como los
+    // de Vacunas/Desparasitaciones (getVacunasCatalogo y compañía): lo que le
+    // da valor es poder filtrar por él en Agenda > Tareas, y un catálogo
+    // libre por clínica haría que ese filtro dejara de ser comparable. Lo
+    // que no encaje va en 'otro' y se detalla en la descripción, que sigue
+    // siendo texto libre. El campo es OPCIONAL: las tareas creadas antes de
+    // la migración 20260902c tienen `tipo` null y se muestran "Sin tipo".
+    const TAREA_TIPOS = [
+      { value: 'enviar_documentos', label: 'Enviar documentos', icon: 'file-text' },
+      { value: 'agendar_especialista', label: 'Agendar cita con especialista', icon: 'stethoscope' },
+      { value: 'agendar_ecografia', label: 'Agendar ecografía', icon: 'scan' },
+      { value: 'agendar_rayos_x', label: 'Agendar rayos X', icon: 'scan-line' },
+      { value: 'agendar_laboratorio', label: 'Agendar exámenes de laboratorio', icon: 'flask-conical' },
+      { value: 'agendar_cirugia', label: 'Agendar cirugía', icon: 'scissors' },
+      { value: 'agendar_control', label: 'Agendar control o revisión', icon: 'calendar-check' },
+      { value: 'llamar_tutor', label: 'Llamar al tutor', icon: 'phone-call' },
+      { value: 'entregar_resultados', label: 'Entregar resultados', icon: 'clipboard-check' },
+      { value: 'cotizacion', label: 'Enviar cotización', icon: 'receipt' },
+      { value: 'seguimiento_pago', label: 'Seguimiento de pago', icon: 'wallet' },
+      { value: 'otro', label: 'Otro', icon: 'circle-dot' }
+    ];
+    function tareaTipoInfo(value) {
+      return TAREA_TIPOS.find(t => t.value === value) || null;
+    }
+    function tareaTipoLabel(value) {
+      const t = tareaTipoInfo(value);
+      return t ? t.label : 'Sin tipo';
+    }
+    // Pastilla con ícono — se usa igual en la tabla del Consultorio, en el
+    // modal Ver y en Agenda > Tareas, para que el tipo se lea igual en las
+    // tres pantallas.
+    function tareaTipoChipHTML(value) {
+      const t = tareaTipoInfo(value);
+      if (!t) return '<span class="tarea-tipo-chip tarea-tipo-chip-vacio">Sin tipo</span>';
+      return `<span class="tarea-tipo-chip"><i data-lucide="${t.icon}" style="width:12px;height:12px;"></i>${t.label}</span>`;
+    }
+    function poblarSelectTipoTarea(selectId, selected, opcionTodos) {
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      const base = opcionTodos
+        ? `<option value="todos">Todos</option><option value="sin-tipo">Sin tipo</option>`
+        : `<option value="">Sin especificar</option>`;
+      sel.innerHTML = base + TAREA_TIPOS.map(t => `<option value="${t.value}">${t.label}</option>`).join('');
+      sel.value = selected != null && selected !== '' ? selected : (opcionTodos ? 'todos' : '');
+      if (!sel.value) sel.value = opcionTodos ? 'todos' : '';
+    }
+
     function poblarSelectResponsableTarea(selectedId) {
       const activos = USUARIOS_SISTEMA.filter(u => u.estado === 'activo');
       const sel = document.getElementById('tp-responsable');
@@ -18397,6 +18778,13 @@
     let editingTareaPendienteContext = null;
 
     function renderTareasPendientesTable(petKey) {
+      // Esta función pinta el tbody y el contador del sidebar del paciente
+      // ABIERTO en el Consultorio. Desde Agenda > Tareas se puede completar
+      // o reabrir la tarea de CUALQUIER paciente (toggleEstadoTareaPendiente
+      // recibe su petKey): sin esta guarda, esa llamada pintaría los
+      // registros de otra mascota en la tabla del Consultorio y dejaría el
+      // contador del sidebar mintiendo.
+      if (petKey !== selectedPetKey) return;
       const data = patientData[petKey];
       const tbody = document.getElementById('tareas-pendientes-table-body');
       const emptyState = document.getElementById('tareas-pendientes-empty-state');
@@ -18416,6 +18804,7 @@
           return `
             <tr data-tarea-pendiente-row="${i}">
               <td>${t.descripcion}</td>
+              <td>${tareaTipoChipHTML(t.tipo)}</td>
               <td>${t.responsableNombre}</td>
               <td><span class="priority-tag"><span class="priority-dot" style="background:${prio.color};"></span>${prio.label}</span></td>
               <td>${t.fechaLimite || '—'}</td>
@@ -18441,6 +18830,8 @@
       return `
         <div class="info-label">Descripción</div>
         <div class="info-value">${record.descripcion}</div>
+        <div class="info-label">Tipo de tarea</div>
+        <div class="info-value">${tareaTipoLabel(record.tipo)}</div>
         <div class="info-label">Responsable</div>
         <div class="info-value">${record.responsableNombre}</div>
         <div class="info-label">Prioridad</div>
@@ -18471,6 +18862,7 @@
       if (mode === 'edit') {
         const record = data.tareasPendientes[tareaIndex];
         document.getElementById('tp-descripcion').value = record.descripcion;
+        poblarSelectTipoTarea('tp-tipo', record.tipo || '', false);
         poblarSelectResponsableTarea(record.responsableId);
         document.getElementById('tp-prioridad').value = record.prioridad;
         document.getElementById('tp-fecha-limite').value = record.fechaLimiteISO || '';
@@ -18478,6 +18870,7 @@
         saveBtn.textContent = 'Guardar cambios';
       } else {
         document.getElementById('tp-descripcion').value = '';
+        poblarSelectTipoTarea('tp-tipo', '', false);
         poblarSelectResponsableTarea(null);
         document.getElementById('tp-prioridad').value = 'media';
         document.getElementById('tp-fecha-limite').value = '';
@@ -18503,6 +18896,7 @@
       const data = patientData[petKey];
 
       const descripcion = document.getElementById('tp-descripcion').value.trim();
+      const tipo = document.getElementById('tp-tipo').value || null;
       const responsableId = Number(document.getElementById('tp-responsable').value);
       const prioridad = document.getElementById('tp-prioridad').value;
       const fechaLimiteISO = document.getElementById('tp-fecha-limite').value;
@@ -18532,7 +18926,7 @@
         const userId = userData && userData.user ? userData.user.id : null;
 
         const payload = {
-          descripcion, responsable_id: responsableId, responsable_nombre: responsableNombre,
+          descripcion, tipo, responsable_id: responsableId, responsable_nombre: responsableNombre,
           prioridad, fecha_limite: fechaLimiteISO || null, notas: notas || null,
           usuario: usuarioNombre
         };
@@ -18553,6 +18947,7 @@
         if (isEdit) {
           const record = data.tareasPendientes[editingTareaPendienteContext.index];
           record.descripcion = descripcion;
+          record.tipo = tipo;
           record.responsableId = responsableId;
           record.responsableNombre = responsableNombre;
           record.prioridad = prioridad;
@@ -18561,7 +18956,7 @@
           record.notas = notas;
         } else {
           data.tareasPendientes.unshift({
-            id: dbId, descripcion, responsableId, responsableNombre, prioridad,
+            id: dbId, descripcion, tipo, responsableId, responsableNombre, prioridad,
             fechaLimiteISO: fechaLimiteISO || null, fechaLimite,
             notas,
             estado: 'pendiente',
@@ -18571,6 +18966,7 @@
 
         renderTareasPendientesTable(petKey);
         refrescarTableroQuicknavSi('tareas-pendientes', petKey);
+        refrescarAgendaTareasSi();
         closeTareaPendienteModal();
         showToast(isEdit ? 'Tarea actualizada' : 'Tarea registrada');
       } catch (err) {
@@ -18586,6 +18982,7 @@
       record.estado = record.estado === 'completada' ? 'pendiente' : 'completada';
       renderTareasPendientesTable(petKey);
       refrescarTableroQuicknavSi('tareas-pendientes', petKey);
+      refrescarAgendaTareasSi();
       showToast(record.estado === 'completada' ? 'Tarea marcada como completada' : 'Tarea reabierta');
       if (window.supabase && record.id) {
         const { error } = await window.supabase.from('tareas_pendientes')
@@ -21800,6 +22197,7 @@
     function construirTareaPendienteDesdeFila(r) {
       return {
         id: r.id, descripcion: r.descripcion,
+        tipo: r.tipo || null,
         responsableId: r.responsable_id != null ? Number(r.responsable_id) : null,
         responsableNombre: r.responsable_nombre || '—',
         prioridad: r.prioridad,
@@ -21817,6 +22215,10 @@
       const quitarLocal = () => {
         data.tareasPendientes.splice(idx, 1);
         renderTareasPendientesTable(petKey);
+        // Al eliminar se corren los índices del array, y Agenda > Tareas y
+        // los calendarios los llevan dentro de sus onclick/ids — hay que
+        // repintarlos o quedarían apuntando a otra tarea.
+        refrescarAgendaTareasSi();
       };
       if (row) {
         row.classList.add('row-fade-out');
@@ -35556,6 +35958,12 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       EVENTOS_SEGUIMIENTO.length = 0;
       eventoSegRows.forEach(r => EVENTOS_SEGUIMIENTO.push(construirEventoSeguimientoDesdeFila(r)));
 
+      // Agenda > Tareas: no tiene array propio (lee patientData, ya
+      // reconstruido más arriba), pero sí hay que repintar si esa sub-vista
+      // está abierta durante una recarga de datos — y volver a sumar las
+      // tareas a los calendarios, que acaban de vaciarse.
+      refrescarAgendaTareasSi();
+
       // Catálogos "+Registrar X" de Vacunas/Desparasitaciones/Hospitalizaciones
       // (tabla `catalogos_custom`, ver nota junto a resetMockDataForClinic) —
       // mismo criterio que AGENDA_EVENTOS arriba: ya no se resetean/siembran
@@ -36622,9 +37030,16 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
 
         <div class="soap-meta-row">
           <div class="input-group">
+            <label class="input-label" for="tp-tipo">Tipo de tarea</label>
+            <select class="soap-select-control" id="tp-tipo"></select>
+          </div>
+          <div class="input-group">
             <label class="input-label">Responsable</label>
             <select class="soap-select-control" id="tp-responsable"></select>
           </div>
+        </div>
+
+        <div class="soap-meta-row">
           <div class="input-group">
             <label class="input-label">Prioridad</label>
             <select class="soap-select-control" id="tp-prioridad">
