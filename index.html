@@ -5206,8 +5206,9 @@
           <i data-lucide="plus" style="width:14px;height:14px;"></i>
           Vincularme a otro establecimiento
         </div>
-        <!-- Perfil / Logout -->
+        <!-- Perfil / PQRS / Logout -->
         <a class="profile-dropdown-item" onclick="irAPerfil()" style="cursor:pointer;"><i data-lucide="user" style="width:14px;height:14px;"></i> Perfil</a>
+        <a class="profile-dropdown-item" onclick="openPqrsModal()" style="cursor:pointer;"><i data-lucide="message-square" style="width:14px;height:14px;"></i> PQRS</a>
         <a href="#" onclick="cerrarSesion(); return false;" class="profile-dropdown-item logout"><i data-lucide="log-out" style="width:14px;height:14px;"></i> Cerrar sesión</a>
       </div>
     </div>
@@ -25852,7 +25853,7 @@
       // mascota_fusiones es lo ÚNICO que queda de una ficha unificada: la
       // duplicada se borra y su snapshot vive ahí. Sin esto, el respaldo no
       // permitiría reconstruir qué se fusionó ni deshacerlo a mano.
-      'mascota_contactos', 'mascota_fusiones', 'turnos',
+      'mascota_contactos', 'mascota_fusiones', 'turnos', 'pqrs',
       // `correos` es la bandeja de salida Y el log de lo enviado. Va al
       // respaldo por lo segundo: es la única prueba de qué se le comunicó al
       // tutor y cuándo (una cita avisada, un consentimiento mandado). A
@@ -40434,6 +40435,57 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
     </div>
   </div>
 
+  <!-- Modal: PQRS — Peticiones, Quejas, Reclamos y Sugerencias hacia el
+       soporte de IRIS/MUVET. Se abre desde el menú del perfil. Guarda la
+       fila en `pqrs` (bloqueante) y ADEMÁS manda un correo por el camino
+       genérico (tipo 'pqrs'); ver enviarPqrs(). -->
+  <div class="modal-overlay" id="pqrs-modal" onclick="handlePqrsOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:480px;">
+      <div class="modal-header">
+        <span class="modal-title">Enviar una PQRS</span>
+        <button class="modal-close" onclick="closePqrsModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-2);margin:0 0 14px;line-height:1.5;">
+        Peticiones, quejas, reclamos, sugerencias y felicitaciones sobre IRIS.
+        Se envía al equipo de soporte y recibirás respuesta en el correo que indiques.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div class="input-group">
+          <label class="input-label">Tipo de solicitud *</label>
+          <select class="input-control" style="padding-left:12px;" id="pqrs-tipo">
+            <option value="peticion">Petición</option>
+            <option value="queja">Queja</option>
+            <option value="reclamo">Reclamo</option>
+            <option value="sugerencia">Sugerencia</option>
+            <option value="felicitacion">Felicitación</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Asunto *</label>
+          <input type="text" class="input-control" style="padding-left:12px;" id="pqrs-asunto" placeholder="Resumen en una línea" maxlength="140">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Descripción *</label>
+          <textarea class="input-control" style="padding-left:12px;min-height:110px;resize:vertical;" id="pqrs-descripcion" placeholder="Cuéntanos con el mayor detalle posible"></textarea>
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div class="input-group" style="flex:1;">
+            <label class="input-label">Tu nombre</label>
+            <input type="text" class="input-control" style="padding-left:12px;" id="pqrs-nombre">
+          </div>
+          <div class="input-group" style="flex:1;">
+            <label class="input-label">Tu correo *</label>
+            <input type="email" class="input-control" style="padding-left:12px;" id="pqrs-email" placeholder="nombre@correo.com">
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+        <button class="btn-outline" onclick="closePqrsModal()">Cancelar</button>
+        <button class="btn-primary" id="pqrs-enviar-btn" onclick="enviarPqrs()">Enviar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Vincularme a otro establecimiento — resultados poblados en
        vivo desde la tabla real `establecimientos` (Supabase), ver
        openLinkModal()/renderLinkModalResults() -->
@@ -40668,6 +40720,126 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       const fallo = (res && res.detalle || []).find(d => !d.ok);
       if (fallo && fallo.error) return fallo.error;
       return 'revisa el diagnóstico en Configuración de la veterinaria > Agenda';
+    }
+
+    // ── PQRS ───────────────────────────────────────────────────────
+    // Peticiones/Quejas/Reclamos/Sugerencias/Felicitaciones hacia el
+    // soporte de IRIS/MUVET, desde el menú del perfil. Guarda la fila en
+    // `pqrs` (bloqueante — si el correo falla en silencio la PQRS no se
+    // pierde) y ADEMÁS manda el aviso por el camino genérico de correo
+    // (tipo 'pqrs'; el destinatario lo fija el servidor).
+    const PQRS_TIPO_LABEL = {
+      peticion: 'Petición', queja: 'Queja', reclamo: 'Reclamo',
+      sugerencia: 'Sugerencia', felicitacion: 'Felicitación'
+    };
+
+    function handlePqrsOverlayClick(e) {
+      if (e.target === document.getElementById('pqrs-modal')) closePqrsModal();
+    }
+
+    function openPqrsModal() {
+      const dd = document.getElementById('profile-dropdown');
+      if (dd) dd.classList.remove('show');
+      const u = (currentSession && currentSession.user) || {};
+      document.getElementById('pqrs-tipo').value = 'peticion';
+      document.getElementById('pqrs-asunto').value = '';
+      document.getElementById('pqrs-descripcion').value = '';
+      document.getElementById('pqrs-nombre').value = u.nombre || '';
+      document.getElementById('pqrs-email').value = u.email || '';
+      const btn = document.getElementById('pqrs-enviar-btn');
+      if (btn) { btn.disabled = false; btn.textContent = 'Enviar'; }
+      document.getElementById('pqrs-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closePqrsModal() {
+      document.getElementById('pqrs-modal').classList.remove('show');
+    }
+
+    async function enviarPqrs() {
+      const tipo = document.getElementById('pqrs-tipo').value;
+      const asunto = document.getElementById('pqrs-asunto').value.trim();
+      const descripcion = document.getElementById('pqrs-descripcion').value.trim();
+      const nombre = document.getElementById('pqrs-nombre').value.trim();
+      const email = document.getElementById('pqrs-email').value.trim();
+
+      if (!asunto || !descripcion) {
+        showToast('Completa el asunto y la descripción');
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showToast('Escribe un correo válido para poder responderte');
+        return;
+      }
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede enviar la PQRS');
+        return;
+      }
+
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const rol = currentSession.activeMembership.rol || (currentSession.user && currentSession.user.role) || null;
+      const btn = document.getElementById('pqrs-enviar-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+
+      let pqrsId = null;
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const { data: inserted, error } = await window.supabase.from('pqrs').insert({
+          establecimiento_id: establecimientoId,
+          tipo, asunto, descripcion,
+          remitente_nombre: nombre || null,
+          remitente_email: email,
+          remitente_rol: rol,
+          created_by: userId
+        }).select('id').single();
+        if (error) throw error;
+        pqrsId = inserted.id;
+      } catch (err) {
+        console.error('[IRIS] Error guardando PQRS en Supabase:', err);
+        showToast('No se pudo registrar la PQRS — intenta de nuevo');
+        if (btn) { btn.disabled = false; btn.textContent = 'Enviar'; }
+        return;
+      }
+
+      const tipoLabel = PQRS_TIPO_LABEL[tipo] || tipo;
+      const clinica = correoContextoClinica().clinica;
+      const res = await enviarCorreoIris({
+        tipo: 'pqrs',
+        silencioso: true,
+        // enviarCorreoIris exige al menos un destinatario con email; el
+        // servidor lo ignora y usa el buzón de soporte fijo.
+        destinatarios: [{ email: 'soporte@iris', nombre: 'Soporte IRIS', rol: 'soporte' }],
+        asunto: `PQRS · ${tipoLabel} · ${clinica} — ${asunto}`,
+        titulo: `Nueva PQRS: ${tipoLabel}`,
+        intro: `${nombre || 'Un usuario'} de ${clinica} envió una ${tipoLabel.toLowerCase()} a través de IRIS.`,
+        filas: [
+          ['Tipo', tipoLabel],
+          ['Clínica', clinica],
+          ['Asunto', asunto],
+          ['Enviada por', nombre || '—'],
+          ['Correo de contacto', email],
+          ['Rol', rol || '—'],
+          ['Fecha', new Date().toLocaleString('es-CO')]
+        ],
+        cuerpo: descripcion,
+        referencia: pqrsId ? { tabla: 'pqrs', id: pqrsId } : null
+      });
+
+      const correoOk = !!(res && res.ok && res.enviados);
+      if (pqrsId) {
+        window.supabase.from('pqrs')
+          .update({ correo_estado: correoOk ? 'enviado' : 'fallido', updated_at: new Date().toISOString() })
+          .eq('id', pqrsId)
+          .then(({ error }) => { if (error) console.error('[IRIS] Error marcando correo_estado de PQRS:', error); });
+      }
+
+      closePqrsModal();
+      if (correoOk) {
+        showToast('PQRS enviada — te responderemos al correo indicado');
+      } else {
+        showToast(`PQRS registrada, pero no se pudo enviar el aviso por correo: ${resumenErrorCorreo(res)}`);
+      }
     }
 
     // Adjunto a partir de un Blob (los PDF que ya genera la app con jsPDF).

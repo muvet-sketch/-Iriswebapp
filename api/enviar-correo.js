@@ -27,8 +27,12 @@ const MAX_ADJUNTOS_BYTES = 8 * 1024 * 1024;
 
 const TIPOS_VALIDOS = new Set([
   'documento', 'mensaje_propietario', 'invitacion_usuario', 'link_registro',
-  'registro_propietario', 'factura', 'prueba', 'generico'
+  'registro_propietario', 'factura', 'prueba', 'pqrs', 'generico'
 ]);
+
+// El buzón de soporte al que llegan las PQRS. El navegador NO decide este
+// destinatario (podría cambiarlo): para tipo 'pqrs' el servidor lo fija acá.
+const PQRS_EMAIL_DESTINO = process.env.PQRS_EMAIL_DESTINO || 'soporteiris@appmuvet.com';
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -44,6 +48,12 @@ module.exports = async function handler(req, res) {
   }
 
   const tipo = TIPOS_VALIDOS.has(b.tipo) ? b.tipo : 'generico';
+
+  // Una PQRS siempre va al buzón de soporte de IRIS, no a donde diga el
+  // navegador.
+  if (tipo === 'pqrs') {
+    b.destinatarios = [{ email: PQRS_EMAIL_DESTINO, nombre: 'Soporte IRIS', rol: 'soporte' }];
+  }
 
   const vistos = new Set();
   const destinatarios = (Array.isArray(b.destinatarios) ? b.destinatarios : [])

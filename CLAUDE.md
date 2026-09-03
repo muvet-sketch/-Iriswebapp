@@ -1459,6 +1459,51 @@ clínica y parsearla la movería a la zona del servidor (misma trampa que
   firma, **no un enlace**: no existe una pantalla pública de firma (el tutor
   firma en el consultorio, ver el patrón de Documentos).
 
+## PQRS — Peticiones, Quejas, Reclamos y Sugerencias
+Canal de la clínica hacia el soporte de IRIS/MUVET. Vive en el **menú
+desplegable del perfil** (header del app shell), entre "Perfil" y "Cerrar
+sesión": `openPqrsModal()` → `#pqrs-modal` (tipo · asunto · descripción ·
+nombre + correo del remitente, estos dos precargados de `currentSession`
+pero editables — el correo es a donde soporte responde) → `enviarPqrs()`.
+Tabla `pqrs` (migración `20260903_pqrs.sql`).
+
+- **Se guarda la fila EN Supabase (bloqueante) Y ADEMÁS se manda el
+  correo — las dos cosas, no una.** El subsistema de correo falla en
+  silencio (dominio Resend sin verificar, API key ausente — ver la sección
+  "Envío de correos"), así que una PQRS que solo viajara por correo se
+  perdería sin dejar rastro. `enviarPqrs()` primero inserta en `pqrs`
+  (mismo patrón que `guardarTareaPendiente`: si el insert falla, no se
+  manda nada y el modal queda abierto), después llama a `enviarCorreoIris`,
+  y al final escribe `pqrs.correo_estado` = `'enviado'` / `'fallido'` con
+  un `update` no bloqueante (es solo un flag de diagnóstico).
+- **El correo sale por el camino ÚNICO de la app**, no por un endpoint
+  nuevo: `enviarCorreoIris({ tipo: 'pqrs', ... })` → `/api/enviar-correo`
+  con la plantilla genérica (`titulo`/`intro`/`filas`/`cuerpo`). Lo único
+  que hubo que tocar en el backend es sumar `'pqrs'` a `TIPOS_VALIDOS`.
+- **El destinatario lo FIJA el servidor, no el navegador.** Para
+  `tipo === 'pqrs'`, `api/enviar-correo.js` ignora `b.destinatarios` y usa
+  `PQRS_EMAIL_DESTINO` (variable de entorno en Vercel; default en el código
+  `soporteiris@appmuvet.com`). `enviarPqrs()` igual manda un destinatario
+  de relleno (`enviarCorreoIris` exige al menos uno con `email`), que el
+  servidor descarta. Si algún día se cambia el buzón de soporte, es esa
+  variable — no hay nada más que tocar.
+- **`referencia: { tabla: 'pqrs', id }`** enlaza la fila de `correos` con
+  la PQRS que la originó, igual que el resto de disparadores.
+- **No hay pantalla de listado/triage todavía**, y por eso `pqrs` NO se
+  carga a memoria en `cargarDatosClinicaDesdeSupabase()`. Las columnas
+  `estado` (`enviada`/`en_revision`/`resuelta`) y la policy
+  `pqrs_update_member` existen para no tener que migrar la tabla cuando se
+  agregue ese triage. Sin policy de `delete` a propósito: una PQRS enviada
+  es historia (mismo criterio que `mensajes`).
+- **RLS**: `pqrs` es contenido que genera el propio usuario para su
+  clínica — `_insert_member` / `_select_member` / `_update_member` con
+  `user_is_member_of`, a diferencia de `correos` (que solo escribe el
+  backend con la Service Role key).
+- `pqrs` **SÍ está en `RESPALDO_TABLAS`** y su `create table` sí está en
+  `supabase/schema.sql` (a diferencia del hueco conocido de
+  `formulas_medicas`/`ventas_facturas`). No entra al `c_tablas` de
+  `fusionar_mascotas`: no tiene `mascota_id`.
+
 ## Agenda > Tareas + "Tipo de tarea" (Tareas Pendientes)
 Quinta sub-vista de Agenda (`#agenda-view-tareas`,
 `renderAgendaTareasTable()`) más un campo nuevo en el módulo de Tareas

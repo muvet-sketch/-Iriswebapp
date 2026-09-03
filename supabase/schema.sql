@@ -1931,6 +1931,54 @@ create policy "tareas_pendientes_delete_member"
   on public.tareas_pendientes for delete
   using (public.user_is_member_of(establecimiento_id));
 
+-- ── TABLA: pqrs ──────────────────────────────────────────────────
+-- Peticiones/Quejas/Reclamos/Sugerencias de la clínica hacia el
+-- soporte de IRIS/MUVET. Se envía desde el menú del perfil y cada
+-- envío dispara un correo a soporteiris@appmuvet.com (override:
+-- PQRS_EMAIL_DESTINO) por el camino genérico (api/enviar-correo.js,
+-- tipo 'pqrs'). Se guarda la fila ADEMÁS de mandar el correo porque el
+-- subsistema de correo falla en silencio (ver "Envío de correos" en
+-- CLAUDE.md); `correo_estado` registra si el aviso llegó a salir.
+-- Ver migrations/20260903_pqrs.sql.
+create table if not exists public.pqrs (
+  id                 uuid primary key default gen_random_uuid(),
+  establecimiento_id uuid not null references public.establecimientos (id) on delete cascade,
+  tipo               text not null
+                       check (tipo in ('peticion','queja','reclamo','sugerencia','felicitacion')),
+  asunto             text not null,
+  descripcion        text not null,
+  remitente_nombre   text,
+  remitente_email    text,
+  remitente_rol      text,
+  estado             text not null default 'enviada'
+                       check (estado in ('enviada','en_revision','resuelta')),
+  correo_estado      text,
+  created_by         uuid references auth.users (id) on delete set null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create index if not exists pqrs_establecimiento_id_idx
+  on public.pqrs (establecimiento_id, created_at desc);
+
+alter table public.pqrs enable row level security;
+
+drop policy if exists "pqrs_select_member" on public.pqrs;
+create policy "pqrs_select_member"
+  on public.pqrs for select
+  using (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "pqrs_insert_member" on public.pqrs;
+create policy "pqrs_insert_member"
+  on public.pqrs for insert
+  with check (public.user_is_member_of(establecimiento_id));
+
+drop policy if exists "pqrs_update_member" on public.pqrs;
+create policy "pqrs_update_member"
+  on public.pqrs for update
+  using (public.user_is_member_of(establecimiento_id))
+  with check (public.user_is_member_of(establecimiento_id));
+
 -- ── TABLA: seguimientos ──────────────────────────────────────────
 -- Antes vivía solo en memoria (patientData[petKey].seguimientos, mock) y
 -- se perdía al refrescar/reiniciar sesión. `fecha` es `timestamp` SIN
