@@ -791,7 +791,9 @@
     .orden-block-header { display: flex; justify-content: space-between; align-items: center; }
     .orden-block-header-actions { display: flex; align-items: center; gap: 14px; }
 
-    /* Toggle visual pequeño "Generar solicitud" (sin lógica real) */
+    /* Toggle pequeño "Generar solicitud" (Órdenes). Ya no es visual: al
+       guardar manda la solicitud por correo al administrador de la clínica
+       (ver enviarSolicitudesDeOrden). */
     /* Barra de turno de caja (Ventas > Ingresos y Egresos), visible solo
        con "Usar turnos" activo. Sin turno usa --warning y no --danger: no
        hay nada roto, falta un paso. */
@@ -10847,6 +10849,14 @@
         getEncargadosAgendaCandidatos().map(u => `<option value="${u.id}">${labelEncargadoAgenda(u)}</option>`).join('');
     }
 
+    // "Sin definir" (value vacío) es una opción REAL, no un placeholder: se
+    // agenda a una hora concreta antes de saber qué médico atiende, y forzar
+    // a elegir uno hacía que la cita quedara a nombre de quien después no la
+    // atendía. Un evento sin encargado se guarda con `encargado_id` en null
+    // (la columna ya era nullable) y todo lo que cuelga del encargado se cae
+    // solo: no entra en la Agenda personal de nadie, no se chequea
+    // disponibilidad ni solapamiento contra él, y el correo al encargado
+    // simplemente no se encola (el del tutor y el de la clínica sí salen).
     function poblarSelectEncargadosAgenda(selectedId) {
       const candidatos = getEncargadosAgendaCandidatos();
       const sel = document.getElementById('ag-encargado');
@@ -10858,11 +10868,17 @@
         const previo = USUARIOS_SISTEMA.find(u => u.id === selNum);
         if (previo) candidatos.unshift(previo);
       }
+      const opcionSinDefinir = `<option value="" ${selNum ? '' : 'selected'}>Sin definir</option>`;
       if (!candidatos.length) {
-        sel.innerHTML = '<option value="">Sin usuarios disponibles — invita a un médico en Admin &gt; Usuarios</option>';
+        // Ya no es un callejón sin salida: con "Sin definir" se puede agendar
+        // igual mientras no haya ningún médico en el roster, y el aviso queda
+        // como opción deshabilitada para que se vea el porqué.
+        sel.innerHTML = opcionSinDefinir +
+          '<option value="" disabled>Sin usuarios disponibles — invita a un médico en Admin &gt; Usuarios</option>';
         return;
       }
-      sel.innerHTML = candidatos.map(u => `<option value="${u.id}" ${selNum === u.id ? 'selected' : ''}>${labelEncargadoAgenda(u)}</option>`).join('');
+      sel.innerHTML = opcionSinDefinir +
+        candidatos.map(u => `<option value="${u.id}" ${selNum === u.id ? 'selected' : ''}>${labelEncargadoAgenda(u)}</option>`).join('');
     }
 
     function onCambiarFiltroAgenda() {
@@ -11234,7 +11250,8 @@
       const soloEspacio = document.getElementById('ag-solo-espacio').checked;
       const sinHora = document.getElementById('ag-sin-hora').checked;
       const tipo = document.getElementById('ag-tipo').value;
-      const encargadoId = Number(document.getElementById('ag-encargado').value);
+      // Vacío = "Sin definir": es una opción válida del select, no un error.
+      const encargadoId = Number(document.getElementById('ag-encargado').value) || null;
       const fechaInicio = document.getElementById('ag-fecha-inicio').value;
       const fechaFin = document.getElementById('ag-fecha-fin').value || fechaInicio;
       const horaInicio = sinHora ? '00:00' : (document.getElementById('ag-hora-inicio').value || '00:00');
@@ -11243,10 +11260,6 @@
       const propietarioValue = document.getElementById('ag-propietario-ss-slot').querySelector('[data-ss-field]').value;
       const petKey = document.getElementById('ag-mascota').value;
 
-      if (!encargadoId) {
-        showToast('No hay ningún encargado disponible — invita a un médico desde Admin > Usuarios');
-        return;
-      }
       if (!fechaInicio || !titulo) {
         showToast('Completa los campos obligatorios');
         return;
@@ -11898,7 +11911,7 @@
       const warningEl = document.getElementById('ag-disponibilidad-warning');
       if (!warningEl) return;
       const sinHora = document.getElementById('ag-sin-hora').checked;
-      const encargadoId = Number(document.getElementById('ag-encargado').value);
+      const encargadoId = Number(document.getElementById('ag-encargado').value) || null;
       const hora = document.getElementById('ag-hora-inicio').value;
       seedDisponibilidadMedicos();
       const slot = redondearHoraASlot30(hora);
@@ -21180,7 +21193,7 @@
           <div class="orden-block-header">
             <span class="med-block-title">Orden ${index + 1}</span>
             <div class="orden-block-header-actions">
-              <label class="mini-toggle" title="Generar solicitud (solo visual, sin lógica aún)">
+              <label class="mini-toggle" title="Al guardar, envía la solicitud por correo al administrador de la clínica">
                 <input type="checkbox" class="mini-toggle-input" ${orden.generarSolicitud ? 'checked' : ''}>
                 <span class="mini-toggle-slider"></span>
                 <span class="mini-toggle-text">Generar solicitud</span>
@@ -21265,9 +21278,15 @@
         const o = data.ordenes[i];
         const estado = o.estado || 'pendiente';
         const puedeRegistrarResultado = (o.tipo === 'imagen' || o.tipo === 'prueba') && estado !== 'completado';
-        const extraActions = puedeRegistrarResultado
-          ? [{ icon: 'file-plus-2', label: 'Registrar resultado', onclick: `abrirResultadoDesdeOrden('${petKey}', ${i})` }]
-          : [];
+        // "Copiar solicitud" está en TODAS las órdenes: el formato que piden
+        // los laboratorios se arma con datos del paciente, no con el estado
+        // de la orden, así que sigue sirviendo después de completarla.
+        const extraActions = [
+          { icon: 'copy', label: 'Copiar solicitud', onclick: `abrirCopiarOrden('${petKey}', ${i})` }
+        ];
+        if (puedeRegistrarResultado) {
+          extraActions.push({ icon: 'file-plus-2', label: 'Registrar resultado', onclick: `abrirResultadoDesdeOrden('${petKey}', ${i})` });
+        }
         return `
           <tr data-orden-row="${i}">
             <td>${o.fecha}</td>
@@ -21397,6 +21416,12 @@
       const saveBtn = document.getElementById('orden-save-btn');
       if (saveBtn) saveBtn.disabled = true;
 
+      // Órdenes con "Generar solicitud" marcada a las que hay que avisarle al
+      // administrador. Se acumulan acá y el correo sale DESPUÉS del
+      // try/catch de guardado: un fallo de correo no puede caer en el catch
+      // de "no se pudo guardar la orden" ni revertir nada.
+      let solicitudesAEnviar = [];
+
       const filaSupabaseDesdeOrden = o => ({
         fecha: o.fechaISO, tipo: o.tipo, detalle: o.detalle, cantidad: o.cantidad,
         prioridad: o.prioridad || null, notas: o.notas || null,
@@ -21410,11 +21435,18 @@
         if (isEdit) {
           const dbId = data.ordenes[editingOrdenContext.index].id;
           const estadoPrevio = data.ordenes[editingOrdenContext.index].estado || 'pendiente';
+          // El aviso sale solo cuando el interruptor PASA a marcado: reeditar
+          // una orden que ya lo tenía le mandaría al administrador el mismo
+          // correo cada vez que se corrige una nota.
+          const solicitudYaAvisada = !!data.ordenes[editingOrdenContext.index].generarSolicitud;
           const { error } = await window.supabase.from('ordenes')
             .update({ ...filaSupabaseDesdeOrden(nuevasOrdenes[0]), updated_at: new Date().toISOString() }).eq('id', dbId);
           if (error) throw error;
           // Preserva el estado (ej. "completado" por un resultado ya registrado)
           data.ordenes[editingOrdenContext.index] = { ...nuevasOrdenes[0], estado: estadoPrevio, id: dbId };
+          if (nuevasOrdenes[0].generarSolicitud && !solicitudYaAvisada) {
+            solicitudesAEnviar = [data.ordenes[editingOrdenContext.index]];
+          }
         } else {
           const insertRows = nuevasOrdenes.map(o => ({
             ...filaSupabaseDesdeOrden(o), estado: 'pendiente',
@@ -21422,7 +21454,9 @@
           }));
           const { data: inserted, error } = await window.supabase.from('ordenes').insert(insertRows).select();
           if (error) throw error;
-          data.ordenes.unshift(...nuevasOrdenes.map((o, i) => ({ ...o, id: inserted[i].id })));
+          const ordenesConId = nuevasOrdenes.map((o, i) => ({ ...o, id: inserted[i].id }));
+          data.ordenes.unshift(...ordenesConId);
+          solicitudesAEnviar = ordenesConId.filter(o => o.generarSolicitud);
         }
 
         renderOrdenesTable(petKey);
@@ -21433,6 +21467,153 @@
         showToast('No se pudo guardar la orden — intenta de nuevo');
       } finally {
         if (saveBtn) saveBtn.disabled = false;
+      }
+
+      if (solicitudesAEnviar.length) await enviarSolicitudesDeOrden(petKey, solicitudesAEnviar);
+    }
+
+
+    // ── SOLICITUD DE ORDEN (copiar al laboratorio + aviso al administrador) ──
+    // Los laboratorios externos piden SIEMPRE los mismos datos del paciente
+    // antes de procesar una muestra, y los piden por WhatsApp con esta
+    // plantilla exacta (rótulos, emojis y orden). El texto se copia tal cual y
+    // se pega en el chat, así que cambiar el orden o los rótulos rompe lo que
+    // el laboratorio espera leer — no los "normalices".
+    //
+    // Dos cosas deliberadas:
+    //   · La última línea (forma de pago) sale VACÍA: no es un dato de la
+    //     orden ni de la mascota, se completa a mano en el modal antes de
+    //     copiar. Por eso el modal es un textarea EDITABLE y no un bloque de
+    //     solo lectura — cualquier otro dato que falte también se puede
+    //     completar ahí sin volver a abrir la orden.
+    //   · Nada de esto se persiste. Es una vista del registro que ya existe;
+    //     guardar el texto ya armado lo dejaría congelado si después se
+    //     corrige la ficha del paciente.
+    function ordenExamenTexto(orden) {
+      // Los tipos de orden sin catálogo no tienen detalle (queda en '—'): ahí
+      // el rótulo del tipo es lo único que describe el examen.
+      const base = (orden.detalle && orden.detalle !== '—') ? orden.detalle : (orden.tipoLabel || '');
+      const cantidad = Number(orden.cantidad) > 1 ? ` (x${orden.cantidad})` : '';
+      return base ? `${base}${cantidad}` : '';
+    }
+
+    function ordenSolicitudFilas(petKey, orden) {
+      const data = patientData[petKey] || {};
+      const prop = getPropietarioDeMascota(petKey);
+      const edad = edadTextoParaMostrar(data);
+      return [
+        ['Nombre del paciente', data.name || ''],
+        ['👫 Nombre del propietario', (prop && prop.nombre) || data.owner || ''],
+        ['🐶🐱🐦 Especie y raza', [data.species, data.breed].filter(Boolean).join(' / ')],
+        ['♂️♀️ Sexo del paciente', data.genero || ''],
+        ['🔢 Edad del paciente', edad === '—' ? '' : edad],
+        ['🔬 Examen a realizar', ordenExamenTexto(orden)],
+        ['👩‍⚕️👨🏻‍⚕️ Médico veterinario', orden.usuario || ''],
+        ['🏥 Clínica/Marca', correoContextoClinica().clinica || ''],
+        ['💵 ¿Forma de pago?', '']
+      ];
+    }
+
+    function ordenSolicitudTexto(petKey, orden) {
+      // Línea en blanco entre campos: es como llega la plantilla del
+      // laboratorio y como se lee en WhatsApp.
+      return ordenSolicitudFilas(petKey, orden)
+        .map(([etiqueta, valor]) => `${etiqueta}: ${valor}`)
+        .join('\n\n');
+    }
+
+    function abrirCopiarOrden(petKey, index) {
+      closeAllRowMenus();
+      const data = patientData[petKey];
+      const orden = data && data.ordenes ? data.ordenes[Number(index)] : null;
+      if (!orden) return;
+      document.getElementById('orden-copiar-texto').value = ordenSolicitudTexto(petKey, orden);
+      document.getElementById('orden-copiar-modal').classList.add('show');
+      lucide.createIcons();
+    }
+
+    function closeCopiarOrdenModal() {
+      document.getElementById('orden-copiar-modal').classList.remove('show');
+    }
+
+    function handleCopiarOrdenOverlayClick(e) {
+      if (e.target === document.getElementById('orden-copiar-modal')) closeCopiarOrdenModal();
+    }
+
+    function copiarSolicitudOrden() {
+      const texto = document.getElementById('orden-copiar-texto').value;
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        showToast('Este navegador no permite copiar automáticamente — selecciona el texto y cópialo');
+        return;
+      }
+      navigator.clipboard.writeText(texto)
+        .then(() => { showToast('Solicitud copiada al portapapeles'); closeCopiarOrdenModal(); })
+        .catch(() => showToast('No se pudo copiar — selecciona el texto y cópialo manualmente'));
+    }
+
+    // Destinatarios del aviso de "Generar solicitud": los administradores
+    // ACTIVOS de la clínica. USUARIOS_SISTEMA ya trae el roster real
+    // (cargarUsuariosRealesDesdeSupabase), así que no hace falta consultar
+    // nada. Si ninguno tiene correo — pasa en una clínica recién creada — cae
+    // al correo de contacto del establecimiento, que es la casilla que la
+    // propia clínica declaró como suya.
+    function destinatariosSolicitudOrden() {
+      const admins = USUARIOS_SISTEMA
+        .filter(u => u.rol === 'admin' && u.estado === 'activo' && u.email)
+        .map(u => ({ email: u.email, nombre: u.nombre, rol: 'admin' }));
+      if (admins.length) return admins;
+      const ctx = correoContextoClinica();
+      return ctx.correoClinica ? [{ email: ctx.correoClinica, nombre: ctx.clinica, rol: 'admin' }] : [];
+    }
+
+    // Se llama DESPUÉS de que la orden ya quedó guardada, y nunca lanza: un
+    // fallo de correo no puede leerse como "no se guardó la orden" (el
+    // subsistema de correo falla en silencio por configuración, ver la
+    // sección "Envío de correos" de CLAUDE.md). Por eso también avisa con su
+    // propio toast, distinto del de guardado.
+    async function enviarSolicitudesDeOrden(petKey, ordenes) {
+      const destinatarios = destinatariosSolicitudOrden();
+      if (!destinatarios.length) {
+        showToast('La orden se guardó, pero no hay ningún administrador con correo para enviarle la solicitud');
+        return;
+      }
+      const data = patientData[petKey] || {};
+      let enviados = 0;
+      let ultimoError = '';
+      for (const orden of ordenes) {
+        // `filas` lleva los datos de la ORDEN (lo que el administrador
+        // necesita para ubicarla) y `cuerpo` la plantilla del laboratorio
+        // lista para copiar — no se repiten a propósito.
+        const examen = ordenExamenTexto(orden);
+        const res = await enviarCorreoIris({
+          tipo: 'orden_solicitud',
+          destinatarios,
+          asunto: `Solicitud de orden — ${data.name || 'Paciente'}${examen ? ` · ${examen}` : ''}`,
+          titulo: 'Nueva solicitud de orden',
+          intro: 'Se registró una orden con "Generar solicitud" marcada. Abajo está la solicitud en el formato que piden los laboratorios: se puede copiar tal cual.',
+          filas: [
+            ['Paciente', data.name || ''],
+            ['Tutor', ((getPropietarioDeMascota(petKey) || {}).nombre) || data.owner || ''],
+            ['Tipo de orden', orden.tipoLabel || ''],
+            ['Examen a realizar', examen],
+            ['Prioridad', orden.prioridadLabel === '—' ? '' : (orden.prioridadLabel || '')],
+            ['Fecha', orden.fecha || ''],
+            ['Solicitada por', orden.usuario || ''],
+            ['Motivo', orden.motivo || ''],
+            ['Notas', orden.notas || '']
+          ],
+          cuerpo: ordenSolicitudTexto(petKey, orden),
+          aviso: 'La forma de pago va vacía en la plantilla — complétala antes de enviarla al laboratorio.',
+          referencia: orden.id ? { tabla: 'ordenes', id: orden.id } : null,
+          silencioso: true
+        });
+        if (res.ok && res.enviados) enviados++;
+        else ultimoError = resumenErrorCorreo(res);
+      }
+      if (enviados === ordenes.length) {
+        showToast(`Solicitud enviada a ${destinatarios.map(d => d.email).join(', ')}`);
+      } else {
+        showToast(`No se pudo enviar la solicitud al administrador: ${ultimoError}`);
       }
     }
 
@@ -27404,7 +27585,9 @@
 
     function salaEsperaNombreProfesional(encargadoId) {
       const u = USUARIOS_SISTEMA.find(x => Number(x.id) === Number(encargadoId));
-      return u ? u.nombre : '';
+      // Con la cita "Sin definir" la celda quedaría vacía y la fila se leería
+      // como si faltara un dato; el guion es el mismo criterio que la hora.
+      return u ? u.nombre : '—';
     }
 
     // Cuerpo del tablero. Lo comparten la previsualización del subtab y la
@@ -37693,6 +37876,24 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeOrdenModal()">Cerrar</button>
         <button class="btn-primary" id="orden-save-btn" onclick="guardarOrdenes()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Copiar solicitud de la orden (plantilla que piden los laboratorios) -->
+  <div class="modal-overlay" id="orden-copiar-modal" onclick="handleCopiarOrdenOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:520px;">
+      <div class="modal-header">
+        <span class="modal-title">Copiar solicitud</span>
+        <button class="modal-close" onclick="closeCopiarOrdenModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <p style="font-size:13px;color:var(--text-2);line-height:1.5;margin-bottom:14px;">
+        Formato que piden los laboratorios para procesar una muestra. El texto es editable: completa la forma de pago —y cualquier dato que falte— antes de copiarlo.
+      </p>
+      <textarea id="orden-copiar-texto" class="soap-textarea" style="min-height:300px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;"></textarea>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+        <button class="btn-secondary" onclick="closeCopiarOrdenModal()">Cerrar</button>
+        <button class="btn-primary" onclick="copiarSolicitudOrden()"><i data-lucide="copy" style="width:14px;height:14px;"></i> Copiar</button>
       </div>
     </div>
   </div>

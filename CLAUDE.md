@@ -1811,10 +1811,25 @@ solo `rol === 'medico'` y eso dejaba el select literalmente vacío —
 imposible crear ningún evento — en una clínica real recién creada donde
 todavía no hay ningún miembro con ese rol (el caso normal: quien crea la
 clínica queda como `admin` y las invitaciones a médicos pueden seguir sin
-aceptarse). Si el roster igual queda vacío, el select muestra una opción
-placeholder y `guardarEventoAgenda()` avisa con un toast propio en vez del
-genérico "Completa los campos obligatorios". La misma lista alimenta el
-filtro del toolbar y las columnas de Disponibilidad. Relacionado: la
+aceptarse). La misma lista alimenta el filtro del toolbar y las columnas de
+Disponibilidad.
+**El encargado es OPCIONAL: la primera opción del select es "Sin definir"**
+(`value=""`), y no es un placeholder — es una elección válida. Se agenda a una
+hora concreta antes de saber qué médico atiende, y obligar a elegir uno dejaba
+la cita a nombre de quien después no la atendía. Un evento así se guarda con
+`agenda_eventos.encargado_id` en null (la columna ya era nullable, no hizo
+falta migración) y todo lo que cuelga del encargado se cae solo, sin `if`
+nuevos: no entra en la Agenda personal de nadie
+(`ev.encargadoId === uid`), `haySolapamientoAgenda()` y
+`chequearDisponibilidadAgendaModal()` ya salían temprano con el id vacío, y
+`/api/agenda-notificar` no encola el correo del encargado porque
+`datosNotificacionEventoAgenda()` deja `encargadoEmail` en null (el del tutor y
+el de la clínica sí salen). Por eso el guard que abortaba el guardado sin
+encargado ya no existe. Dos consecuencias a tener presentes: un Médico
+Veterinario NO puede crear una cita "Sin definir" (su select sigue bloqueado a
+su propio nombre, regla anterior) y `puedeEditarEventoAgenda()` deja las citas
+sin encargado solo en manos del admin — un médico no puede tomarlas desde la
+Agenda todavía. Relacionado: la
 identidad del usuario logueado dentro de `USUARIOS_SISTEMA` sale de
 `getUsuarioActualSistema()` (flag `esUsuarioActual`, que pone
 `cargarUsuariosRealesDesdeSupabase()`), y `getCurrentSimUserId()` /
