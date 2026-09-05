@@ -580,6 +580,18 @@ create table if not exists public.propietarios (
   ultima_gestion_time   timestamptz,
   ultima_gestion_detail text,
   pdf_path              text,
+  -- Informacion tributaria del cliente (facturacion electronica). Ver
+  -- migracion 20260904_propietarios_info_tributaria.sql: el panel
+  -- "Informacion tributaria del cliente" escribe aca porque
+  -- VENTAS_CLIENTES es solo un espejo en memoria. Documento, telefono,
+  -- correo y direccion NO se duplican: usan las columnas de arriba.
+  trib_tipo_organizacion text,
+  trib_razon_social      text,
+  trib_pais              text,
+  trib_municipio         text,
+  trib_regimen           text,
+  trib_obligaciones      text,
+  trib_detalles          text,
   created_by            uuid references auth.users (id) on delete set null,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()

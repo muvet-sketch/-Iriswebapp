@@ -1151,6 +1151,53 @@ módulo y hay que mantenerlo:
   'admin'`: solo se declara sede a una clínica que la propia persona
   administra.
 
+## Información tributaria del cliente — vive en `propietarios`
+Panel "Información tributaria del cliente" (documento, tipo de
+organización, razón social, régimen, obligaciones, detalles). Existe DOS
+veces en el DOM, con los mismos campos y distinto prefijo de id: `fct-`
+en Facturación > Estado de cuenta y `dvfct-` dentro del modal de
+Cotización/Factura (los dos modales conviven, unos ids duplicados
+romperían `getElementById`).
+
+- **La fuente de verdad es `propietarios`, NO `VENTAS_CLIENTES`.** Ese
+  array es un espejo en memoria que `getVentasClienteIdDePropietario()`
+  rearma en cada sesión desde los tutores reales, así que lo que se
+  escribía sobre él moría al recargar: el tipo de organización se perdía
+  y `guardarDocVenta()`/`confirmarCerrarCuenta()` volvían a exigirlo en
+  cada factura nueva y en cada edición. Ese era el bug.
+- **Los campos que ya tienen columna propia en `propietarios` no se
+  duplican**: documento → `doc_tipo`/`doc_numero`, teléfono → `movil`,
+  correo → `email`, dirección → `direccion`. Solo los 7 puramente
+  tributarios estrenaron columna `trib_*` (migración
+  `20260904_propietarios_info_tributaria.sql`). Dos columnas para el
+  mismo dato divergirían al primer cambio hecho desde "Editar
+  propietario".
+- **Un solo camino de escritura: `persistirInfoTributariaCliente(clienteId, datos)`**
+  (update BLOQUEANTE sobre `propietarios` y recién después el espejo).
+  Los dos paneles leen sus campos con `leerPanelInfoTributaria(prefijo)`
+  y llaman ahí — no repliques el `Object.assign` sobre el cliente.
+  Usa `.select('id')` para detectar el caso "0 filas": la policy
+  `propietarios_update_member` exige `red_vinculado`, así que la ficha de
+  un tutor sin verificar se filtra en SILENCIO, sin error (mismo caso que
+  `persistirEstablecimientoConfig`) — un tutor sin vincular no puede
+  guardar información tributaria, y el toast lo dice.
+- **De vuelta al espejo: `volcarInfoTributariaAlCliente(cliente, p)`**,
+  llamada desde `getVentasClienteIdDePropietario()` (las dos ramas) y
+  desde `poblarDocVentaClienteTributario()`. Solo pisa los campos que el
+  tutor YA tiene guardados, para no dejar en blanco a un cliente semilla
+  de la demo (`c1..c15`, sin tutor detrás) ni a uno al que nadie le llenó
+  el panel. `getPropietarioDeVentasCliente(clienteId)` es el camino
+  inverso: `c-prop-<uuid>` trae el id dentro, y los semilla solo se
+  resuelven por nombre.
+- **Los dos selects de "Tipo de documento" listan las MISMAS 6 opciones
+  que `#prop-doc-tipo`** y se traducen con `TRIB_DOC_TIPO_LABEL`/
+  `TRIB_DOC_TIPO_ABREV`. Antes el panel guardaba `'C.C.'` o `'NIT'` y
+  nada más: guardar desde acá le cambiaba el tipo de documento al tutor.
+  Si agregás una opción a uno de los tres selects, agregala a los otros
+  dos y al mapa.
+- No hace falta tocar `RESPALDO_TABLAS` (`propietarios` ya está) ni el
+  `c_tablas` de `fusionar_mascotas` (no tiene `mascota_id`).
+
 ## Interruptores de "Ventas e inventario" — dónde actúa cada uno
 Cada uno de estos toggles tiene efecto real; el bloque
 "EFECTOS REALES DE 'VENTAS E INVENTARIO'" de `index.html` los agrupa.

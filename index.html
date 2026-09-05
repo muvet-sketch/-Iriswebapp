@@ -9115,9 +9115,9 @@
       const p = propietarios.find(x => x.id === propietarioId);
       if (!p) return null;
       const existente = VENTAS_CLIENTES.find(c => c.nombre === p.nombre);
-      if (existente) return existente.id;
+      if (existente) { volcarInfoTributariaAlCliente(existente, p); return existente.id; }
       const nuevoId = 'c-prop-' + p.id;
-      VENTAS_CLIENTES.push({
+      const nuevo = {
         id: nuevoId, nombre: p.nombre,
         cedula: [p.docTipo, p.docNumero].filter(Boolean).join(' '),
         telefono: p.movil || '', email: p.email || '', direccion: p.direccion || '',
@@ -9125,8 +9125,54 @@
         // aquí — evita que el origen ("Importado", etc.) se pierda al
         // recargar, ya que VENTAS_CLIENTES en sí no se persiste.
         origen: p.comoNosEncontro || '', propietarioKey: null
-      });
+      };
+      volcarInfoTributariaAlCliente(nuevo, p);
+      VENTAS_CLIENTES.push(nuevo);
       return nuevoId;
+    }
+
+    // Camino inverso de getVentasClienteIdDePropietario(): del cliente
+    // (espejo en memoria) al tutor real, que es donde SÍ se persiste.
+    // El id 'c-prop-<uuid>' ya lleva el propietario dentro; los clientes
+    // semilla de la demo (c1..c15) solo se pueden resolver por nombre, y
+    // los que no resuelven a ninguno se quedan en memoria como antes.
+    function getPropietarioDeVentasCliente(clienteId) {
+      if (!clienteId) return null;
+      if (String(clienteId).startsWith('c-prop-')) {
+        const id = String(clienteId).slice('c-prop-'.length);
+        return propietarios.find(p => p.id === id) || null;
+      }
+      const cliente = ventasClienteById(clienteId);
+      if (!cliente) return null;
+      return propietarios.find(p => p.nombre === cliente.nombre) || null;
+    }
+
+    // Equivalencias entre el "Tipo de documento" del panel tributario
+    // (etiquetas completas) y `propietarios.doc_tipo` (abreviado, el que
+    // usa el modal de "Registrar propietario"). Existen para que el panel
+    // no reescriba el tipo de documento del tutor con otra nomenclatura:
+    // los dos selects listan las mismas 6 opciones, así que la ida y la
+    // vuelta no pierden ninguna.
+    const TRIB_DOC_TIPO_LABEL = {
+      'C.C.': 'Cédula de ciudadanía', 'C.E.': 'Cédula de extranjería', 'NIT': 'NIT',
+      'T.I.': 'Tarjeta de identidad', 'Pasaporte': 'Pasaporte', 'PEP': 'Permiso especial de permanencia'
+    };
+    const TRIB_DOC_TIPO_ABREV = Object.keys(TRIB_DOC_TIPO_LABEL)
+      .reduce((acc, k) => { acc[TRIB_DOC_TIPO_LABEL[k]] = k; return acc; }, {});
+
+    // Vuelca sobre el espejo en memoria la información tributaria que vive
+    // en el tutor. Solo pisa los campos que el tutor ya tiene guardados:
+    // un cliente semilla de la demo (o uno al que nadie le llenó el panel)
+    // conserva lo que tuviera en memoria en vez de quedar en blanco.
+    function volcarInfoTributariaAlCliente(cliente, p) {
+      if (!cliente || !p) return;
+      if (p.docTipo && TRIB_DOC_TIPO_LABEL[p.docTipo]) cliente.tipoDocumento = TRIB_DOC_TIPO_LABEL[p.docTipo];
+      const campos = {
+        tipoOrganizacion: p.tribTipoOrganizacion, razonSocial: p.tribRazonSocial,
+        pais: p.tribPais, municipio: p.tribMunicipio, regimen: p.tribRegimen,
+        obligaciones: p.tribObligaciones, detallesTributarios: p.tribDetalles
+      };
+      Object.keys(campos).forEach(k => { if (campos[k]) cliente[k] = campos[k]; });
     }
 
     function refreshFacturacionPropietarioTablesIfOpen() {
@@ -9256,13 +9302,12 @@
     // cuenta (colapsado por defecto, "Editar" lo despliega) — visualiza y
     // actualiza los mismos campos fiscales que exige la facturación
     // electrónica (documento/tipo de organización/régimen/obligaciones/
-    // etc.), guardados directamente sobre el registro real de
-    // VENTAS_CLIENTES vinculado a este propietario (getVentasClienteIdDePropietario).
-    // Campos nuevos (tipoDocumento/tipoOrganizacion/razonSocial/pais/
-    // municipio/regimen/obligaciones/detallesTributarios): no existían
-    // antes en VENTAS_CLIENTES, se agregan al objeto recién al guardar por
-    // primera vez — por eso el populate siempre cae a un default sensato
-    // cuando el campo todavía no existe.
+    // etc.). Lee del espejo VENTAS_CLIENTES, que getVentasClienteIdDePropietario()
+    // ya rellenó con lo guardado en el tutor (columnas trib_* de
+    // `propietarios`); guarda por persistirInfoTributariaCliente(), que es
+    // el único camino de escritura. El populate sigue cayendo a un default
+    // sensato porque un cliente sin información tributaria todavía no trae
+    // esos campos.
     function poblarFacturacionClienteTributario() {
       if (!facturacionPropietarioId) return;
       const clienteId = getVentasClienteIdDePropietario(facturacionPropietarioId);
@@ -9292,25 +9337,126 @@
       btn.textContent = shouldOpen ? 'Cerrar' : 'Editar';
     }
 
-    function guardarFacturacionClienteTributario() {
+    // ── INFORMACIÓN TRIBUTARIA DEL CLIENTE — un solo camino de guardado ──
+    // Los dos paneles (fct- en Estado de cuenta, dvfct- en el modal de
+    // Cotización/Factura) leen y escriben lo MISMO; solo cambia el prefijo
+    // de los ids. Antes cada uno hacía su propio Object.assign sobre el
+    // cliente en memoria y ahí moría: VENTAS_CLIENTES se rearma en cada
+    // sesión desde `propietarios` (ver getVentasClienteIdDePropietario), así
+    // que la información tributaria se perdía al recargar y la validación de
+    // guardarDocVenta()/confirmarCerrarCuenta() volvía a exigir el tipo de
+    // organización en cada factura nueva y en cada edición.
+    function leerPanelInfoTributaria(prefijo) {
+      const v = id => document.getElementById(`${prefijo}-${id}`).value;
+      return {
+        numeroDocumento: v('numero-documento').trim(),
+        tipoDocumento: v('tipo-documento'),
+        tipoOrganizacion: v('tipo-organizacion'),
+        razonSocial: v('razon-social').trim(),
+        telefono: v('telefono').trim(),
+        email: v('correo').trim(),
+        direccion: v('direccion').trim(),
+        pais: v('pais'),
+        municipio: v('municipio').trim(),
+        regimen: v('regimen'),
+        obligaciones: v('obligaciones'),
+        detallesTributarios: v('detalles-tributarios')
+      };
+    }
+
+    // Escritura BLOQUEANTE sobre `propietarios` (la fuente de verdad) antes
+    // de tocar el espejo en memoria, mismo criterio que el resto de módulos:
+    // si falla el guardado remoto no se aplica el cambio local. Devuelve
+    // true si se puede cerrar el panel.
+    // Los campos que ya tienen columna propia en `propietarios` (documento,
+    // teléfono, correo, dirección) se escriben ahí y NO se duplican en
+    // columnas `trib_*`: dos fuentes para el mismo dato divergen al primer
+    // cambio hecho desde "Editar propietario".
+    async function persistirInfoTributariaCliente(clienteId, datos) {
+      const cliente = ventasClienteById(clienteId);
+      if (!cliente) return false;
+      const p = getPropietarioDeVentasCliente(clienteId);
+
+      if (p && window.supabase && currentSession && currentSession.activeMembership) {
+        const docTipo = TRIB_DOC_TIPO_ABREV[datos.tipoDocumento] || p.docTipo || null;
+        const patch = {
+          trib_tipo_organizacion: datos.tipoOrganizacion || null,
+          trib_razon_social: datos.razonSocial || null,
+          trib_pais: datos.pais || null,
+          trib_municipio: datos.municipio || null,
+          trib_regimen: datos.regimen || null,
+          trib_obligaciones: datos.obligaciones || null,
+          trib_detalles: datos.detallesTributarios || null,
+          email: datos.email || null,
+          direccion: datos.direccion || null,
+          updated_at: new Date().toISOString()
+        };
+        // Documento y celular son la identidad del tutor en la Red IRIS
+        // (red_upsert_persona corre en un trigger sobre estas columnas):
+        // solo se tocan si el panel trae un valor, nunca se vacían desde acá.
+        if (datos.numeroDocumento) { patch.doc_numero = datos.numeroDocumento; patch.doc_tipo = docTipo; }
+        if (datos.telefono) patch.movil = datos.telefono;
+
+        // .select('id') detecta el caso "0 filas": propietarios_update_member
+        // exige red_vinculado, así que la ficha de un tutor sin verificar se
+        // filtra en silencio, sin devolver error (mismo caso que
+        // persistirEstablecimientoConfig).
+        const { data, error } = await window.supabase.from('propietarios')
+          .update(patch).eq('id', p.id).select('id');
+        if (error) { showToast('No se pudo guardar la información tributaria: ' + error.message); return false; }
+        if (!data || !data.length) {
+          showToast('El tutor está sin vincular en la red IRIS — vincúlalo desde el buscador de Consultorio para poder guardar su información tributaria');
+          return false;
+        }
+
+        if (patch.doc_numero) { p.docTipo = docTipo || ''; p.docNumero = datos.numeroDocumento; }
+        if (patch.movil) p.movil = datos.telefono;
+        p.email = datos.email;
+        p.direccion = datos.direccion;
+        p.tribTipoOrganizacion = datos.tipoOrganizacion;
+        p.tribRazonSocial = datos.razonSocial;
+        p.tribPais = datos.pais;
+        p.tribMunicipio = datos.municipio;
+        p.tribRegimen = datos.regimen;
+        p.tribObligaciones = datos.obligaciones;
+        p.tribDetalles = datos.detallesTributarios;
+        // El celular del tutor se muestra como ownerPhone en la ficha de
+        // cada mascota suya — sin esto seguiría mostrando el anterior.
+        if (patch.movil) Object.values(patientData).forEach(d => { if (d.propietarioId === p.id) d.ownerPhone = p.movil; });
+        renderPropietariosTable();
+        renderTutoresTable();
+      }
+
+      if (datos.numeroDocumento) {
+        cliente.cedula = [TRIB_DOC_TIPO_ABREV[datos.tipoDocumento] || '', datos.numeroDocumento].filter(Boolean).join(' ');
+      }
+      cliente.tipoDocumento = datos.tipoDocumento;
+      cliente.tipoOrganizacion = datos.tipoOrganizacion;
+      cliente.razonSocial = datos.razonSocial;
+      cliente.telefono = datos.telefono;
+      cliente.email = datos.email;
+      cliente.direccion = datos.direccion;
+      cliente.pais = datos.pais;
+      cliente.municipio = datos.municipio;
+      cliente.regimen = datos.regimen;
+      cliente.obligaciones = datos.obligaciones;
+      cliente.detallesTributarios = datos.detallesTributarios;
+      renderClientesTable();
+      return true;
+    }
+
+    async function guardarFacturacionClienteTributario(btnEl) {
       if (!facturacionPropietarioId) return;
       const clienteId = getVentasClienteIdDePropietario(facturacionPropietarioId);
-      const cliente = ventasClienteById(clienteId);
-      if (!cliente) return;
-      const numeroDocumento = document.getElementById('fct-numero-documento').value.trim();
-      const tipoDocumento = document.getElementById('fct-tipo-documento').value;
-      if (numeroDocumento) cliente.cedula = `${tipoDocumento === 'NIT' ? 'NIT' : 'C.C.'} ${numeroDocumento}`;
-      cliente.tipoDocumento = tipoDocumento;
-      cliente.tipoOrganizacion = document.getElementById('fct-tipo-organizacion').value;
-      cliente.razonSocial = document.getElementById('fct-razon-social').value.trim();
-      cliente.telefono = document.getElementById('fct-telefono').value.trim();
-      cliente.email = document.getElementById('fct-correo').value.trim();
-      cliente.direccion = document.getElementById('fct-direccion').value.trim();
-      cliente.pais = document.getElementById('fct-pais').value;
-      cliente.municipio = document.getElementById('fct-municipio').value.trim();
-      cliente.regimen = document.getElementById('fct-regimen').value;
-      cliente.obligaciones = document.getElementById('fct-obligaciones').value;
-      cliente.detallesTributarios = document.getElementById('fct-detalles-tributarios').value;
+      if (!ventasClienteById(clienteId)) return;
+      if (btnEl) btnEl.disabled = true;
+      let ok = false;
+      try {
+        ok = await persistirInfoTributariaCliente(clienteId, leerPanelInfoTributaria('fct'));
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+      if (!ok) return;
       toggleFacturacionClienteTributario(false);
       showToast('Información tributaria actualizada');
     }
@@ -29777,6 +29923,10 @@
       const clienteId = document.getElementById('doc-venta-cliente-select').value;
       const cliente = ventasClienteById(clienteId);
       if (!cliente) return;
+      // Refresca el espejo contra el tutor antes de pintar: la información
+      // tributaria vive en `propietarios` y este modal se puede abrir sin
+      // haber pasado por getVentasClienteIdDePropietario() en esta sesión.
+      volcarInfoTributariaAlCliente(cliente, getPropietarioDeVentasCliente(clienteId));
       document.getElementById('dvfct-numero-documento').value = (cliente.cedula || '').replace(/^[A-Za-zÀ-ÿ.]+\s*/, '');
       document.getElementById('dvfct-tipo-documento').value = cliente.tipoDocumento || 'Cédula de ciudadanía';
       document.getElementById('dvfct-tipo-organizacion').value = cliente.tipoOrganizacion || '';
@@ -29810,24 +29960,22 @@
       if (panel.style.display !== 'none') poblarDocVentaClienteTributario();
     }
 
-    function guardarDocVentaClienteTributario() {
+    // Mismo camino único de guardado que el panel de Estado de cuenta
+    // (persistirInfoTributariaCliente): escribe en `propietarios` y recién
+    // después en el espejo de VENTAS_CLIENTES. El select de cliente de este
+    // modal se repuebla desde VENTAS_CLIENTES, así que el nombre no cambia
+    // acá y no hace falta reconstruirlo.
+    async function guardarDocVentaClienteTributario(btnEl) {
       const clienteId = document.getElementById('doc-venta-cliente-select').value;
-      const cliente = ventasClienteById(clienteId);
-      if (!cliente) return;
-      const numeroDocumento = document.getElementById('dvfct-numero-documento').value.trim();
-      const tipoDocumento = document.getElementById('dvfct-tipo-documento').value;
-      if (numeroDocumento) cliente.cedula = `${tipoDocumento === 'NIT' ? 'NIT' : 'C.C.'} ${numeroDocumento}`;
-      cliente.tipoDocumento = tipoDocumento;
-      cliente.tipoOrganizacion = document.getElementById('dvfct-tipo-organizacion').value;
-      cliente.razonSocial = document.getElementById('dvfct-razon-social').value.trim();
-      cliente.telefono = document.getElementById('dvfct-telefono').value.trim();
-      cliente.email = document.getElementById('dvfct-correo').value.trim();
-      cliente.direccion = document.getElementById('dvfct-direccion').value.trim();
-      cliente.pais = document.getElementById('dvfct-pais').value;
-      cliente.municipio = document.getElementById('dvfct-municipio').value.trim();
-      cliente.regimen = document.getElementById('dvfct-regimen').value;
-      cliente.obligaciones = document.getElementById('dvfct-obligaciones').value;
-      cliente.detallesTributarios = document.getElementById('dvfct-detalles-tributarios').value;
+      if (!ventasClienteById(clienteId)) return;
+      if (btnEl) btnEl.disabled = true;
+      let ok = false;
+      try {
+        ok = await persistirInfoTributariaCliente(clienteId, leerPanelInfoTributaria('dvfct'));
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+      if (!ok) return;
       toggleDocVentaClienteTributario(false);
       showToast('Información tributaria actualizada');
     }
@@ -29896,8 +30044,9 @@
       // tipo de organización del cliente ya haya quedado resuelto en su
       // información tributaria (ver autoRegimenPorTipoOrganizacion arriba)
       // — no se valida el select del panel (puede estar cerrado/sin
-      // abrir), sino el dato ya persistido en VENTAS_CLIENTES, que solo se
-      // escribe al guardar ese panel (guardarDocVentaClienteTributario).
+      // abrir), sino el dato del cliente, que solo se escribe al guardar
+      // ese panel (persistirInfoTributariaCliente) y que sobrevive a la
+      // recarga porque vive en propietarios.trib_tipo_organizacion.
       if (tipo === 'factura') {
         const clienteFactura = ventasClienteById(clienteId);
         if (!clienteFactura || !clienteFactura.tipoOrganizacion) {
@@ -35460,6 +35609,19 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         ultimaGestionTime: r.ultima_gestion_time ? new Date(r.ultima_gestion_time).toLocaleString('es-CO') : 'Recién registrado',
         ultimaGestionDetail: r.ultima_gestion_detail || '',
         pdfPath: r.pdf_path || null,
+        // Información tributaria del cliente (facturación electrónica).
+        // Vive acá, en la fuente de verdad, y no en VENTAS_CLIENTES —
+        // ese array es solo un espejo en memoria que se rearma en cada
+        // sesión (ver getVentasClienteIdDePropietario). Los campos que
+        // ya tienen columna propia (documento/teléfono/correo/dirección)
+        // NO se duplican: el panel escribe sobre las de siempre.
+        tribTipoOrganizacion: r.trib_tipo_organizacion || '',
+        tribRazonSocial: r.trib_razon_social || '',
+        tribPais: r.trib_pais || '',
+        tribMunicipio: r.trib_municipio || '',
+        tribRegimen: r.trib_regimen || '',
+        tribObligaciones: r.trib_obligaciones || '',
+        tribDetalles: r.trib_detalles || '',
         // Red IRIS: false = la ficha existe en esta clínica pero la
         // identidad ya vivía en otro establecimiento y nadie verificó
         // al tutor todavía. Ver propietarioEstaVinculado().
@@ -38873,12 +39035,15 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           </div>
           <div class="input-group">
             <label class="input-label" for="dvfct-tipo-documento">Tipo de documento</label>
+            <!-- Mismas 6 opciones que #prop-doc-tipo, ver la nota del
+                 select gemelo #fct-tipo-documento. -->
             <select class="soap-select-control" id="dvfct-tipo-documento">
               <option>Cédula de ciudadanía</option>
               <option>Cédula de extranjería</option>
               <option>NIT</option>
-              <option>Pasaporte</option>
               <option>Tarjeta de identidad</option>
+              <option>Pasaporte</option>
+              <option>Permiso especial de permanencia</option>
             </select>
           </div>
           <div class="input-group">
@@ -38947,7 +39112,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
           <button type="button" class="btn-secondary" onclick="toggleDocVentaClienteTributario(false)">Cancelar</button>
-          <button type="button" class="btn-primary" onclick="guardarDocVentaClienteTributario()">Guardar información tributaria</button>
+          <button type="button" class="btn-primary" onclick="guardarDocVentaClienteTributario(this)">Guardar información tributaria</button>
         </div>
       </div>
 
@@ -39983,12 +40148,18 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
                 </div>
                 <div class="input-group">
                   <label class="input-label" for="fct-tipo-documento">Tipo de documento</label>
+                  <!-- Mismas 6 opciones que #prop-doc-tipo ("Registrar
+                       propietario"): este panel escribe sobre el mismo
+                       propietarios.doc_tipo, y una opción de menos haría
+                       que guardar acá le cambiara el tipo de documento al
+                       tutor (ver TRIB_DOC_TIPO_LABEL). -->
                   <select class="soap-select-control" id="fct-tipo-documento">
                     <option>Cédula de ciudadanía</option>
                     <option>Cédula de extranjería</option>
                     <option>NIT</option>
-                    <option>Pasaporte</option>
                     <option>Tarjeta de identidad</option>
+                    <option>Pasaporte</option>
+                    <option>Permiso especial de permanencia</option>
                   </select>
                 </div>
                 <div class="input-group">
@@ -40057,7 +40228,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
               </div>
               <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
                 <button type="button" class="btn-secondary" onclick="toggleFacturacionClienteTributario(false)">Cancelar</button>
-                <button type="button" class="btn-primary" onclick="guardarFacturacionClienteTributario()">Guardar</button>
+                <button type="button" class="btn-primary" onclick="guardarFacturacionClienteTributario(this)">Guardar</button>
               </div>
             </div>
           </div>
