@@ -1001,6 +1001,29 @@
     }
     .ss-option:hover { background-color: rgba(var(--clinic-accent-rgb), 0.06); }
     .ss-option-empty { font-size: 12px; color: var(--text-2); padding: 8px; text-align: center; }
+    /* Cargos automáticos propuestos por un módulo clínico. La grilla tiene
+       el concepto (lo que dijo el registro clínico) al lado del producto del
+       catálogo, porque la comparación entre esos dos es justo lo que hay que
+       revisar antes de cobrar. */
+    .cargo-auto-row {
+      display: grid; grid-template-columns: 1.3fr 1.5fr 72px 110px 100px 28px;
+      gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);
+    }
+    .cargo-auto-row:last-child { border-bottom: none; }
+    .cargo-auto-concepto {
+      font-size: 12.5px; color: var(--text-1); font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .cargo-auto-total { font-size: 12.5px; font-weight: 700; text-align: right; }
+    .cargo-auto-head {
+      display: grid; grid-template-columns: 1.3fr 1.5fr 72px 110px 100px 28px;
+      gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+      color: var(--text-2); padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    }
+    /* El dropdown del catálogo se abre dentro de un modal con scroll: sin
+       esto el panel queda recortado por el contenedor. */
+    .cargo-auto-row .ss-panel { max-height: 200px; }
+
     /* Fila "+ Crear nuevo …" al pie del dropdown buscable. Va SIEMPRE
        visible (fuera de .ss-options, que es lo que filtra la búsqueda):
        el caso que la justifica es justamente el catálogo vacío, donde no
@@ -14501,6 +14524,7 @@
         if (idPrefix === 'tablero-soap-') cerrarTableroAConsultorio();
         switchSubTab(isEditing ? 'consultas' : 'historia');
         showToast(isEditing ? 'Consulta actualizada' : 'Consulta guardada');
+        if (!isEditing) proponerCargosDeModulo('consultas', selectedPetKey, {});
         editingConsultaContext = null;
       } catch (err) {
         console.error('[IRIS] Error guardando la consulta en Supabase:', err);
@@ -18804,6 +18828,7 @@
         refrescarTableroQuicknavSi('vacunaciones', petKey);
         closeVacunacionModal();
         showToast(isEdit ? 'Vacunación actualizada' : 'Vacunación registrada');
+        if (!isEdit) proponerCargosDeModulo('vacunaciones', petKey, record);
         if (!isEdit && record.proximaVacunacionISO) {
           await crearEventoSeguimiento({
             fechaISO: record.proximaVacunacionISO,
@@ -19077,6 +19102,7 @@
         refrescarTableroQuicknavSi('desparasitaciones', petKey);
         closeDesparasitacionModal();
         showToast(isEdit ? 'Desparasitación actualizada' : 'Desparasitación registrada');
+        if (!isEdit) proponerCargosDeModulo('desparasitaciones', petKey, record);
         if (!isEdit && record.proximoControlISO) {
           await crearEventoSeguimiento({
             fechaISO: record.proximoControlISO,
@@ -19676,6 +19702,7 @@
         renderPeluqueriaTable(petKey);
         closePeluqueriaModal();
         showToast(isEdit ? 'Registro de peluquería y spa actualizado' : 'Peluquería y spa registrada');
+        if (!isEdit) proponerCargosDeModulo('peluqueria', petKey, record);
         if (!isEdit && record.proximaCitaISO) {
           await crearEventoSeguimiento({
             fechaISO: record.proximaCitaISO,
@@ -19877,6 +19904,7 @@
         renderGuarderiaTable(petKey);
         closeGuarderiaModal();
         showToast(isEdit ? 'Registro de guardería actualizado' : 'Guardería registrada');
+        if (!isEdit) proponerCargosDeModulo('guarderia', petKey, record);
       } catch (err) {
         console.error('[IRIS] Error guardando guardería en Supabase:', err);
         showToast('No se pudo guardar el registro de guardería — intenta de nuevo');
@@ -20740,6 +20768,7 @@
         refrescarTableroQuicknavSi('cirugias', petKey);
         closeCirugiaModal();
         showToast(isEdit ? 'Procedimiento actualizado' : 'Procedimiento registrado');
+        if (!isEdit) proponerCargosDeModulo('cirugias', petKey, record);
       } catch (err) {
         console.error('[IRIS] Error guardando cirugía/procedimiento en Supabase:', err);
         showToast('No se pudo guardar el procedimiento — intenta de nuevo');
@@ -21457,7 +21486,11 @@
       textEl.classList.remove('placeholder');
       container.classList.remove('open');
       const onSelectFn = container.getAttribute('data-onselect');
-      if (onSelectFn && typeof window[onSelectFn] === 'function') window[onSelectFn](value);
+      // El uid va como 2º argumento para los casos en que hay VARIOS de estos
+      // dropdowns en la misma pantalla y el handler necesita saber cuál se
+      // tocó (los cargos automáticos: un dropdown por línea de cargo). Los
+      // handlers viejos reciben un argumento de más y lo ignoran.
+      if (onSelectFn && typeof window[onSelectFn] === 'function') window[onSelectFn](value, uid);
     }
 
     // Selector de Prioridad (dot + descripción)
@@ -22685,6 +22718,7 @@
         refrescarTableroQuicknavSi(tipo === 'imagen' ? 'imagenes' : 'laboratorio', petKey);
         closeExamenModal();
         showToast(isEdit ? 'Registro actualizado' : 'Registro guardado');
+        if (!isEdit) proponerCargosDeModulo(tipo === 'imagen' ? 'imagenes' : 'examenes', petKey, record);
       } catch (err) {
         console.error('[IRIS] Error guardando examen en Supabase:', err);
         showToast('No se pudo guardar el registro — intenta de nuevo');
@@ -23567,6 +23601,7 @@
         renderHospitalizacionesTable(petKey);
         closeHospitalizacionModal();
         showToast(isEdit ? 'Registro actualizado' : 'Hospitalización/ambulatorio registrado');
+        if (!isEdit) proponerCargosDeModulo('hospitalizaciones', petKey, { tipo, fechaIngresoISO, fechaSalidaISO });
       } catch (err) {
         console.error('[IRIS] Error guardando hospitalización en Supabase:', err);
         showToast('No se pudo guardar el registro — intenta de nuevo');
@@ -30769,6 +30804,359 @@
         <div class="info-label">Fecha de pago</div><div class="info-value">${record.pago.fecha}</div>` : ''}
         ${record.observaciones ? `<div class="info-label">Observaciones</div><div class="info-value">${record.observaciones}</div>` : ''}
       `;
+    }
+
+    // ── CARGOS AUTOMÁTICOS DESDE LOS MÓDULOS CLÍNICOS ───────────
+    // Cierra el pendiente de `facturacionModulosVinculados` (Configuración de
+    // la veterinaria > Ventas e inventario): esa lista se guardaba y se leía
+    // pero no disparaba nada. Ahora, al REGISTRAR un registro de un módulo
+    // vinculado, ese módulo propone sus ítems en la cuenta abierta del tutor.
+    //
+    // PROPONE, no cobra solo, y esa es la decisión que gobierna todo el
+    // bloque. Un cargo se arma de un texto clínico ("Triple felina") que hay
+    // que casar contra el catálogo de Inventario para saber el precio; cuando
+    // el match falla, cobrar en automático significaría meterle a la cuenta
+    // del tutor una línea en $0 que nadie revisó. Por eso: se resuelve lo que
+    // se puede, se muestra el resultado, y quien atendió confirma o descarta.
+    //
+    // Solo al CREAR, nunca al editar — mismo criterio que las entradas de
+    // `data.timeline` en Vacunaciones/Desparasitaciones. Reabrir un registro
+    // para corregir una nota no puede volver a cobrarlo.
+    const FACTURACION_MODULOS_CARGOS = {
+      consultas: {
+        label: 'Consulta',
+        // La consulta no tiene un campo de catálogo propio: el cargo es el
+        // acto en sí. Se propone el concepto genérico y el dropdown del modal
+        // deja elegir cuál de las consultas del catálogo aplica.
+        conceptos: () => [{ concepto: 'Consulta', cantidad: 1 }]
+      },
+      vacunaciones: {
+        label: 'Vacunación',
+        conceptos: r => [{ concepto: r.vacuna, cantidad: 1 }]
+      },
+      desparasitaciones: {
+        label: 'Desparasitación',
+        conceptos: r => [{ concepto: r.producto || r.tipo, cantidad: 1 }]
+      },
+      cirugias: {
+        label: 'Cirugía / procedimiento',
+        conceptos: r => [{ concepto: r.tipo, cantidad: 1 }]
+      },
+      hospitalizaciones: {
+        label: 'Hospitalización / ambulatorio',
+        // Se cobra por día: si ya se registró la salida se propone esa
+        // cantidad, y si el paciente sigue internado se propone 1 y el modal
+        // deja ajustarla. Proponer 0 días sería no proponer nada.
+        conceptos: r => [{ concepto: r.tipo || 'Hospitalización', cantidad: cargosDiasEntre(r.fechaIngresoISO, r.fechaSalidaISO) }]
+      },
+      examenes: {
+        label: 'Exámenes de laboratorio',
+        conceptos: r => cargosConceptosDePruebas(r)
+      },
+      imagenes: {
+        label: 'Imágenes diagnósticas',
+        conceptos: r => cargosConceptosDePruebas(r)
+      },
+      peluqueria: {
+        label: 'Peluquería y spa',
+        conceptos: r => (r.servicios || []).map(s => ({ concepto: s.tipoServicio, cantidad: 1 }))
+      },
+      guarderia: {
+        label: 'Guardería',
+        conceptos: r => [{ concepto: 'Guardería', cantidad: cargosDiasEntre(r.fechaIngresoISO, r.fechaSalidaISO) }]
+      }
+    };
+
+    // Un examen/imagen con 3 pruebas son 3 cargos, no uno: es justo donde
+    // este flujo ahorra más transcripción.
+    function cargosConceptosDePruebas(record) {
+      return (record.pruebas || [])
+        .map(p => p.prueba)
+        .filter(Boolean)
+        .map(nombre => ({ concepto: nombre, cantidad: 1 }));
+    }
+
+    function cargosDiasEntre(desdeISO, hastaISO) {
+      if (!desdeISO || !hastaISO) return 1;
+      const dias = Math.round((new Date(hastaISO) - new Date(desdeISO)) / 86400000);
+      return dias > 0 ? dias : 1;
+    }
+
+    function cargosNormalizar(texto) {
+      return String(texto || '').toLowerCase().normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    }
+
+    // ¿Este módulo debe proponer cargos? Requiere el interruptor del módulo Y
+    // que Ventas esté habilitado: con Ventas apagado no hay cuenta del tutor
+    // a la que agregar nada.
+    function moduloProponeCargos(moduleKey) {
+      if (!ESTABLECIMIENTO_CONFIG || !ESTABLECIMIENTO_CONFIG.ventasHabilitar) return false;
+      const lista = ESTABLECIMIENTO_CONFIG.facturacionModulosVinculados || [];
+      return lista.indexOf(moduleKey) !== -1 && !!FACTURACION_MODULOS_CARGOS[moduleKey];
+    }
+
+    function cargosCatalogoActivo() {
+      return VENTAS_CATALOGO.filter(p => p.estado === 'activo');
+    }
+
+    // Match por nombre contra el catálogo: exacto normalizado y, si no,
+    // contención (el registro clínico dice "Triple felina" y el producto
+    // "Vacuna triple felina"). Nunca adivina más que eso — si no hay
+    // coincidencia clara la línea queda sin producto y con precio 0, visible
+    // en el modal, en vez de cobrar algo que no se sabe qué es.
+    function resolverProductoDeCargo(concepto) {
+      const q = cargosNormalizar(concepto);
+      if (!q) return null;
+      const activos = cargosCatalogoActivo();
+      const exacto = activos.find(p => cargosNormalizar(p.nombre) === q);
+      if (exacto) return exacto;
+      return activos.find(p => {
+        const n = cargosNormalizar(p.nombre);
+        return n && (n.includes(q) || q.includes(n));
+      }) || null;
+    }
+
+    let cargosAutoState = null; // { moduleKey, petKey, propietarioId, filas: [...] }
+
+    // Punto de entrada único de los 8 módulos. NO lanza nunca: el registro
+    // clínico ya se guardó cuando llega acá (mismo criterio que
+    // crearEventoSeguimiento/enviarSolicitudesDeOrden) y un fallo acá no
+    // puede leerse como "no se guardó la vacunación".
+    function proponerCargosDeModulo(moduleKey, petKey, record) {
+      try {
+        if (!moduloProponeCargos(moduleKey)) return;
+        const cfg = FACTURACION_MODULOS_CARGOS[moduleKey];
+        const conceptos = (cfg.conceptos(record, petKey) || [])
+          .filter(c => c && String(c.concepto || '').trim());
+        if (!conceptos.length) return;
+
+        const propietario = getPropietarioDeMascota(petKey);
+        if (!propietario) {
+          showToast('No se pudo proponer el cargo: la mascota no tiene un tutor vinculado');
+          return;
+        }
+        cargosAutoState = {
+          moduleKey, petKey, propietarioId: propietario.id,
+          filas: conceptos.map(c => {
+            const p = resolverProductoDeCargo(c.concepto);
+            return {
+              concepto: String(c.concepto).trim(),
+              cantidad: Math.max(1, Number(c.cantidad) || 1),
+              productoId: p ? p.id : null,
+              productoNombre: p ? p.nombre : '',
+              precio: p ? (Number(p.precio) || 0) : 0
+            };
+          })
+        };
+        renderCargosAutoModal();
+        document.getElementById('cargos-auto-modal').classList.add('show');
+      } catch (err) {
+        console.error('[IRIS] Error proponiendo los cargos del módulo:', err);
+      }
+    }
+
+    function cargosAutoTotal() {
+      if (!cargosAutoState) return 0;
+      return cargosAutoState.filas.reduce((s, f) =>
+        s + Math.round((Number(f.precio) || 0) * (Number(f.cantidad) || 0)), 0);
+    }
+
+    function renderCargosAutoModal() {
+      if (!cargosAutoState) return;
+      const { moduleKey, petKey, propietarioId, filas } = cargosAutoState;
+      const cfg = FACTURACION_MODULOS_CARGOS[moduleKey];
+      const data = patientData[petKey] || {};
+      const propietario = propietarios.find(p => p.id === propietarioId);
+      const clienteId = getVentasClienteIdDePropietario(propietarioId);
+      const cuenta = cuentaAbiertaDeCliente(clienteId);
+
+      document.getElementById('cargos-auto-modulo').textContent = cfg.label;
+      document.getElementById('cargos-auto-paciente').textContent =
+        `${data.name || 'Paciente'} · ${(propietario && propietario.nombre) || 'Tutor'}`;
+      document.getElementById('cargos-auto-cuenta').textContent = cuenta
+        ? `Se agregarán a la cuenta abierta ${cuenta.numero} (${formatCOP(cuenta.total)}).`
+        : 'Se abrirá una cuenta nueva para este tutor.';
+
+      const opciones = cargosCatalogoActivo().map(p => ({
+        value: p.nombre,
+        search: [p.sku, p.barcode, p.categoria].filter(Boolean).join(' ')
+      }));
+
+      document.getElementById('cargos-auto-filas').innerHTML = filas.map((f, i) => `
+        <div class="cargo-auto-row" data-cargo-row="${i}">
+          <div class="cargo-auto-concepto" title="${f.concepto}">${f.concepto}</div>
+          <div>${searchableSelectHTML(`cargo-prod-${i}`, opciones, f.productoNombre, 'Vincular del catálogo...', 'onCargoProductoElegido')}</div>
+          <input type="number" min="1" step="1" class="input-control" style="padding-left:10px;"
+                 value="${f.cantidad}" oninput="setCargoAutoCampo(${i}, 'cantidad', this.value)">
+          <input type="number" min="0" step="1" class="input-control" style="padding-left:10px;"
+                 value="${f.precio}" oninput="setCargoAutoCampo(${i}, 'precio', this.value)">
+          <div class="cargo-auto-total">${formatCOP(Math.round((Number(f.precio) || 0) * (Number(f.cantidad) || 0)))}</div>
+          <button type="button" class="med-block-remove" title="Quitar esta línea" onclick="quitarCargoAutoFila(${i})">
+            <i data-lucide="x" style="width:12px;height:12px;"></i>
+          </button>
+        </div>`).join('');
+
+      document.getElementById('cargos-auto-total').textContent = formatCOP(cargosAutoTotal());
+      const sinPrecio = filas.filter(f => !(Number(f.precio) > 0)).length;
+      const aviso = document.getElementById('cargos-auto-aviso');
+      aviso.style.display = sinPrecio ? '' : 'none';
+      aviso.textContent = sinPrecio
+        ? `${sinPrecio} línea${sinPrecio === 1 ? '' : 's'} sin precio: vincula el producto del catálogo o escribe el valor. Las líneas en $0 no se agregan.`
+        : '';
+      lucide.createIcons();
+    }
+
+    // Cuenta abierta del tutor = factura en estado Pendiente, que es lo que
+    // "Estado de cuenta" ya lista como cuenta abierta y lo que "Cerrar
+    // cuenta" cierra. No se inventa un contenedor nuevo de cargos.
+    function cuentaAbiertaDeCliente(clienteId) {
+      return VENTAS_FACTURAS.find(f => f.clienteId === clienteId && f.estado === 'Pendiente') || null;
+    }
+
+    // El uid llega como 2º argumento de selectSearchableOption: es lo que
+    // identifica la línea cuando hay un dropdown por cargo.
+    function onCargoProductoElegido(valor, uid) {
+      if (!cargosAutoState) return;
+      const cont = document.getElementById(uid);
+      const fila = cont && cont.closest('[data-cargo-row]');
+      if (!fila) return;
+      const i = Number(fila.getAttribute('data-cargo-row'));
+      const p = cargosCatalogoActivo().find(x => x.nombre === valor);
+      cargosAutoState.filas[i].productoId = p ? p.id : null;
+      cargosAutoState.filas[i].productoNombre = p ? p.nombre : '';
+      // Vincular un producto trae SU precio: es el motivo de vincularlo.
+      if (p) cargosAutoState.filas[i].precio = Number(p.precio) || 0;
+      renderCargosAutoModal();
+    }
+
+    // Cantidad y precio se escriben en el estado sin repintar: el input está
+    // dentro de la fila y un innerHTML por tecla le quitaría el foco (mismo
+    // criterio que actualizarContadoMetodoCierreCaja).
+    function setCargoAutoCampo(i, campo, valor) {
+      if (!cargosAutoState || !cargosAutoState.filas[i]) return;
+      cargosAutoState.filas[i][campo] = campo === 'cantidad'
+        ? Math.max(1, Number(valor) || 1)
+        : Math.max(0, Number(valor) || 0);
+      const fila = document.querySelector(`[data-cargo-row="${i}"]`);
+      if (fila) {
+        const f = cargosAutoState.filas[i];
+        fila.querySelector('.cargo-auto-total').textContent =
+          formatCOP(Math.round((Number(f.precio) || 0) * (Number(f.cantidad) || 0)));
+      }
+      document.getElementById('cargos-auto-total').textContent = formatCOP(cargosAutoTotal());
+    }
+
+    function quitarCargoAutoFila(i) {
+      if (!cargosAutoState) return;
+      cargosAutoState.filas.splice(i, 1);
+      if (!cargosAutoState.filas.length) { closeCargosAutoModal(); return; }
+      renderCargosAutoModal();
+    }
+
+    function closeCargosAutoModal() {
+      document.getElementById('cargos-auto-modal').classList.remove('show');
+      cargosAutoState = null;
+    }
+    function handleCargosAutoOverlayClick(e) {
+      if (e.target === document.getElementById('cargos-auto-modal')) closeCargosAutoModal();
+    }
+
+    // Convierte una línea de cargo en un ítem de documento de venta. NO se
+    // reutiliza buildDocItem() a propósito: ese toma el precio del catálogo y
+    // acá el precio es editable (un servicio puede cobrarse distinto, y una
+    // línea sin producto vinculado solo tiene el precio que se escribió). La
+    // FORMA del objeto sí es la misma que buildDocItem/buildManualItem, que
+    // es el contrato de `ventas_facturas.items`.
+    function cargoAutoAItemDocumento(fila) {
+      const p = fila.productoId ? VENTAS_CATALOGO.find(x => x.id === fila.productoId) : null;
+      const cantidad = Math.max(1, Number(fila.cantidad) || 1);
+      const precioUnitario = Math.max(0, Number(fila.precio) || 0);
+      return {
+        productoId: p ? p.id : null,
+        producto: p ? p.nombre : fila.concepto,
+        categoria: p ? p.categoria : null,
+        tipo: p ? p.tipo : null,
+        cantidad, precioUnitario,
+        costoUnitario: p ? (p.costo || 0) : 0,
+        descuentoPct: 0,
+        total: Math.round(precioUnitario * cantidad)
+      };
+    }
+
+    // Escritura BLOQUEANTE en Supabase antes de tocar VENTAS_FACTURAS, igual
+    // que guardarDocVenta(). Dos caminos: agregar los ítems a la cuenta
+    // abierta o abrir una nueva.
+    //
+    // Dos cosas que este camino deliberadamente NO hace, a diferencia de una
+    // factura escrita a mano:
+    //   · No chequea "Permitir sobre venta": el acto clínico ya ocurrió y
+    //     bloquear el cobro no des-aplica la vacuna — dejaría a la clínica sin
+    //     poder facturar algo que sí hizo.
+    //   · No aplica "Confirmación de entrega (picking)": lo que se cobra acá
+    //     ya se entregó/administró en la consulta, y marcarlo pendiente
+    //     dejaría entregas abiertas que nadie va a confirmar.
+    async function confirmarCargosAuto() {
+      if (!cargosAutoState) return;
+      const { propietarioId, filas } = cargosAutoState;
+      const conValor = filas.filter(f => Number(f.precio) > 0 && Number(f.cantidad) > 0);
+      if (!conValor.length) {
+        showToast('Ninguna línea tiene precio — vincula el producto o escribe el valor');
+        return;
+      }
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar el cargo');
+        return;
+      }
+      const clienteId = getVentasClienteIdDePropietario(propietarioId);
+      if (!clienteId) { showToast('No se pudo resolver el cliente del tutor'); return; }
+
+      const btn = document.getElementById('cargos-auto-confirmar-btn');
+      if (btn) btn.disabled = true;
+      try {
+        const nuevos = conValor.map(cargoAutoAItemDocumento);
+        const cuenta = cuentaAbiertaDeCliente(clienteId);
+        if (cuenta) {
+          const items = [...(cuenta.items || []), ...nuevos];
+          const total = sumItems(items);
+          const { error } = await window.supabase.from('ventas_facturas')
+            .update({ items, total, updated_at: new Date().toISOString() })
+            .eq('id', cuenta.id);
+          if (error) throw error;
+          cuenta.items = items;
+          cuenta.total = total;
+        } else {
+          const establecimientoId = currentSession.activeMembership.establecimientoId;
+          const { data: userData } = await window.supabase.auth.getUser();
+          const userId = userData && userData.user ? userData.user.id : null;
+          const numero = siguienteNumeroDocVenta('factura');
+          const total = sumItems(nuevos);
+          const fila = {
+            numero, cliente_id: clienteId, fecha: VENTAS_HOY, estado: 'Pendiente',
+            items: nuevos, total, observaciones: null
+          };
+          const { data: inserted, error } = await window.supabase.from('ventas_facturas')
+            .insert({ ...fila, establecimiento_id: establecimientoId, created_by: userId })
+            .select().single();
+          if (error) throw error;
+          VENTAS_FACTURAS.unshift({
+            id: inserted.id, numero, clienteId, fecha: VENTAS_HOY, estado: 'Pendiente',
+            items: nuevos, total, observaciones: '', pago: null
+          });
+        }
+        renderFacturasTable();
+        refreshFacturacionPropietarioTablesIfOpen();
+        renderVentasDashboard();
+        renderDashboard();
+        const cuantas = nuevos.length;
+        closeCargosAutoModal();
+        showToast(`${cuantas} cargo${cuantas === 1 ? '' : 's'} agregado${cuantas === 1 ? '' : 's'} a la cuenta del tutor`);
+      } catch (err) {
+        console.error('[IRIS] Error agregando los cargos a la cuenta:', err);
+        showToast('No se pudieron agregar los cargos — intenta de nuevo');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     }
 
     // ── MÓDULO: VENTAS — INGRESOS Y EGRESOS ──────────────────────
@@ -38657,6 +39045,44 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeOrdenModal()">Cerrar</button>
         <button class="btn-primary" id="orden-save-btn" onclick="guardarOrdenes()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Cargos propuestos por un módulo clínico vinculado a facturación -->
+  <div class="modal-overlay" id="cargos-auto-modal" onclick="handleCargosAutoOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:760px;max-width:94vw;">
+      <div class="modal-header">
+        <span class="modal-title">Cargos a la cuenta del tutor</span>
+        <button class="modal-close" onclick="closeCargosAutoModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-2);margin:0 0 4px;line-height:1.55;">
+        <strong id="cargos-auto-modulo" style="color:var(--text-1);">—</strong> ·
+        <span id="cargos-auto-paciente">—</span>
+      </p>
+      <p style="font-size:12px;color:var(--text-2);margin:0 0 16px;" id="cargos-auto-cuenta">—</p>
+
+      <div class="cargo-auto-head">
+        <div>Concepto del registro</div>
+        <div>Producto / servicio del catálogo</div>
+        <div>Cant.</div>
+        <div>Valor unitario</div>
+        <div style="text-align:right;">Total</div>
+        <div></div>
+      </div>
+      <div id="cargos-auto-filas" style="max-height:46vh;overflow-y:auto;"></div>
+
+      <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:14px;font-size:13px;">
+        <span style="color:var(--text-2);">Total a agregar</span>
+        <strong id="cargos-auto-total" style="font-size:15px;">$ 0</strong>
+      </div>
+      <div id="cargos-auto-aviso" style="display:none;margin-top:12px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.5;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.35);color:var(--text-1);"></div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+        <button class="btn-secondary" onclick="closeCargosAutoModal()">No cobrar</button>
+        <button class="btn-primary" id="cargos-auto-confirmar-btn" onclick="confirmarCargosAuto()">
+          <i data-lucide="plus" style="width:14px;height:14px;"></i> Agregar a la cuenta
+        </button>
       </div>
     </div>
   </div>

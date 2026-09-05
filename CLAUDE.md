@@ -1253,10 +1253,9 @@ Si tocás Ventas/Inventario, respetalos:
   salta allá. Las credenciales, resoluciones y dispositivos NO se duplican
   acá. `guardarVetConfigVentasInv()` sincroniza `#pos-habilitar-toggle` si
   esa pantalla ya está montada, para que las dos no muestren lo contrario.
-- **`facturacionModulosVinculados`** (jsonb, claves de módulo clínico) se
-  guarda y se lee, pero **todavía no dispara cargos automáticos** en la
-  cuenta del tutor: eso exige que cada módulo clínico proponga sus ítems
-  al guardar. Es el pendiente conocido de esta sección.
+- **`facturacionModulosVinculados`** (jsonb, claves de módulo clínico) ya
+  dispara los cargos automáticos — era el pendiente conocido de esta sección
+  y tiene su propio apartado más abajo ("Cargos automáticos").
 
 ## Envío de correos — un solo camino para toda la app
 Antes de esto, lo único que mandaba un correo real era la confirmación de
@@ -1542,6 +1541,86 @@ Tabla `pqrs` (migración `20260903_pqrs.sql`).
   `formulas_medicas`/`ventas_facturas`). No entra al `c_tablas` de
   `fusionar_mascotas`: no tiene `mascota_id`.
 
+## Cargos automáticos desde los módulos clínicos
+Cierra el pendiente de `facturacionModulosVinculados`: esa lista
+(Configuración de la veterinaria > Ventas e inventario) se guardaba y se
+leía pero no disparaba nada. Ahora, al REGISTRAR un registro de un módulo
+vinculado, ese módulo propone sus ítems en la cuenta abierta del tutor.
+Bloque "CARGOS AUTOMÁTICOS DESDE LOS MÓDULOS CLÍNICOS" de `index.html`,
+justo antes de Ingresos y Egresos. **Ninguna migración** — se escribe en
+`ventas_facturas`, que ya existía.
+
+- **PROPONE, no cobra solo, y esa decisión gobierna todo el bloque.** Un
+  cargo se arma de un texto clínico ("Triple felina") que hay que casar
+  contra el catálogo de Inventario para saber el precio. Cuando el match
+  falla, cobrar en automático significaría meterle a la cuenta del tutor
+  una línea en $0 que nadie revisó. Por eso el flujo es: resolver lo que se
+  pueda → `#cargos-auto-modal` con el resultado → quien atendió confirma o
+  descarta. **Las líneas en $0 no se agregan** y el modal lo avisa.
+- **Solo al CREAR, nunca al editar** — mismo criterio que las entradas de
+  `data.timeline` en Vacunaciones/Desparasitaciones. Los 8 enganches son
+  `if (!isEdit) proponerCargosDeModulo(...)` justo después del toast de
+  éxito de cada `guardarX()`. Reabrir un registro para corregir una nota no
+  puede volver a cobrarlo.
+- **`proponerCargosDeModulo()` nunca lanza.** El registro clínico ya se
+  guardó cuando se la llama (mismo criterio que `crearEventoSeguimiento()` y
+  `enviarSolicitudesDeOrden()`): un fallo acá no puede leerse como "no se
+  guardó la vacunación".
+- **`FACTURACION_MODULOS_CARGOS` es el mapa de qué propone cada módulo**
+  (`conceptos(record) → [{concepto, cantidad}]`). Un módulo nuevo se suma
+  ahí más su entrada en `CONFIG_MODULOS_FACTURABLES` y su enganche. Casos
+  que no son obvios:
+  - **Exámenes/Imágenes: una prueba = un cargo.** Un estudio con 3 pruebas
+    propone 3 líneas; es donde este flujo ahorra más transcripción. Los dos
+    módulos comparten `guardarExamen()`, así que el enganche elige la clave
+    por `record.tipo` (`'imagen'` → `imagenes`).
+  - **Hospitalización y Guardería se cobran por día**
+    (`cargosDiasEntre()`): si ya hay fecha de salida se propone esa
+    cantidad; si el paciente sigue internado se propone 1 y el modal deja
+    ajustarla. Proponer 0 días sería no proponer nada.
+  - **Consulta no tiene campo de catálogo**: el cargo es el acto en sí, así
+    que se propone el concepto genérico `'Consulta'` y el dropdown del modal
+    deja elegir cuál consulta del catálogo aplica.
+- **`resolverProductoDeCargo()` hace match por nombre normalizado** (sin
+  tildes, minúsculas): exacto y, si no, por contención en cualquier dirección
+  — el registro dice "Triple felina" y el producto se llama "Vacuna triple
+  felina". **No adivina más que eso**: sin coincidencia clara la línea queda
+  sin producto y en $0, visible en el modal.
+- **"Cuenta abierta del tutor" = una `VENTAS_FACTURAS` en estado
+  `Pendiente`** para ese `clienteId` (`cuentaAbiertaDeCliente()`). Es
+  exactamente lo que "Estado de cuenta" ya lista como cuenta abierta y lo que
+  "Cerrar cuenta" cierra — **no se inventó un contenedor nuevo de cargos**.
+  Si no hay ninguna, se abre una. El cliente sale de
+  `getVentasClienteIdDePropietario()`, que ya lo crea al vuelo si el tutor
+  todavía no tenía uno.
+- **`cargoAutoAItemDocumento()` no reutiliza `buildDocItem()`** a propósito:
+  ese toma el precio del catálogo y acá el precio es editable (un servicio
+  puede cobrarse distinto, y una línea sin producto vinculado solo tiene el
+  precio que se escribió). La FORMA del objeto sí es la misma, que es el
+  contrato de `ventas_facturas.items`.
+- **Dos cosas que este camino deliberadamente NO hace**, a diferencia de una
+  factura escrita a mano en Ventas:
+  - **No chequea "Permitir sobre venta".** El acto clínico ya ocurrió y
+    bloquear el cobro no des-aplica la vacuna: dejaría a la clínica sin poder
+    facturar algo que sí hizo.
+  - **No aplica "Confirmación de entrega (picking)".** Lo que se cobra acá ya
+    se entregó/administró en la consulta, y marcarlo pendiente dejaría
+    entregas abiertas que nadie va a confirmar.
+- **Sin gate de rol**: `ventas_facturas` tiene policies `_insert_member`/
+  `_update_member` (cualquier miembro escribe), y quien atendió es quien sabe
+  qué se hizo. Gatearlo a admin/ventas dejaría al médico guardando la vacuna
+  y sin poder cobrarla.
+- `selectSearchableOption()` ahora pasa el **uid como 2º argumento** al
+  callback de `data-onselect`. Hacía falta porque el modal tiene un dropdown
+  de catálogo por línea de cargo y el handler necesita saber cuál se tocó;
+  los dos handlers viejos (Agenda, plantillas de Documento) reciben un
+  argumento de más y lo ignoran.
+- Vincular un producto en el modal **trae su precio**: es el motivo de
+  vincularlo, y por eso sobreescribe un valor escrito a mano antes.
+- `setCargoAutoCampo()` **no repinta** la grilla: los inputs de cantidad y
+  precio viven en la fila y un `innerHTML` por tecla les quitaría el foco
+  (mismo criterio que `actualizarContadoMetodoCierreCaja`).
+
 ## Catálogo de Órdenes + categorías de producto (`catalogos_custom`)
 Migración `20260905_catalogo_ordenes_y_categorias.sql`. Dos listas de
 strings por establecimiento que vivían SOLO en memoria y se perdían al
@@ -1617,7 +1696,7 @@ sub-estructura, que es el criterio con el que esa tabla nació.
     renombrar las entradas propias del catálogo.
   - Lo que este vínculo **no** hace: la orden sigue guardando `detalle` como
     TEXTO, sin `producto_id`. Enlazarla al ítem sería el siguiente paso para
-    los cargos automáticos (ver el pendiente de `facturacionModulosVinculados`),
+    los cargos automáticos (ver "Cargos automáticos desde los módulos clínicos"),
     pero es otro cambio.
   - **Efecto colateral necesario: `productos` ya se lee PAGINADO** en
     `cargarDatosClinicaDesdeSupabase()` (vía `respaldoLeerTablaCompleta`, luego
