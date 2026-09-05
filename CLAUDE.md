@@ -1825,11 +1825,21 @@ nuevos: no entra en la Agenda personal de nadie
 `/api/agenda-notificar` no encola el correo del encargado porque
 `datosNotificacionEventoAgenda()` deja `encargadoEmail` en null (el del tutor y
 el de la clínica sí salen). Por eso el guard que abortaba el guardado sin
-encargado ya no existe. Dos consecuencias a tener presentes: un Médico
-Veterinario NO puede crear una cita "Sin definir" (su select sigue bloqueado a
-su propio nombre, regla anterior) y `puedeEditarEventoAgenda()` deja las citas
-sin encargado solo en manos del admin — un médico no puede tomarlas desde la
-Agenda todavía. Relacionado: la
+encargado ya no existe. Una consecuencia a tener presente: un Médico
+Veterinario NO puede CREAR una cita "Sin definir" — su select sigue bloqueado a
+su propio nombre al crear (regla anterior); sí puede TOMAR una existente, ver
+abajo.
+**Un médico puede TOMAR una cita "Sin definir"**: `puedeEditarEventoAgenda()`
+la trata como editable para cualquier médico (`encargadoId == null`), además de
+las suyas. Sin eso, una cita sin encargado —que el admin agenda justamente
+porque todavía no se sabe quién atiende— solo la podía tocar el admin, y el
+médico que se hacía cargo tenía que pedirle a otra persona que se la asignara.
+La toma NO es una acción aparte: es el flujo de edición de siempre (abrir el
+evento y ponerse en "Encargado / médico"). Ese mismo predicado habilita
+"Eliminar", y es deliberado — en cuanto el médico se asigna la cita ya podría
+borrarla igual, y un menú a medias (Editar sí, Eliminar no) confunde más de lo
+que protege. Lo que NO cambió: la cita de OTRO médico sigue siendo de solo
+lectura para él, y el Auxiliar sigue sin poder editar nada. Relacionado: la
 identidad del usuario logueado dentro de `USUARIOS_SISTEMA` sale de
 `getUsuarioActualSistema()` (flag `esUsuarioActual`, que pone
 `cargarUsuariosRealesDesdeSupabase()`), y `getCurrentSimUserId()` /

@@ -10799,13 +10799,18 @@
     }
 
     // ── MÓDULO: AGENDA (FullCalendar) — lógica ─────────────────────
-    // Privilegios: Administrador gestiona todo; Médico Veterinario solo
+    // Privilegios: Administrador gestiona todo; Médico Veterinario
     // crea/edita/elimina eventos donde encargadoId === getMedicoAgendaSimId()
-    // (ver su definición más abajo); Auxiliar es de solo
-    // lectura (ve el calendario, no puede crear/editar); Ventas no ve el
-    // tab (ver TAB_ROLE_RESTRICTIONS). El filtro "Todos los usuarios /
-    // médico" del toolbar es independiente de estos privilegios — solo
-    // acota qué eventos se pintan en el calendario.
+    // (ver su definición más abajo) **y también los que están "Sin definir"**,
+    // para poder TOMARLOS: una cita sin encargado la agenda el admin
+    // justamente porque todavía no se sabe quién atiende, y si solo el admin
+    // pudiera tocarla, el médico que se hace cargo tendría que pedirle a otra
+    // persona que se la asigne. La toma es el flujo normal de edición —
+    // abre el evento y se pone en "Encargado / médico" — no hay una acción
+    // aparte. Auxiliar es de solo lectura (ve el calendario, no puede
+    // crear/editar); Ventas no ve el tab (ver TAB_ROLE_RESTRICTIONS). El
+    // filtro "Todos los usuarios / médico" del toolbar es independiente de
+    // estos privilegios — solo acota qué eventos se pintan en el calendario.
     function puedeGestionarAgenda() {
       return currentSimRole === 'admin' || currentSimRole === 'medico';
     }
@@ -10823,7 +10828,14 @@
 
     function puedeEditarEventoAgenda(evento) {
       if (currentSimRole === 'admin') return true;
-      if (currentSimRole === 'medico') return evento.encargadoId === getMedicoAgendaSimId();
+      // Una cita "Sin definir" (encargadoId null) no es de nadie todavía, así
+      // que cualquier médico puede abrirla y tomarla. Ojo: este mismo
+      // predicado habilita "Eliminar" — es deliberado, porque en cuanto el
+      // médico se asigna la cita ya podría borrarla igual, y tener el menú a
+      // medias (Editar sí, Eliminar no) confundiría más de lo que protege.
+      if (currentSimRole === 'medico') {
+        return evento.encargadoId == null || evento.encargadoId === getMedicoAgendaSimId();
+      }
       return false;
     }
 
