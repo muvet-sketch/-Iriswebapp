@@ -1541,6 +1541,61 @@ Tabla `pqrs` (migración `20260903_pqrs.sql`).
   `formulas_medicas`/`ventas_facturas`). No entra al `c_tablas` de
   `fusionar_mascotas`: no tiene `mascota_id`.
 
+## Solicitud de orden — copiar al laboratorio + aviso al administrador
+Dos cosas que le faltaban al módulo de Órdenes, ambas en el mismo bloque
+"SOLICITUD DE ORDEN" de `index.html` (justo antes del módulo de Resultados).
+
+- **"Copiar solicitud"** — acción del menú "..." de cada fila de Órdenes
+  (`extraActions` de `renderOrdenesRowsHTML`, ver el patrón de acciones por
+  fila) → `abrirCopiarOrden()` → `#orden-copiar-modal`.
+  - **La plantilla es la que envían los laboratorios externos por WhatsApp**
+    (`ordenSolicitudFilas()`): rótulos, emojis y orden son los suyos, el texto
+    se pega tal cual en el chat. Cambiarlos o "normalizarlos" rompe lo que
+    ellos esperan leer.
+  - **La línea de forma de pago sale VACÍA a propósito** y por eso el modal es
+    un **textarea editable**, no un bloque de solo lectura: no es un dato de la
+    orden ni de la mascota. De paso, cualquier otro campo que falte se puede
+    completar ahí sin volver a abrir la orden.
+  - **Nada se persiste.** El texto es una VISTA del registro que ya existe
+    (paciente + tutor + orden + clínica); guardarlo armado lo dejaría
+    congelado si después se corrige la ficha del paciente. No hay columna
+    nueva y no hace falta migración.
+  - La acción se pinta en TODAS las órdenes, también en las completadas: el
+    formato se arma con datos del paciente, no con el estado de la orden.
+    Un registro que llega compartido por la Red IRIS igual pierde la acción,
+    porque `renderRowActionsMenu()` descarta las `extraActions` ahí.
+  - `ordenExamenTexto()` es lo único que decide qué va en "Examen a realizar":
+    el `detalle` del catálogo, o el rótulo del tipo cuando ese tipo de orden no
+    tiene catálogo (el detalle queda en `'—'`). Lo comparten el texto para
+    copiar, el asunto del correo y sus filas — no lo repitas.
+- **El interruptor "Generar solicitud" ya NO es visual.** Al guardar, manda la
+  solicitud por correo a los administradores de la clínica
+  (`enviarSolicitudesDeOrden()`), por el camino ÚNICO de correo de la app
+  (`enviarCorreoIris` → `/api/enviar-correo`, tipo `orden_solicitud` sumado a
+  `TIPOS_VALIDOS`) — no hay endpoint nuevo. La columna `ordenes.generar_solicitud`
+  ya existía; no hizo falta migración.
+  - **El correo sale FUERA del `try/catch` de guardado** de `guardarOrdenes()`
+    (se acumula en `solicitudesAEnviar` y se dispara después del `finally`).
+    Si saliera dentro, un fallo de correo caería en el `catch` y el usuario
+    leería "no se pudo guardar la orden" sobre una orden que sí se guardó.
+    Por lo mismo `enviarSolicitudesDeOrden()` nunca relanza y avisa con su
+    propio toast — mismo criterio que `crearEventoSeguimiento()`.
+  - **Al editar, el aviso sale solo cuando el interruptor PASA a marcado**
+    (`solicitudYaAvisada`). Sin esa guarda, corregir una nota de una orden que
+    ya lo tenía marcado le volvería a mandar el mismo correo al administrador
+    cada vez.
+  - **Destinatarios: los administradores ACTIVOS del roster**
+    (`destinatariosSolicitudOrden()` sobre `USUARIOS_SISTEMA`, que ya viene de
+    `cargarUsuariosRealesDesdeSupabase()`). Si ninguno tiene correo — clínica
+    recién creada — cae al `correo_contacto` del establecimiento. Si tampoco,
+    el toast lo dice explícitamente en vez de callar que nadie recibió nada
+    (el subsistema de correo falla en silencio, ver "Envío de correos").
+  - En el correo, `filas` lleva los datos de la ORDEN (para ubicarla) y
+    `cuerpo` la plantilla del laboratorio lista para copiar. No se repiten a
+    propósito: `layoutIris()` descarta las filas con valor vacío, así que la
+    forma de pago solo aparece —en blanco— en el bloque copiable, que es donde
+    tiene que completarse.
+
 ## Agenda > Tareas + "Tipo de tarea" (Tareas Pendientes)
 Quinta sub-vista de Agenda (`#agenda-view-tareas`,
 `renderAgendaTareasTable()`) más un campo nuevo en el módulo de Tareas

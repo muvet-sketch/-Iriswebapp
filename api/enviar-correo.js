@@ -27,7 +27,7 @@ const MAX_ADJUNTOS_BYTES = 8 * 1024 * 1024;
 
 const TIPOS_VALIDOS = new Set([
   'documento', 'mensaje_propietario', 'invitacion_usuario', 'link_registro',
-  'registro_propietario', 'factura', 'prueba', 'pqrs', 'generico'
+  'registro_propietario', 'factura', 'prueba', 'pqrs', 'orden_solicitud', 'generico'
 ]);
 
 // El buzón de soporte al que llegan las PQRS. El navegador NO decide este
