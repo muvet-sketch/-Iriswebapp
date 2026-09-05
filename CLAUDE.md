@@ -103,6 +103,24 @@ cierra el script") en vez del literal `</script>`.
   `CLINIC_THEMES`), que reescribe `--clinic-accent`/`-light`/`-rgb` en
   `documentElement` — por eso cualquier color derivado se escribe
   `rgba(var(--clinic-accent-rgb), α)` y nunca con el hex del tema.
+- Tipografía: **IBM Plex Sans en los títulos, Inter en el cuerpo**, las
+  dos AUTOALOJADAS en `/fonts` (`.woff2` variables, subconjuntos `latin`
+  y `latin-ext`, ~210 KB; ya no se pide nada a fonts.googleapis.com). Se
+  usan SIEMPRE vía `--font-body` / `--font-heading` — no escribas
+  `'Inter'` ni `'IBM Plex Sans'` sueltas en una regla, o el día que
+  cambie la tipografía la mitad del archivo se queda atrás. Los títulos
+  no declaran familia en su propia regla: se agregan a la lista de
+  selectores del bloque "TÍTULOS" (junto a `h1`–`h6`), que es el único
+  lugar que la fija — un módulo nuevo cuyo título sea un `<h2>` ya la
+  hereda, y si es un `<div>` hay que sumar su clase ahí. Quedan fuera a
+  propósito los rótulos de dato y los micro-labels de ≤12px: el
+  contraste entre las dos familias es lo que hace legible la jerarquía
+  cuando el título y el dato están pegados.
+  `registro.html` repite los `@font-face` y las dos variables (es
+  autocontenida a propósito, ver su sección) pero comparte los archivos
+  de `/fonts`, que está en la raíz igual que ella. Los correos NO usan
+  estas fuentes (`api/_lib/correo.js` sigue con la pila del sistema): un
+  cliente de correo no carga webfonts autoalojadas.
 - Botón "+ Registrar …" de la cabecera de cada módulo del Consultorio:
   es `.btn-outline` + su clase de rol (`module-create-btn` /
   `documentos-create-btn` / `seguimiento-create-btn` /

@@ -4,10 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>IRIS · Plataforma Clínica Veterinaria SaaS</title>
-  <!-- Google Fonts: Inter -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tipografía autoalojada: IBM Plex Sans (títulos) + Inter (cuerpo).
+       Los @font-face están en el <style> de abajo; acá solo se precargan
+       los dos subconjuntos `latin`, que son los que usa toda pantalla en
+       español. `crossorigin` es obligatorio aunque el archivo sea del
+       mismo origen: una fuente se pide en modo anónimo y sin el atributo
+       el preload no matchea la petición real (se baja dos veces). -->
+  <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/ibm-plex-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- FullCalendar (bundle global incluye su propio CSS-in-JS, sin link aparte) -->
@@ -41,6 +45,61 @@
   <!-- SheetJS/xlsx (lectura de .xlsx en el navegador para Inventario > Importar Excel) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
+    /* ------------------------------------------------------------------
+       TIPOGRAFÍA — IBM Plex Sans (títulos) + Inter (cuerpo), AUTOALOJADA.
+
+       Los .woff2 viven en /fonts: son las versiones VARIABLES (un solo
+       archivo por subconjunto cubre todo el rango de pesos) recortadas a
+       los subconjuntos `latin` y `latin-ext`, ~210 KB en total. Ya no se
+       cargan desde fonts.googleapis.com y es a propósito: esa hoja de
+       estilos es render-blocking contra un tercero, y el `unicode-range`
+       de abajo deja que el navegador ni siquiera baje `latin-ext` mientras
+       la pantalla no use ninguno de esos caracteres.
+
+       Los dos archivos `latin` van precargados en el <head>
+       (`rel="preload"`, con `crossorigin` — una fuente se pide en modo
+       anónimo aunque sea del mismo origen, y sin ese atributo el navegador
+       la baja DOS veces). Si se renombra un archivo de /fonts, hay que
+       cambiarlo también allá.
+
+       Los símbolos fuera de estos dos subconjuntos (los glifos de sexo
+       ♀/♂, los emojis de las plantillas) caen a la fuente del sistema —
+       igual que antes, porque Google servía exactamente los mismos
+       subconjuntos.
+       ------------------------------------------------------------------ */
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 300 700;
+      font-display: swap;
+      src: url('fonts/inter-latin.woff2') format('woff2');
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }
+    @font-face {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 300 700;
+      font-display: swap;
+      src: url('fonts/inter-latin-ext.woff2') format('woff2');
+      unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    }
+    @font-face {
+      font-family: 'IBM Plex Sans';
+      font-style: normal;
+      font-weight: 400 700;
+      font-display: swap;
+      src: url('fonts/ibm-plex-sans-latin.woff2') format('woff2');
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }
+    @font-face {
+      font-family: 'IBM Plex Sans';
+      font-style: normal;
+      font-weight: 400 700;
+      font-display: swap;
+      src: url('fonts/ibm-plex-sans-latin-ext.woff2') format('woff2');
+      unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+    }
+
     /* VARIABLES DE DISEÑO (SISTEMA DE COLOR CRÍTICO - STITCH) */
     :root {
       --clinic-accent: #0F766E;       /* Color primario clínico Stitch (Deep Teal) */
@@ -84,6 +143,13 @@
       --radius-full: 999px;
       
       --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+      /* Familias tipográficas (ver el bloque @font-face de arriba).
+         Nunca escribas 'Inter' ni 'IBM Plex Sans' sueltas en una regla:
+         usá estas dos variables, así cambiar de tipografía vuelve a ser
+         un solo lugar. */
+      --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-heading: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
     }
 
     /* Reset & Estilos Base */
@@ -94,7 +160,7 @@
     }
 
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font-body);
       background-color: var(--bg-app);
       color: var(--text-1);
       overflow: hidden;
@@ -109,6 +175,35 @@
       font-family: inherit;
       font-size: inherit;
       color: inherit;
+    }
+
+    /* TÍTULOS — IBM Plex Sans. Un módulo nuevo hereda esto con solo usar
+       h1–h6; si su título es un <div> (que es lo habitual en este
+       archivo), sumá su clase a esta lista en vez de declarar la familia
+       dentro de la regla del propio título — si cada módulo la repite,
+       la mitad se queda sin cambiar el día que la tipografía cambie.
+       Quedan FUERA a propósito los rótulos de dato y los micro-labels de
+       12px o menos (.pet-weight-chart-title, .tablero-hero-weight-title,
+       .tablero-quicknav-record-title, .card-subtitle, .page-subtitle…):
+       ahí el título y el dato están pegados y el contraste entre las dos
+       familias es justamente lo que hace legible la jerarquía. */
+    h1, h2, h3, h4, h5, h6,
+    .logo-text,
+    .modal-title,
+    .page-title,
+    .card-title,
+    .admin-pane-title,
+    .placeholder-title,
+    .pet-name-title,
+    .timeline-title,
+    .ventas-section-title,
+    .permisos-section-title,
+    .tablero-header-sub,
+    .tablero-card-title,
+    .tablero-quicknav-title,
+    .fc-toolbar-title,
+    #auth-shell .pending-title {
+      font-family: var(--font-heading);
     }
 
     /* HEADER (Fijo arriba, 64px) - ESTILO STITCH */
@@ -1120,7 +1215,7 @@
 
     .status-badge-vencido { background-color: rgba(220, 38, 38, 0.12); color: var(--danger); }
     #agenda-calendar { background-color: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-    #agenda-calendar .fc { font-family: 'Inter', sans-serif; font-size: 13px; }
+    #agenda-calendar .fc { font-family: var(--font-body); font-size: 13px; }
     #agenda-calendar .fc-toolbar-title { font-size: 16px; font-weight: 700; color: var(--text-1); }
     #agenda-calendar .fc-button-primary {
       background-color: var(--surface); border-color: var(--border); color: var(--text-1);
@@ -9335,13 +9430,15 @@
       consulta: 'Consulta', vacunacion: 'Vacunación', cirugia: 'Cirugía',
       desparasitacion: 'Desparasitación', control: 'Control',
       imagenes_diagnosticas: 'Imágenes diagnósticas', examenes_laboratorio: 'Exámenes de laboratorio',
-      revision: 'Revisión', consulta_especializada: 'Consulta especializada', otro: 'Otro'
+      revision: 'Revisión', consulta_especializada: 'Consulta especializada',
+      ambulatorio: 'Ambulatorio', otro: 'Otro'
     };
     const AGENDA_TIPO_COLORS = {
       consulta: '#0F766E', vacunacion: '#16A34A', cirugia: '#DC2626',
       desparasitacion: '#7C3AED', control: '#2563EB',
       imagenes_diagnosticas: '#0891B2', examenes_laboratorio: '#CA8A04',
-      revision: '#DB2777', consulta_especializada: '#4F46E5', otro: '#64748B'
+      revision: '#DB2777', consulta_especializada: '#4F46E5',
+      ambulatorio: '#0D9488', otro: '#64748B'
     };
     const AGENDA_ESTADOS_CITA = {
       programada: { label: 'Programada', badgeClass: 'status-badge-pendiente' },
@@ -21528,9 +21625,11 @@
 
     function ordenSolicitudTexto(petKey, orden) {
       // Línea en blanco entre campos: es como llega la plantilla del
-      // laboratorio y como se lee en WhatsApp.
+      // laboratorio y como se lee en WhatsApp. El último rótulo ya viene con
+      // signo de pregunta ("¿Forma de pago?"), así que no se le agregan los
+      // dos puntos — quedaría "¿Forma de pago?:".
       return ordenSolicitudFilas(petKey, orden)
-        .map(([etiqueta, valor]) => `${etiqueta}: ${valor}`)
+        .map(([etiqueta, valor]) => `${etiqueta.endsWith('?') ? etiqueta : etiqueta + ':'} ${valor}`)
         .join('\n\n');
     }
 
@@ -24863,7 +24962,7 @@
 
       const container = document.createElement('div');
       container.style.cssText = 'position:fixed;left:-9999px;top:0;width:480px;font-family:helvetica,arial,sans-serif;font-size:12px;color:#1e1e1e;';
-      container.innerHTML = `<h2 style="margin:0 0 12px;">${record.nombre.replace(/</g, '&lt;')}</h2>${record.contenido}${firmaBloqueHTML(record)}`;
+      container.innerHTML = `<h2 style="margin:0 0 12px;font-family:inherit;">${record.nombre.replace(/</g, '&lt;')}</h2>${record.contenido}${firmaBloqueHTML(record)}`;
       document.body.appendChild(container);
 
       try {
@@ -37902,7 +38001,10 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       <p style="font-size:13px;color:var(--text-2);line-height:1.5;margin-bottom:14px;">
         Formato que piden los laboratorios para procesar una muestra. El texto es editable: completa la forma de pago —y cualquier dato que falte— antes de copiarlo.
       </p>
-      <textarea id="orden-copiar-texto" class="soap-textarea" style="min-height:300px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;"></textarea>
+      <!-- Sin font-family monoespaciada: los emojis de la plantilla caen al
+           glifo monocromo de Consolas y se ven como símbolos grises, cuando
+           son justo lo que el laboratorio reconoce en el chat. -->
+      <textarea id="orden-copiar-texto" class="soap-textarea" style="min-height:300px;font-size:13px;line-height:1.7;"></textarea>
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
         <button class="btn-secondary" onclick="closeCopiarOrdenModal()">Cerrar</button>
         <button class="btn-primary" onclick="copiarSolicitudOrden()"><i data-lucide="copy" style="width:14px;height:14px;"></i> Copiar</button>
@@ -40510,6 +40612,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
               <option value="examenes_laboratorio">Exámenes de laboratorio</option>
               <option value="revision">Revisión</option>
               <option value="consulta_especializada">Consulta especializada</option>
+              <option value="ambulatorio">Ambulatorio</option>
               <option value="otro">Otro</option>
             </select>
           </div>
