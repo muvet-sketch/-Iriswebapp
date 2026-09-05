@@ -1580,6 +1580,54 @@ sub-estructura, que es el criterio con el que esa tabla nació.
     el "+ Crear nuevo" lo obligaría a pedirle a un administrador cualquier
     corrección de un nombre mal escrito. El gate es
     `puedeGestionarCatalogoOrdenes()` y NO `puedeEditarInventario()`.
+- **Conexión con Inventario, POR CATEGORÍA** (migración
+  `20260905b_orden_catalogo_categorias.sql`,
+  `establecimientos.orden_catalogo_categorias` jsonb). Muchos ítems de tipo
+  servicio SON lo que se elige en una orden ("Ecografía abdominal",
+  "Hemograma completo"), y con los dos catálogos separados había que
+  escribirlos dos veces.
+  - **El vínculo es por categoría y no ítem por ítem** porque la categoría ya
+    agrupa esos servicios: una categoría vinculada arrastra todos sus ítems,
+    incluidos los que se registren después. En producción hay 508 servicios en
+    una sola categoría — vincularlos de a uno sería el mismo trabajo manual
+    que esto elimina. Forma: `{ "<catalogKey>": ["Categoría", …] }`.
+  - **No se vincula nada por defecto** (`{}`): adivinar por el nombre qué
+    categoría es "de imágenes" acertaría en unas clínicas y en otras metería
+    alimentos en el dropdown de una orden.
+  - **`getCatalogoOrdenOpciones(catalogKey)` es la fuente única del dropdown**:
+    entradas propias + ítems de las categorías vinculadas, deduplicado por
+    nombre. **Las entradas propias ganan** — si alguien ya la escribió a mano,
+    ese es el texto que la clínica viene usando en sus órdenes. Devuelve el
+    formato `{ value, search }` de `searchableSelectHTML` para poder encontrar
+    un servicio por SKU o categoría: con cientos de ítems, buscar solo por
+    nombre no alcanza.
+  - **`itemsInventarioDeCatalogoOrden()` NO filtra por `tipo === 'servicio'`**
+    (hay clínicas que registran los exámenes como producto y el filtro real es
+    la categoría, que el usuario eligió a mano) pero **sí exige
+    `estado === 'activo'`**: un servicio dado de baja no debería poder
+    ordenarse.
+  - Los ítems del inventario **no se listan fila por fila** en la pantalla de
+    gestión, solo el conteo por categoría: con 508 ítems la pantalla dejaría de
+    ser legible. Y el conteo descuenta los que ya son entrada propia, o diría
+    que el grupo tiene más opciones de las que tiene.
+  - **Guardar el vínculo es solo para admin** (`puedeVincularCategoriasOrden()`):
+    la columna vive en `establecimientos` y `establecimientos_update_admin`
+    filtra al resto en silencio. Al médico se le muestra el vínculo como texto
+    en vez de controles que no van a funcionar — pero sigue pudiendo agregar y
+    renombrar las entradas propias del catálogo.
+  - Lo que este vínculo **no** hace: la orden sigue guardando `detalle` como
+    TEXTO, sin `producto_id`. Enlazarla al ítem sería el siguiente paso para
+    los cargos automáticos (ver el pendiente de `facturacionModulosVinculados`),
+    pero es otro cambio.
+  - **Efecto colateral necesario: `productos` ya se lee PAGINADO** en
+    `cargarDatosClinicaDesdeSupabase()` (vía `respaldoLeerTablaCompleta`, luego
+    reordenado en memoria por `created_at` desc). PostgREST cortaba en 1000
+    filas sin avisar y hay un establecimiento con 2025 productos: antes era
+    pérdida de vista acotada al listado de Inventario, pero desde que las
+    categorías vinculadas alimentan el dropdown de una orden, un servicio
+    faltante se lee como "ese examen no existe en el catálogo". Es el "hueco
+    conocido" de PostgREST que documenta la sección RESPALDOS, cerrado para
+    esta tabla.
 - **`VENTAS_CATEGORIAS`** (Inventario > Categorías) tampoco se guardaba, y
   ahí el daño no era solo perder la categoría nueva: **borraba datos en
   silencio**. Al recargar, la categoría real de un producto no estaba en la

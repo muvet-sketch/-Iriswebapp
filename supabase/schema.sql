@@ -1283,6 +1283,13 @@ alter table public.establecimientos add column if not exists recibos_notas text;
 alter table public.establecimientos add column if not exists inv_permitir_sobreventa boolean not null default false;
 alter table public.establecimientos add column if not exists inv_confirmacion_picking boolean not null default false;
 alter table public.establecimientos add column if not exists facturacion_modulos_vinculados jsonb not null default '[]'::jsonb;
+
+-- orden_catalogo_categorias: qué categorías de productos/servicios
+-- alimentan cada grupo del Catálogo de Órdenes —
+-- {"<catalogKey>": ["Categoría", ...]}. Evita reescribir en el catálogo de
+-- órdenes los servicios que ya están en Inventario. Ver
+-- 20260905b_orden_catalogo_categorias.sql y getCatalogoOrdenOpciones().
+alter table public.establecimientos add column if not exists orden_catalogo_categorias jsonb not null default '{}'::jsonb;
 -- Sala de espera — pantalla pública de recepción; los mostrar_* son de
 -- privacidad (tutor y profesional se leen desde la sala), no estéticos.
 alter table public.establecimientos add column if not exists sala_espera_habilitar boolean not null default false;

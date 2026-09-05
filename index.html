@@ -7789,8 +7789,10 @@
             </div>
             <p style="font-size:13px;color:var(--text-2);line-height:1.55;margin:0 0 18px;">
               Lo que se puede elegir en Consultorio &gt; Órdenes al seleccionar un tipo de orden.
-              Cada grupo corresponde a un tipo. También se puede crear una entrada sobre la marcha,
-              desde el mismo dropdown de la orden.
+              Cada grupo corresponde a un tipo, y se alimenta de dos fuentes: sus propias entradas
+              (la tabla de cada grupo, que también se puede llenar sobre la marcha desde el dropdown
+              de la orden) y los ítems de las categorías de Inventario que se vinculen — así un
+              servicio que ya está en Productos y servicios no hay que escribirlo dos veces.
             </p>
             <div id="catalogo-ordenes-grupos"></div>
           </div>
@@ -21217,6 +21219,75 @@
       return CATALOGO_PRODUCTOS_SERVICIOS[catalogKey] || [];
     }
 
+    // ── CONEXIÓN CON INVENTARIO (por categoría) ──────────────────
+    // Muchos servicios del inventario SON lo que se elige en una orden
+    // ("Ecografía abdominal", "Hemograma completo"). El vínculo es por
+    // CATEGORÍA y no ítem por ítem porque la categoría ya agrupa esos
+    // servicios: una categoría vinculada arrastra todos sus ítems,
+    // incluidos los que se registren después. En producción hay 508
+    // servicios en una sola categoría — vincularlos de a uno sería el
+    // mismo trabajo manual que esto viene a eliminar.
+    //
+    // El mapa vive en `establecimientos.orden_catalogo_categorias`
+    // (configuración de la clínica, ver "Configuración de la veterinaria").
+    function getCategoriasVinculadasOrden(catalogKey) {
+      const mapa = (ESTABLECIMIENTO_CONFIG && ESTABLECIMIENTO_CONFIG.ordenCatalogoCategorias) || {};
+      const v = mapa[catalogKey];
+      return Array.isArray(v) ? v.filter(Boolean) : [];
+    }
+
+    // Ítems del inventario que entran a este grupo. NO se filtra por
+    // `tipo === 'servicio'`: hay clínicas que registran los exámenes como
+    // producto, y el filtro real es la categoría, que el usuario eligió a
+    // mano — no hay inclusión accidental. Sí se exige `estado === 'activo'`:
+    // un servicio dado de baja no debería poder ordenarse.
+    function itemsInventarioDeCatalogoOrden(catalogKey) {
+      const cats = getCategoriasVinculadasOrden(catalogKey).map(c => c.toLowerCase());
+      if (!cats.length) return [];
+      return VENTAS_CATALOGO.filter(p =>
+        p.estado === 'activo' && p.categoria && cats.includes(String(p.categoria).toLowerCase()));
+    }
+
+    // Lo que ve el dropdown de la orden: entradas propias del catálogo +
+    // ítems de las categorías vinculadas, sin repetir un mismo nombre. Las
+    // entradas propias ganan: si alguien ya la escribió a mano, ese es el
+    // texto que la clínica viene usando en sus órdenes.
+    //
+    // Devuelve el formato { value, search } de searchableSelectHTML para que
+    // un servicio se pueda encontrar además por su SKU o su categoría — con
+    // cientos de ítems, buscar solo por nombre no alcanza.
+    function getCatalogoOrdenOpciones(catalogKey) {
+      const vistos = new Set();
+      const opciones = [];
+      getCatalogoOrden(catalogKey).forEach(valor => {
+        const k = valor.toLowerCase();
+        if (vistos.has(k)) return;
+        vistos.add(k);
+        opciones.push({ value: valor, search: '' });
+      });
+      itemsInventarioDeCatalogoOrden(catalogKey).forEach(p => {
+        const k = String(p.nombre || '').toLowerCase();
+        if (!k || vistos.has(k)) return;
+        vistos.add(k);
+        opciones.push({ value: p.nombre, search: [p.sku, p.barcode, p.categoria].filter(Boolean).join(' ') });
+      });
+      return opciones;
+    }
+
+    // Guarda el vínculo de un grupo. Un solo camino de escritura
+    // (persistirEstablecimientoConfig) y se manda el mapa COMPLETO porque la
+    // columna es un jsonb entero, no una fila por vínculo.
+    async function guardarVinculoCategoriasOrden(catalogKey) {
+      const seleccionadas = [...document.querySelectorAll(`[data-vinculo-cat="${catalogKey}"]:checked`)]
+        .map(el => el.value);
+      const mapa = { ...((ESTABLECIMIENTO_CONFIG && ESTABLECIMIENTO_CONFIG.ordenCatalogoCategorias) || {}) };
+      if (seleccionadas.length) mapa[catalogKey] = seleccionadas;
+      else delete mapa[catalogKey];
+      const ok = await persistirEstablecimientoConfig({ orden_catalogo_categorias: mapa },
+        'Categorías vinculadas actualizadas');
+      if (ok) renderCatalogoOrdenesTables();
+    }
+
     // Alta de una entrada del catálogo. Escritura BLOQUEANTE antes de
     // tocar el array en memoria (mismo criterio que el resto del
     // archivo): si el insert falla, la opción no aparece en pantalla en
@@ -21429,7 +21500,7 @@
     function renderOrdenDetalleWrapHTML(tipo, selectedDetalle) {
       const tipoDef = TIPOS_ORDEN.find(t => t.value === tipo);
       if (!tipoDef || !tipoDef.catalogKey) return '';
-      const options = getCatalogoOrden(tipoDef.catalogKey);
+      const options = getCatalogoOrdenOpciones(tipoDef.catalogKey);
       return `
         <div class="input-group">
           <label class="input-label">${tipoDef.label}</label>
@@ -26792,6 +26863,11 @@
         invPermitirSobreventa: false,
         invConfirmacionPicking: false,
         facturacionModulosVinculados: [],
+        // Categorías de Inventario que alimentan cada grupo del Catálogo de
+        // Órdenes: { "<catalogKey>": ["Categoría", ...] }. Vacío = ninguna
+        // vinculada (el catálogo de órdenes muestra solo sus propias
+        // entradas). Ver getCatalogoOrdenOpciones().
+        ordenCatalogoCategorias: {},
 
         // Sala de espera (pantalla pública de recepción)
         salaEsperaHabilitar: false,
@@ -26828,6 +26904,9 @@
       // manda el default de la app, no `false` (ventas_habilitar arranca en
       // true — apagarlo por accidente escondería el módulo de Ventas).
       const bool = (v, fallback) => (v === undefined || v === null) ? fallback : !!v;
+      // Mapa jsonb. Igual que `arr`, descarta cualquier otra cosa: una sesión
+      // abierta antes de la migración trae la columna en `undefined`.
+      const obj = v => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
       const horario = arr(estab.horario_atencion)
         .filter(b => b && Array.isArray(b.dias) && b.apertura && b.cierre)
         .map(b => ({ dias: b.dias.slice(), apertura: b.apertura, cierre: b.cierre }));
@@ -26880,6 +26959,7 @@
         invPermitirSobreventa: bool(estab.inv_permitir_sobreventa, d.invPermitirSobreventa),
         invConfirmacionPicking: bool(estab.inv_confirmacion_picking, d.invConfirmacionPicking),
         facturacionModulosVinculados: arr(estab.facturacion_modulos_vinculados),
+        ordenCatalogoCategorias: obj(estab.orden_catalogo_categorias),
 
         salaEsperaHabilitar: bool(estab.sala_espera_habilitar, d.salaEsperaHabilitar),
         salaEsperaTitulo: estab.sala_espera_titulo || '',
@@ -34613,10 +34693,20 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       return currentSimRole === 'admin' || currentSimRole === 'medico' || currentSimRole === 'ventas';
     }
 
+    // Solo un administrador puede guardar el vínculo: la columna vive en
+    // `establecimientos` y la policy establecimientos_update_admin filtra el
+    // resto en silencio (ver persistirEstablecimientoConfig). Para los demás
+    // roles el vínculo se muestra como texto, no como controles que no van a
+    // funcionar.
+    function puedeVincularCategoriasOrden() {
+      return currentSimRole === 'admin';
+    }
+
     function renderCatalogoOrdenesTables() {
       const cont = document.getElementById('catalogo-ordenes-grupos');
       if (!cont) return;
       const puedeEditar = puedeGestionarCatalogoOrdenes();
+      const puedeVincular = puedeVincularCategoriasOrden();
       cont.innerHTML = Object.keys(CATALOGO_ORDENES_DB_CATEGORIA).map(catalogKey => {
         const lista = getCatalogoOrden(catalogKey);
         const filas = lista.length
@@ -34627,9 +34717,51 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
                   ? renderRowActionsMenu('catalogo-orden', `${catalogKey}:${i}`, null, ['editar', 'eliminar'])
                   : ''}</td>
               </tr>`).join('')
-          : `<tr><td colspan="2" style="text-align:center;color:var(--text-2);">Todavía no hay entradas en este grupo</td></tr>`;
+          : `<tr><td colspan="2" style="text-align:center;color:var(--text-2);">Todavía no hay entradas propias en este grupo</td></tr>`;
+
+        const vinculadas = getCategoriasVinculadasOrden(catalogKey);
+        // Los que de verdad AGREGAN una opción: un ítem que se llama igual
+        // que una entrada propia ya está en la lista y contarlo aparte diría
+        // que el grupo tiene una opción más de las que tiene.
+        const propias = new Set(getCatalogoOrden(catalogKey).map(v => v.toLowerCase()));
+        const items = itemsInventarioDeCatalogoOrden(catalogKey)
+          .filter(p => !propias.has(String(p.nombre || '').toLowerCase()));
+        // Los ítems del inventario NO se listan fila por fila: una sola
+        // categoría vinculada puede traer cientos (en producción hay una con
+        // 508) y la pantalla dejaría de ser legible. Se muestra el conteo por
+        // categoría y se gestionan donde viven, en Productos y servicios.
+        const detalleVinculo = vinculadas.length
+          ? `<div style="font-size:12px;color:var(--text-2);line-height:1.6;">
+               Además, <strong style="color:var(--text-1);">${items.length}</strong>
+               ítem${items.length === 1 ? '' : 's'} de Inventario ${items.length === 1 ? 'aparece' : 'aparecen'}
+               en este grupo, por estar en ${vinculadas.length === 1 ? 'la categoría' : 'las categorías'}
+               ${vinculadas.map(c => `<strong style="color:var(--text-1);">${c}</strong> (${VENTAS_CATALOGO.filter(p => p.estado === 'activo' && String(p.categoria || '').toLowerCase() === c.toLowerCase()).length})`).join(', ')}.
+               Se editan en Productos y servicios.
+             </div>`
+          : `<div style="font-size:12px;color:var(--text-2);">Sin categorías de Inventario vinculadas.</div>`;
+
+        const selector = puedeVincular
+          ? `<details style="margin-top:8px;">
+               <summary style="font-size:12px;color:var(--clinic-accent);cursor:pointer;font-weight:600;">Vincular categorías de Inventario</summary>
+               <div style="margin-top:10px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:#FAFBFD;">
+                 ${VENTAS_CATEGORIAS.length
+                   ? `<div style="display:flex;flex-wrap:wrap;gap:10px 18px;">
+                        ${VENTAS_CATEGORIAS.map(c => `
+                          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer;">
+                            <input type="checkbox" data-vinculo-cat="${catalogKey}" value="${c}" ${vinculadas.some(v => v.toLowerCase() === c.toLowerCase()) ? 'checked' : ''}>
+                            ${c}
+                          </label>`).join('')}
+                      </div>
+                      <button type="button" class="btn-outline accent-create-btn" style="margin-top:12px;padding:7px 12px;font-size:12px;" onclick="guardarVinculoCategoriasOrden('${catalogKey}')">
+                        <i data-lucide="link" style="width:12px;height:12px;"></i> Guardar vínculo
+                      </button>`
+                   : `<div style="font-size:12px;color:var(--text-2);">Esta clínica todavía no tiene categorías de inventario.</div>`}
+               </div>
+             </details>`
+          : '';
+
         return `
-          <div style="margin-bottom:22px;">
+          <div style="margin-bottom:26px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
               <span style="font-size:13px;font-weight:600;color:var(--text-1);">${catalogoOrdenLabel(catalogKey)}</span>
               ${puedeEditar ? `<button type="button" class="btn-outline accent-create-btn" style="padding:7px 12px;font-size:12px;" onclick="openCatalogoOrdenModal('create', '${catalogKey}')">
@@ -34640,6 +34772,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
               <thead><tr><th>Nombre</th><th style="text-align:right;width:110px;">Acciones</th></tr></thead>
               <tbody>${filas}</tbody>
             </table>
+            <div style="margin-top:8px;">${detalleVinculo}${selector}</div>
           </div>
         `;
       }).join('');
@@ -36716,7 +36849,21 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           window.supabase.from('ventas_facturas').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('ventas_cotizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
           window.supabase.from('hospitalizaciones').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
-          window.supabase.from('productos').select('*').eq('establecimiento_id', establecimientoId).order('created_at', { ascending: false }),
+          // `productos` se lee PAGINADO y no con un select suelto: PostgREST
+          // corta en 1000 filas sin avisar, y en producción ya hay un
+          // establecimiento con 2025 productos. Antes era pérdida de vista
+          // acotada al listado de Inventario; desde que las categorías
+          // vinculadas alimentan el dropdown de una orden, un servicio
+          // faltante se lee como "ese examen no existe en el catálogo".
+          // Se ordena por `id` (estable, requisito de la paginación por
+          // rangos) y se reordena en memoria por created_at desc, que es el
+          // orden que espera el listado.
+          respaldoLeerTablaCompleta('productos', establecimientoId)
+            .then(filas => ({
+              data: filas.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))),
+              error: null
+            }))
+            .catch(error => ({ data: null, error })),
           window.supabase.from('movimientos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('arqueos').select('*').eq('establecimiento_id', establecimientoId).order('fecha', { ascending: false }),
           window.supabase.from('agenda_eventos').select('*').eq('establecimiento_id', establecimientoId).order('start_iso', { ascending: true }),
