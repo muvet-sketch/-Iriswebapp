@@ -2617,6 +2617,34 @@
     }
     .tablero-body > * { position: relative; }
 
+    /* Aviso de "esto se recuperó, no está guardado" cuando el Tablero repone
+       una consulta sin finalizar tras una recarga (ver
+       restaurarBorradorTablero()). Va dentro de .tablero-body y no del bloque
+       fijo a propósito: es informacion de una sola vez, no un control que
+       tenga que seguir a la vista todo el rato. */
+    .tablero-borrador-aviso {
+      display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
+      padding: 10px 14px; margin-bottom: 14px; border-radius: 10px;
+      border: 1px solid rgba(var(--clinic-accent-rgb), 0.35);
+      background: rgba(var(--clinic-accent-rgb), 0.08);
+      font-size: 12.5px; color: var(--text-1); line-height: 1.5;
+    }
+    .tablero-borrador-aviso i { width: 16px; height: 16px; color: var(--clinic-accent); flex-shrink: 0; margin-top: 1px; }
+    .tablero-borrador-aviso-texto { flex: 1; min-width: 220px; }
+    .tablero-borrador-aviso button { flex-shrink: 0; padding: 5px 10px; font-size: 11.5px; }
+
+    /* "Retomar consulta": solo se pinta si esta mascota tiene un borrador de
+       Tablero sin finalizar en este equipo (ver renderPetBorradorHint). */
+    .pet-borrador-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 9px; border-radius: 999px; cursor: pointer;
+      border: 1px solid rgba(var(--clinic-accent-rgb), 0.4);
+      background: rgba(var(--clinic-accent-rgb), 0.1);
+      color: var(--clinic-accent); font-size: 11.5px; font-weight: 600;
+      font-family: inherit;
+    }
+    .pet-borrador-chip:hover { background: rgba(var(--clinic-accent-rgb), 0.18); }
+
     /* ── Hero del paciente (glass card) ───────────────────────────── */
     /* Grid de áreas, no flex: es lo que deja mover la banda de contexto
        entre dos posiciones muy distintas (fila propia de ancho completo /
@@ -3299,6 +3327,29 @@
     }
     .audio-rec-manual summary { cursor: pointer; color: var(--clinic-accent); }
     .audio-rec-manual[open] summary { margin-bottom: 8px; }
+    /* Transcripciones que el equipo de la clínica ya devolvió para este
+       paciente. Es el rescate del caso real que originó esto: el borrador se
+       cargó en el Tablero, se recargó la página y se perdió — el pendiente de
+       localStorage ya se había olvidado al aplicarlo, pero la fila de
+       `consultas_audio` sigue intacta en la base. */
+    .audio-soip-recientes {
+      margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+    }
+    .audio-soip-recientes-title {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; color: var(--text-1); margin-bottom: 8px;
+    }
+    .audio-soip-reciente {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+      margin-bottom: 6px; font-size: 12px; color: var(--text-2);
+    }
+    .audio-soip-reciente strong { color: var(--text-1); font-weight: 600; }
+    .audio-soip-reciente-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .audio-soip-reciente-detalle {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 330px;
+    }
+    .audio-soip-reciente button { flex-shrink: 0; padding: 5px 10px; font-size: 11.5px; }
     /* Paso 2: esperando al PC de la oficina. */
     .audio-espera {
       display: flex; flex-direction: column; align-items: center; gap: 12px;
@@ -5980,6 +6031,10 @@
                      global). Antes tenía una fila propia debajo de peso/datos
                      generales (.pet-header-actions-row, ya eliminada). -->
                 <div class="pet-header-right-col">
+                  <!-- Slot opcional (mismo criterio que #pet-header-temperamento):
+                       lo rellena renderPetBorradorHint() desde mountPetGeneralCard()
+                       solo si esta mascota tiene una consulta sin finalizar. -->
+                  <div id="pet-header-borrador" style="display:none;"></div>
                   <div class="registrar-nuevo-wrap">
                     <button class="btn-primary" id="btn-nueva-consulta" onclick="event.stopPropagation(); togglePetHeaderNuevoMenu()">
                       <i data-lucide="plus" style="width: 14px; height: 14px;"></i> Nuevo <i data-lucide="chevron-down" style="width: 12px; height: 12px;"></i>
@@ -6742,6 +6797,11 @@
         </div>
 
         <div class="tablero-body">
+
+          <!-- Aviso de consulta recuperada tras una recarga. Lo pinta
+               renderTableroBorradorAviso(); vacío y oculto el resto del
+               tiempo. -->
+          <div class="tablero-borrador-aviso" id="tablero-borrador-aviso" style="display:none;"></div>
 
           <div class="tablero-grid">
 
@@ -12664,6 +12724,9 @@
       // Mismo criterio opcional: el Kardex no declara el contenedor.
       if (document.getElementById(`${containerId}-contactos-wrap`)) renderPetContactosSecundarios(petKey);
 
+      // Chip "Retomar consulta sin finalizar". Mismo criterio opcional.
+      renderPetBorradorHint(containerId, petKey);
+
       renderWeightChartSVG(`${containerId}-weight-chart`, data.pesoHistorico || []);
 
       lucide.createIcons();
@@ -13693,6 +13756,12 @@
       diagnosticosPresuntivosState[scope] = Array.isArray(list) ? [...list] : [];
       renderDiagPills(scope);
       renderDiagQuickSuggestions(scope);
+      // Los diagnósticos presuntivos viven en este objeto, no en un input:
+      // el listener delegado del borrador del Tablero (que escucha
+      // input/change) nunca los vería. Todo lo que los cambia pasa por acá.
+      if (scope === 'tablero' && typeof programarGuardadoBorradorTablero === 'function') {
+        programarGuardadoBorradorTablero();
+      }
     }
 
     function addDiagPresuntivo(scope, diagName) {
@@ -14340,6 +14409,15 @@
         renderHistoriaTimeline(data);
         if (selectedPetKey) renderConsultasTable(selectedPetKey);
         renderDashboard();
+        // La consulta ya quedó guardada: el borrador de pantalla cumplió su
+        // función. Va ANTES de cerrar el Tablero, porque al salir se hace un
+        // último guardado del borrador — con la bandera abajo, ese no hace
+        // nada y el borrador no revive.
+        if (idPrefix === 'tablero-soap-') {
+          tableroBorradorActivo = false;
+          clearTimeout(tableroBorradorTimer);
+          limpiarBorradorTablero(selectedPetKey);
+        }
         if (idPrefix === 'soap-') closeNuevaConsultaModal();
         if (idPrefix === 'tablero-soap-') cerrarTableroAConsultorio();
         switchSubTab(isEditing ? 'consultas' : 'historia');
@@ -14982,7 +15060,89 @@
         audioSoipMostrarPaso('grabar');
         renderAudioSoipGrabador();
       }
+      // Sin await: la lista es un rescate, no un requisito para grabar.
+      cargarTranscripcionesRecientes();
       lucide.createIcons();
+    }
+
+    // ── Transcripciones ya devueltas para este paciente ──────────────────
+    // Rescate del caso que motivó todo esto: se cargó el borrador del audio
+    // en el Tablero, se recargó la página y se perdió. El pendiente de
+    // localStorage ya no estaba (aplicarAudioSoip lo olvida al cargarlo),
+    // pero la fila de `consultas_audio` sigue intacta en la base con su
+    // `resultado` — nadie la borra al aplicarla, es un buzón de trabajo.
+    // Acá se listan las últimas y se pueden volver a previsualizar y cargar.
+    // No hizo falta ninguna migración: la policy `consultas_audio_select_member`
+    // ya deja leerlas a cualquier miembro de la clínica.
+    const AUDIO_SOIP_RECIENTES_LIMITE = 5;
+    let audioSoipRecientes = [];
+
+    async function cargarTranscripcionesRecientes() {
+      const cont = document.getElementById('audio-soip-recientes');
+      if (!cont) return;
+      audioSoipRecientes = [];
+      cont.style.display = 'none';
+      cont.innerHTML = '';
+      const petKey = selectedPetKey;
+      const data = patientData[petKey];
+      if (!window.supabase || !currentSession || !currentSession.activeMembership || !data || !data.mascotaId) return;
+
+      const { data: filas, error } = await window.supabase.from('consultas_audio')
+        .select('id, created_at, duracion_seg, resultado')
+        .eq('mascota_id', data.mascotaId)
+        .eq('estado', 'listo')
+        .order('created_at', { ascending: false })
+        .limit(AUDIO_SOIP_RECIENTES_LIMITE);
+      if (error) { console.error('[IRIS] cargarTranscripcionesRecientes', error); return; }
+      // La consulta es asíncrona: entre que salió y volvió el usuario pudo
+      // cerrar el modal o cambiar de paciente. Cargar acá la lista de otra
+      // mascota es el mismo error caro que ya cubre el guard de petKey de
+      // openAudioSoipModal().
+      if (petKey !== selectedPetKey) return;
+      audioSoipRecientes = (filas || []).filter(f => f.resultado && f.resultado.campos);
+      renderTranscripcionesRecientes();
+    }
+
+    function renderTranscripcionesRecientes() {
+      const cont = document.getElementById('audio-soip-recientes');
+      if (!cont) return;
+      if (!audioSoipRecientes.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+      cont.style.display = '';
+      cont.innerHTML = `
+        <div class="audio-soip-recientes-title">
+          <i data-lucide="history" style="width:14px;height:14px;"></i>
+          Transcripciones anteriores de este paciente
+        </div>
+        ${audioSoipRecientes.map((f, idx) => {
+          const c = (f.resultado && f.resultado.campos) || {};
+          const dur = f.duracion_seg ? audioSoipFormatTiempo(f.duracion_seg * 1000) : 'duración desconocida';
+          const detalle = `${dur} · ${c.motivo || 'sin motivo en el audio'}`;
+          return `
+            <div class="audio-soip-reciente">
+              <span class="audio-soip-reciente-meta">
+                <strong>${escapeHtml(formatFechaHoraCorta(f.created_at))}</strong>
+                <span class="audio-soip-reciente-detalle" title="${escapeHtml(detalle)}">${escapeHtml(detalle)}</span>
+              </span>
+              <button class="btn-secondary" onclick="verTranscripcionReciente(${idx})">
+                <i data-lucide="file-text" style="width:13px;height:13px;"></i> Ver y cargar
+              </button>
+            </div>`;
+        }).join('')}
+        <div class="audio-rec-hint" style="margin-top:2px;">
+          Quedan guardadas en la clínica aunque el borrador ya se haya cargado antes: si se recargó la
+          página y se perdió lo escrito, desde acá se vuelve a cargar.
+        </div>`;
+      lucide.createIcons();
+    }
+
+    // Pasa por la MISMA previsualización que el resultado recién llegado
+    // (mismatch de paciente, calidad del audio, aviso de sobrescritura): una
+    // transcripción vieja no se carga a ciegas sobre el formulario.
+    function verTranscripcionReciente(idx) {
+      const fila = audioSoipRecientes[idx];
+      if (!fila || !fila.resultado) return;
+      audioSoipPayload = fila.resultado;
+      renderAudioSoipPreview();
     }
 
     // Cerrar el modal NO detiene la grabación ni cancela la transcripción:
@@ -16080,7 +16240,18 @@
       // El borrador ya está en el formulario: el pendiente cumplió su
       // función y se olvida (si no, el botón seguiría diciendo "Borrador
       // listo" y volvería a ofrecer el mismo texto en la consulta siguiente).
+      // Olvidar el pendiente ya no pierde nada recuperable: la fila de
+      // `consultas_audio` sigue en la base con su `resultado`, y el modal la
+      // vuelve a ofrecer en "Transcripciones anteriores de este paciente"
+      // (ver cargarTranscripcionesRecientes) aunque se recargue la página.
       if (audioSoipPendiente && audioSoipPendiente.resultado === d) audioSoipOlvidarPendiente();
+
+      // Lo recién precargado se guarda como borrador del Tablero de una vez:
+      // buena parte de esto (motivo, vitales, examen por sistemas) se escribe
+      // por código y no dispara los eventos que escucha el guardado
+      // automático. Sin esta línea, recargar antes de tocar una tecla volvía
+      // a perder el borrador — que es justo el caso que se reportó.
+      guardarBorradorTablero();
 
       closeAudioSoipModal();
       let msg = 'Formulario precargado desde el audio — revísalo antes de finalizar';
@@ -16109,6 +16280,13 @@
       // fijado por una edición fallida/sin cerrar haría que guardarConsulta()
       // actualizara por error ese registro viejo en vez de crear uno nuevo.
       editingConsultaContext = null;
+
+      // El motor de borradores se apaga durante todo el reset: los campos que
+      // se vacían acá abajo disparan eventos y guardarían un borrador vacío
+      // encima del que hay que reponer. Se vuelve a encender al final, ya con
+      // restaurarBorradorTablero() aplicado.
+      tableroBorradorActivo = false;
+      clearTimeout(tableroBorradorTimer);
 
       setDiagSelected('tablero', []);
       document.getElementById('tablero-soap-fecha').value = getNowDatetimeLocalValue();
@@ -16156,19 +16334,308 @@
       // volvió, una grabación sin enviar): que su rótulo lo diga desde el
       // primer momento, no recién al abrir el modal.
       actualizarBotonAudioSoip();
+      // Va al final, con el formulario ya reseteado y montado: repone lo que
+      // haya quedado sin finalizar de este paciente (ver el bloque
+      // "BORRADOR DE LA CONSULTA EN CURSO"). Recién después se enciende el
+      // guardado automático.
+      restaurarBorradorTablero(selectedPetKey);
+      tableroBorradorActivo = true;
       lucide.createIcons();
     }
 
     function cerrarTableroAConsultorio() {
       detenerGrabacionAudioSoipAlSalir();
+      // Último guardado del borrador ANTES de apagar el motor: el guardado es
+      // con debounce y "Volver" a los 200 ms de la última tecla perdería esa
+      // frase. Si se llega acá desde una consulta ya finalizada,
+      // guardarConsulta() ya bajó la bandera y esto no hace nada.
+      clearTimeout(tableroBorradorTimer);
+      guardarBorradorTablero();
+      tableroBorradorActivo = false;
       document.getElementById('tablero-view').classList.remove('active');
       restaurarVistaPacienteConsultorio();
       // Si se finalizó una consulta acá dentro, "Motivo última consulta"
       // de la banda del Consultorio quedó viejo — se repinta al volver.
       const contextoEl = document.getElementById('pet-header-contexto');
       if (contextoEl && selectedPetKey) contextoEl.innerHTML = contextoHistoricoHTML(selectedPetKey);
+      // El chip "Retomar consulta" de la cabecera depende de si quedó
+      // borrador: salir con texto sin finalizar lo enciende, finalizar la
+      // consulta lo apaga.
+      renderPetBorradorHint('pet-header', selectedPetKey);
+      lucide.createIcons();
       tableroActiveModulo = null;
     }
+
+    // ── BORRADOR DE LA CONSULTA EN CURSO (Tablero) ───────────────────────
+    // El Tablero es una PANTALLA completa, no un `.modal-overlay`, así que el
+    // motor genérico de borradores de formulario (ver "PERSISTENCIA DE
+    // BORRADORES DE FORMULARIO", más abajo) NO lo cubre: ese solo observa
+    // modales. Caso real que lo motivó: una consulta con el SOIP ya
+    // precargado desde el audio se perdió entera al recargar la página, y con
+    // ella la transcripción — el pendiente de audio se olvida en cuanto se
+    // aplica (ver aplicarAudioSoip), así que no quedaba de dónde sacarla.
+    //
+    // Acá se guarda TODO lo que el Tablero captura —fecha, motivo, S/O/I/P,
+    // los 7 vitales con su interruptor de "No evaluado", el examen por
+    // sistemas y los diagnósticos presuntivos— en localStorage, por paciente,
+    // y se repone al volver a abrir el Tablero de esa mascota.
+    //
+    // Lo que este borrador NO es: no escribe nada en `consultas`. La consulta
+    // se sigue creando únicamente con "Finalizar consulta" — mismo criterio
+    // que el audio → SOIP, que también solo precarga. Un borrador de pantalla
+    // no es historia clínica.
+    const TABLERO_BORRADOR_PREFIJO = 'iris_tablero_borrador::';
+    // 24 h: cubre la consulta que quedó a medias y se retoma más tarde el
+    // mismo día o a primera hora del siguiente. Más allá de eso, reponer un
+    // SOIP viejo sobre un paciente que ya volvió confunde más de lo que ayuda
+    // (mismo criterio que AUDIO_SOIP_PENDIENTE_TTL_MS, con más margen porque
+    // acá lo escrito es del veterinario, no de una máquina).
+    const TABLERO_BORRADOR_TTL_MS = 24 * 60 * 60 * 1000;
+    let tableroBorradorTimer = null;
+    // Solo se guarda con el Tablero abierto de verdad. abrirTableroTrabajo()
+    // resetea los campos y monta la grilla de vitales, y esos cambios
+    // disparan eventos: sin esta bandera, el primer efecto de abrir el
+    // Tablero sería pisar con campos vacíos el borrador que hay que reponer.
+    let tableroBorradorActivo = false;
+
+    // La clave lleva el establecimiento además del petKey: localStorage es
+    // del navegador, no de la clínica, y un mismo equipo puede atender dos
+    // establecimientos con petKeys que se repiten.
+    function tableroBorradorKey(petKey) {
+      const est = (currentSession && currentSession.activeMembership)
+        ? currentSession.activeMembership.establecimientoId : 'sin-clinica';
+      return `${TABLERO_BORRADOR_PREFIJO}${est}::${petKey}`;
+    }
+
+    function tableroBorradorLeer(petKey) {
+      if (!petKey) return null;
+      let guardado = null;
+      try { guardado = JSON.parse(localStorage.getItem(tableroBorradorKey(petKey)) || 'null'); }
+      catch (e) { return null; }
+      if (!guardado || !guardado.savedAt) return null;
+      if (Date.now() - guardado.savedAt > TABLERO_BORRADOR_TTL_MS) {
+        limpiarBorradorTablero(petKey);
+        return null;
+      }
+      return guardado;
+    }
+
+    // Lee el Tablero tal como está en pantalla. Los interruptores de "No
+    // evaluado" se guardan porque son estado de PANTALLA que no viaja en
+    // ningún campo (ver toggleVitalNoEvaluado): sin ellos, al reponer el
+    // borrador los tiles volverían habilitados y habría que volver a
+    // marcarlos uno por uno. Sigue sin persistirse nada de eso en la
+    // consulta: un vital no evaluado se guarda null, como siempre.
+    function capturarBorradorTablero() {
+      const val = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+      const vitales = {};
+      SOAP_VITALES.forEach(v => {
+        const input = document.getElementById('tablero-soap-vital-' + v.id);
+        if (!input) return;
+        const ne = document.querySelector(`[data-vital-ne-for="tablero-soap-vital-${v.id}"]`);
+        vitales[v.id] = { valor: input.value, noEvaluado: !!(ne && ne.checked) };
+      });
+      const body = document.getElementById('tablero-soap-exam-body');
+      const examen = EXAM_SYSTEMS.map((sys, i) => {
+        const select = body ? body.querySelector(`[data-exam-select="${i}"]`) : null;
+        const detail = body ? body.querySelector(`[data-exam-detail="${i}"]`) : null;
+        return { estado: select ? select.value : 'No evaluado', detalle: detail ? detail.value : '' };
+      });
+      return {
+        fecha: val('tablero-soap-fecha'),
+        motivo: val('tablero-soap-motivo'),
+        s: val('tablero-soap-s'), o: val('tablero-soap-o'),
+        i: val('tablero-soap-i'), p: val('tablero-soap-p'),
+        vitales, examen,
+        diagnosticos: getDiagSelected('tablero')
+      };
+    }
+
+    // Fecha y motivo NO cuentan como contenido: abrirTableroTrabajo() los
+    // rellena solo (hora actual + "Consulta general"), así que un Tablero
+    // recién abierto y sin tocar los trae igual. Contarlos dejaría un
+    // borrador fantasma en cada paciente que se abrió y se cerró sin
+    // escribir una palabra, y el chip "Retomar consulta" encendido en todos.
+    function borradorTableroTieneContenido(b) {
+      if (!b) return false;
+      if (['s', 'o', 'i', 'p'].some(k => (b[k] || '').trim() !== '')) return true;
+      if ((b.diagnosticos || []).length) return true;
+      if (Object.values(b.vitales || {}).some(v => v && ((v.valor || '').trim() !== '' || v.noEvaluado))) return true;
+      if ((b.examen || []).some(e => e && e.estado && e.estado !== 'No evaluado')) return true;
+      return false;
+    }
+
+    function guardarBorradorTablero() {
+      if (!tableroBorradorActivo || !selectedPetKey) return;
+      const petKey = selectedPetKey;
+      const b = capturarBorradorTablero();
+      // Vaciar el formulario a mano también tiene que borrar el borrador: si
+      // no, "Empezar en blanco" borrando el texto a mano dejaría el borrador
+      // viejo listo para volver en la siguiente apertura.
+      if (!borradorTableroTieneContenido(b)) { limpiarBorradorTablero(petKey); return; }
+      b.petKey = petKey;
+      b.petName = (patientData[petKey] || {}).name || '';
+      b.savedAt = Date.now();
+      try { localStorage.setItem(tableroBorradorKey(petKey), JSON.stringify(b)); }
+      catch (e) { /* cuota / modo privado — el Tablero sigue funcionando igual */ }
+    }
+
+    function programarGuardadoBorradorTablero() {
+      clearTimeout(tableroBorradorTimer);
+      tableroBorradorTimer = setTimeout(guardarBorradorTablero, 500);
+    }
+
+    function limpiarBorradorTablero(petKey) {
+      if (!petKey) return;
+      try { localStorage.removeItem(tableroBorradorKey(petKey)); } catch (e) { /* noop */ }
+    }
+
+    // Repone el borrador sobre el Tablero YA reseteado por
+    // abrirTableroTrabajo(). Se llama con la vista montada (grilla de vitales
+    // pintada, examen por sistemas renderizado), porque escribe sobre esos
+    // nodos. Devuelve true si repuso algo.
+    function restaurarBorradorTablero(petKey) {
+      const b = tableroBorradorLeer(petKey);
+      if (!b || !borradorTableroTieneContenido(b)) { renderTableroBorradorAviso(null); return false; }
+
+      const fechaEl = document.getElementById('tablero-soap-fecha');
+      if (fechaEl && b.fecha) fechaEl.value = b.fecha;
+      // Motivo: solo si sigue siendo una opción real del select (mismo
+      // criterio que aplicarAudioSoip) — si la lista cambió, se deja el
+      // default en vez de dejar el select en blanco.
+      const motivoSel = document.getElementById('tablero-soap-motivo');
+      if (motivoSel && b.motivo && [...motivoSel.options].some(o => o.value === b.motivo)) {
+        motivoSel.value = b.motivo;
+      }
+
+      // S/O/I/P. Se dispara 'input' en vez de replicar la lógica del badge:
+      // el handler que marca .filled ya lo asignó abrirTableroTrabajo().
+      ['s', 'o', 'i', 'p'].forEach(k => {
+        const el = document.getElementById('tablero-soap-' + k);
+        if (!el) return;
+        el.value = b[k] || '';
+        el.dispatchEvent(new Event('input'));
+      });
+
+      SOAP_VITALES.forEach(v => {
+        const input = document.getElementById('tablero-soap-vital-' + v.id);
+        const guardado = (b.vitales || {})[v.id];
+        if (!input || !guardado) return;
+        // El interruptor va PRIMERO: toggleVitalNoEvaluado() vacía el input y
+        // lo deshabilita, así que aplicarlo después borraría el valor
+        // repuesto. Un vital no evaluado no tiene valor que reponer.
+        const ne = document.querySelector(`[data-vital-ne-for="tablero-soap-vital-${v.id}"]`);
+        if (guardado.noEvaluado && ne) { ne.checked = true; toggleVitalNoEvaluado(ne); return; }
+        input.value = guardado.valor || '';
+        syncVitalSliderDesdeInput(input);
+      });
+
+      const body = document.getElementById('tablero-soap-exam-body');
+      let algunSistema = false;
+      (b.examen || []).forEach((e, i) => {
+        const select = body ? body.querySelector(`[data-exam-select="${i}"]`) : null;
+        if (!select || !e || !e.estado || e.estado === 'No evaluado') return;
+        select.value = e.estado;
+        handleExamSelectChange('tablero-soap-exam-body', i);
+        const detail = body.querySelector(`[data-exam-detail="${i}"]`);
+        if (e.estado === 'Alterado' && detail) detail.value = e.detalle || '';
+        algunSistema = true;
+      });
+      if (algunSistema) {
+        document.getElementById('tablero-soap-exam-toggle').classList.add('expanded');
+        document.getElementById('tablero-soap-exam-body').classList.add('expanded');
+      }
+
+      if ((b.diagnosticos || []).length) {
+        setDiagSelected('tablero', b.diagnosticos);
+        // El badge de la I no lo enciende el 'input' del textarea cuando la
+        // interpretación viene solo de los diagnósticos (mismo caso que
+        // aplicarAudioSoip).
+        const step = document.querySelector('.tablero-step[data-tablero-step="i"]');
+        if (step) step.classList.add('filled');
+      }
+
+      renderTableroBorradorAviso(b);
+      showToast('Se recuperó la consulta sin finalizar de ' + ((patientData[petKey] || {}).name || 'este paciente'));
+      return true;
+    }
+
+    function renderTableroBorradorAviso(b) {
+      const cont = document.getElementById('tablero-borrador-aviso');
+      if (!cont) return;
+      if (!b) { cont.innerHTML = ''; cont.style.display = 'none'; return; }
+      const cuando = new Date(b.savedAt);
+      const hora = String(cuando.getHours()).padStart(2, '0') + ':' + String(cuando.getMinutes()).padStart(2, '0');
+      const esHoy = cuando.toDateString() === new Date().toDateString();
+      const cuandoTxt = esHoy ? `hoy a las ${hora}` : `el ${cuando.toLocaleDateString()} a las ${hora}`;
+      cont.style.display = '';
+      cont.innerHTML = `
+        <i data-lucide="history"></i>
+        <span class="tablero-borrador-aviso-texto">
+          Se recuperó lo que habías escrito <strong>${cuandoTxt}</strong> y no llegaste a finalizar.
+          Revísalo antes de guardar: nada de esto está todavía en la historia clínica.
+        </span>
+        <button class="btn-secondary" onclick="descartarBorradorTablero()">
+          <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Empezar en blanco
+        </button>`;
+      lucide.createIcons();
+    }
+
+    // "Empezar en blanco": borra el borrador y reabre el Tablero desde cero.
+    // Reusa abrirTableroTrabajo() en vez de repetir el reset campo por campo
+    // — es la misma limpieza y así no puede quedar desfasada cuando se
+    // agregue un campo nuevo al Tablero.
+    function descartarBorradorTablero() {
+      if (!selectedPetKey) return;
+      tableroBorradorActivo = false;
+      clearTimeout(tableroBorradorTimer);
+      limpiarBorradorTablero(selectedPetKey);
+      abrirTableroTrabajo();
+      showToast('Borrador descartado — el formulario quedó en blanco');
+    }
+
+    // Chip "Retomar consulta" de la cabecera del paciente. Slot OPCIONAL,
+    // mismo criterio que #pet-header-temperamento: solo se pinta si el
+    // contenedor declara el id, así el header del Kardex no se ve afectado.
+    // Sin esto, un borrador recuperable existiría pero nadie sabría que está
+    // ahí hasta volver a abrir el Tablero por casualidad.
+    function renderPetBorradorHint(containerId, petKey) {
+      const el = document.getElementById(`${containerId}-borrador`);
+      if (!el) return;
+      const b = petKey ? tableroBorradorLeer(petKey) : null;
+      const puede = ROLES[currentSimRole] && ROLES[currentSimRole].canNewConsult;
+      // display:none y no solo innerHTML vacío: el contenedor es un item de
+      // la columna flex de la cabecera y su `gap` dejaría un hueco visible
+      // sobre el botón "+ Nuevo" aunque no tenga contenido.
+      if (!b || !borradorTableroTieneContenido(b) || !puede) {
+        el.innerHTML = ''; el.style.display = 'none'; return;
+      }
+      el.style.display = '';
+      el.innerHTML = `<button class="pet-borrador-chip" onclick="abrirTableroTrabajo()"
+        title="Hay una consulta sin finalizar guardada en este equipo — se abre en el Tablero tal como la dejaste">
+        <i data-lucide="history" style="width:13px;height:13px;"></i> Retomar consulta sin finalizar</button>`;
+    }
+
+    // Un solo listener delegado en `document`, mismo criterio que el motor de
+    // borradores de modales: el HTML del Tablero se parsea DESPUÉS de este
+    // bloque, así que enganchar sobre #tablero-view acá no encontraría nada.
+    ['input', 'change'].forEach(evt => {
+      document.addEventListener(evt, e => {
+        if (!tableroBorradorActivo) return;
+        const el = e.target;
+        if (!el || !el.closest || !el.closest('#tablero-view')) return;
+        programarGuardadoBorradorTablero();
+      }, true);
+    });
+
+    // El guardado es con debounce de 500 ms: recargar (o cerrar) justo
+    // después de escribir perdería esa última frase, que es exactamente el
+    // caso del que este bloque tiene que proteger.
+    window.addEventListener('beforeunload', () => {
+      if (!tableroBorradorActivo) return;
+      clearTimeout(tableroBorradorTimer);
+      guardarBorradorTablero();
+    });
 
     // Contenido por defecto de "Navegación rápida" al abrir el Tablero, antes
     // de hacer click en cualquier módulo del nav izquierdo.
@@ -38232,6 +38699,10 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
                    style="padding:8px 12px;" onchange="onAudioSoipArchivo(this)">
             <div style="margin-top:6px;">Se lee en este equipo — no se envía a ningún servidor.</div>
           </details>
+          <!-- Transcripciones ya devueltas para este paciente: lo pinta
+               cargarTranscripcionesRecientes() al abrir el modal. Es la vía
+               para volver a cargar un borrador después de una recarga. -->
+          <div class="audio-soip-recientes" id="audio-soip-recientes" style="display:none;"></div>
         </div>
         <div id="audio-soip-paso-espera" style="display:none;">
           <div class="audio-espera">

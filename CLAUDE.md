@@ -740,6 +740,86 @@ del modal, para cuando el equipo de la oficina está apagado.
   todavía no existe. Respaldar la fila sin el audio (que se borra del
   bucket y vive en Drive) no permitiría reconstruir nada.
 
+## Borrador de la consulta en curso + rescate de transcripciones
+Falla real reportada: en la consulta de un paciente ya se había cargado el
+SOIP desde el audio, se recargó la página y **se perdió todo** — el
+formulario y la transcripción. Dos huecos distintos, cerrados con dos
+mecanismos distintos; hacen falta los dos.
+
+### 1. El Tablero guarda su borrador en `localStorage`
+Bloque "BORRADOR DE LA CONSULTA EN CURSO (Tablero)" en `index.html`, junto a
+`cerrarTableroAConsultorio()`.
+- **Por qué no lo cubría el motor genérico** de "PERSISTENCIA DE BORRADORES
+  DE FORMULARIO": ese observa `.modal-overlay` y su clase `show`, y el
+  Tablero es una **pantalla completa** (`#tablero-view`), no un modal. Un
+  módulo futuro que sea pantalla y no modal tiene el mismo problema.
+- Guarda TODO lo que el Tablero captura: fecha, motivo, S/O/I/P, los 7
+  vitales **con el estado del interruptor "No evaluado"**, el examen por
+  sistemas y los diagnósticos presuntivos. El interruptor se guarda porque
+  es estado de PANTALLA que no viaja en ningún campo (ver
+  `toggleVitalNoEvaluado`): sin él habría que volver a marcarlos a mano.
+  Sigue sin registrarse en ninguna parte, como pide el cliente — un vital
+  no evaluado se guarda `null` en `consultas` igual que antes.
+- **No escribe nada en `consultas`.** Es una copia de pantalla; la consulta
+  se sigue creando solo con "Finalizar consulta" — mismo criterio que el
+  audio → SOIP.
+- **`tableroBorradorActivo` es la guarda que no se puede quitar.**
+  `abrirTableroTrabajo()` vacía los campos y repinta la grilla de vitales, y
+  eso dispara eventos: sin bajar la bandera durante el reset, el primer
+  efecto de abrir el Tablero sería pisar con campos vacíos el borrador que
+  hay que reponer. Se vuelve a subir al final, ya con
+  `restaurarBorradorTablero()` aplicado.
+- **Fecha y motivo no cuentan como contenido** (`borradorTableroTieneContenido`):
+  `abrirTableroTrabajo()` los rellena solo, así que contarlos dejaría un
+  borrador fantasma —y el chip "Retomar consulta" encendido— en cada
+  paciente que se abrió y se cerró sin escribir una palabra.
+- Al reponer, el interruptor de "No evaluado" va **antes** que el valor:
+  `toggleVitalNoEvaluado()` vacía y deshabilita el input, así que aplicarlo
+  después borraría lo repuesto.
+- Los **diagnósticos presuntivos** viven en `diagnosticosPresuntivosState`,
+  no en un input: el listener delegado (que escucha `input`/`change`) nunca
+  los vería, por eso `setDiagSelected()` dispara el guardado cuando el scope
+  es `'tablero'`.
+- Se borra en **un solo lugar**: `guardarConsulta()` cuando la consulta se
+  guardó de verdad (baja la bandera ANTES de `cerrarTableroAConsultorio()`,
+  que hace un último guardado al salir), y "Empezar en blanco"
+  (`descartarBorradorTablero()`, que reusa `abrirTableroTrabajo()` en vez de
+  repetir el reset campo por campo). Salir con "Volver" **no** lo borra: ese
+  es justamente el caso que hay que sobrevivir.
+- TTL de 24 h, y `beforeunload` fuerza el guardado pendiente porque el
+  debounce es de 500 ms y recargar justo después de escribir perdería esa
+  última frase.
+- **Descubribilidad**: chip "Retomar consulta sin finalizar" en la cabecera
+  del paciente (`#pet-header-borrador`, slot OPCIONAL rellenado por
+  `renderPetBorradorHint()` desde `mountPetGeneralCard()`, mismo criterio
+  que `#pet-header-temperamento` — por eso el Kardex no se ve afectado). Se
+  oculta con `display:none` y no solo vaciando el `innerHTML`: es un item de
+  una columna flex con `gap` y dejaría un hueco sobre "+ Nuevo".
+
+### 2. Las transcripciones se vuelven a cargar desde la base
+`cargarTranscripcionesRecientes()` / `renderTranscripcionesRecientes()` /
+`verTranscripcionReciente()`, listadas en el paso "grabar" del modal de
+audio (`#audio-soip-recientes`).
+- **`aplicarAudioSoip()` sigue olvidando el pendiente de `localStorage`**, y
+  ahora eso no pierde nada: `consultas_audio` es un buzón que nadie borra al
+  aplicarlo, así que la fila sigue ahí con su `resultado`. Las últimas 5 de
+  ese paciente (`estado = 'listo'`) se listan y se vuelven a cargar.
+- **Sin migración**: la policy `consultas_audio_select_member` ya deja
+  leerlas a cualquier miembro de la clínica.
+- Cargar una pasa por la **misma** `renderAudioSoipPreview()` que el
+  resultado recién llegado — el guard de paciente mencionado, el aviso de
+  calidad del audio y el de sobrescritura siguen aplicando. No se carga
+  ninguna a ciegas sobre el formulario.
+- La consulta es asíncrona y compara `petKey` al volver: entre que sale y
+  vuelve, el usuario pudo cerrar el modal o cambiar de paciente, y listar
+  ahí la transcripción de otra mascota es el mismo error caro que ya cubre
+  el guard de `openAudioSoipModal()`.
+- `aplicarAudioSoip()` llama a `guardarBorradorTablero()` al terminar:
+  motivo, vitales y examen por sistemas se escriben por código y no
+  disparan los eventos que escucha el guardado automático, así que sin esa
+  línea recargar antes de tocar una tecla volvía a perder el borrador —
+  exactamente el caso reportado.
+
 ## Importar tutor + mascotas desde WhatsApp (botón del buscador)
 A los clientes nuevos se les envía por WhatsApp una plantilla pidiendo sus
 datos y los del "chiquitín". Este flujo convierte esa respuesta en campos y
