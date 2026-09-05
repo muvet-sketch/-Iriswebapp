@@ -2267,10 +2267,21 @@ alter table public.desparasitaciones add column if not exists vencimiento date;
 -- distingue a cuál de los 3 selects alimenta. El unique constraint
 -- evita duplicados si dos sesiones agregan el mismo valor a la vez —
 -- el frontend trata esa violación como "ya existe" en vez de error.
+-- `categoria` creció dos veces sin cambiar la forma de la tabla, que es
+-- justo para lo que se diseñó genérica: los 4 `orden_*` son las 4 listas
+-- del Catálogo de Órdenes (CATALOGO_PRODUCTOS_SERVICIOS en index.html, el
+-- dropdown de Consultorio > Órdenes) y `producto_categoria` es la lista de
+-- categorías de Inventario. Las dos vivían solo en memoria y se perdían al
+-- refrescar — ver la migración 20260905_catalogo_ordenes_y_categorias.sql,
+-- que además explica por qué eso borraba datos en silencio.
 create table if not exists public.catalogos_custom (
   id                  uuid primary key default gen_random_uuid(),
   establecimiento_id  uuid not null references public.establecimientos (id) on delete cascade,
-  categoria           text not null check (categoria in ('vacuna', 'desparasitacion', 'hospitalizacion')),
+  categoria           text not null check (categoria in (
+                        'vacuna', 'desparasitacion', 'hospitalizacion',
+                        'orden_consultas_especialidad', 'orden_imagenes_diagnosticas',
+                        'orden_cirugias_procedimientos', 'orden_pruebas_examenes',
+                        'producto_categoria')),
   valor               text not null,
   created_by          uuid references auth.users (id) on delete set null,
   created_at          timestamptz not null default now(),
@@ -2290,6 +2301,40 @@ drop policy if exists "catalogos_custom_insert_member" on public.catalogos_custo
 create policy "catalogos_custom_insert_member"
   on public.catalogos_custom for insert
   with check (public.user_is_member_of(establecimiento_id));
+
+-- UPDATE y DELETE solo para las 5 categorías que tienen pantalla de
+-- gestión (Inventario > Catálogo de órdenes y > Categorías). Vacunas/
+-- Desparasitaciones/Hospitalizaciones siguen siendo solo-agregar, como
+-- nacieron: ninguna pantalla las renombra ni las borra, y abrirles la
+-- superficie de paso no tendría motivo.
+drop policy if exists "catalogos_custom_update_member" on public.catalogos_custom;
+create policy "catalogos_custom_update_member"
+  on public.catalogos_custom for update
+  using (
+    public.user_is_member_of(establecimiento_id)
+    and categoria in (
+      'orden_consultas_especialidad', 'orden_imagenes_diagnosticas',
+      'orden_cirugias_procedimientos', 'orden_pruebas_examenes',
+      'producto_categoria')
+  )
+  with check (
+    public.user_is_member_of(establecimiento_id)
+    and categoria in (
+      'orden_consultas_especialidad', 'orden_imagenes_diagnosticas',
+      'orden_cirugias_procedimientos', 'orden_pruebas_examenes',
+      'producto_categoria')
+  );
+
+drop policy if exists "catalogos_custom_delete_member" on public.catalogos_custom;
+create policy "catalogos_custom_delete_member"
+  on public.catalogos_custom for delete
+  using (
+    public.user_is_member_of(establecimiento_id)
+    and categoria in (
+      'orden_consultas_especialidad', 'orden_imagenes_diagnosticas',
+      'orden_cirugias_procedimientos', 'orden_pruebas_examenes',
+      'producto_categoria')
+  );
 
 -- ============================================================
 -- RED IRIS — identidad compartida de propietarios/mascotas entre

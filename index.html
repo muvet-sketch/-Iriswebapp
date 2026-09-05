@@ -1001,6 +1001,17 @@
     }
     .ss-option:hover { background-color: rgba(var(--clinic-accent-rgb), 0.06); }
     .ss-option-empty { font-size: 12px; color: var(--text-2); padding: 8px; text-align: center; }
+    /* Fila "+ Crear nuevo …" al pie del dropdown buscable. Va SIEMPRE
+       visible (fuera de .ss-options, que es lo que filtra la búsqueda):
+       el caso que la justifica es justamente el catálogo vacío, donde no
+       hay ninguna opción sobre la que buscar. */
+    .ss-create-row {
+      flex-shrink: 0; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600;
+      color: var(--clinic-accent); cursor: pointer; border-radius: 6px; padding-left: 8px;
+      padding-right: 8px; padding-bottom: 6px; transition: var(--transition);
+    }
+    .ss-create-row:hover { background-color: rgba(var(--clinic-accent-rgb), 0.06); }
 
     /* Selector de Prioridad (dot + descripción) */
     .priority-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
@@ -7689,6 +7700,7 @@
         <div class="admin-subview-tabs">
           <button type="button" class="admin-subview-tab-btn active" data-inv-view="productos" onclick="switchInventarioView('productos')">Productos y servicios</button>
           <button type="button" class="admin-subview-tab-btn" data-inv-view="categorias" onclick="switchInventarioView('categorias')">Categorías</button>
+          <button type="button" class="admin-subview-tab-btn" data-inv-view="catalogo-ordenes" onclick="switchInventarioView('catalogo-ordenes')">Catálogo de órdenes</button>
           <button type="button" class="admin-subview-tab-btn" data-inv-view="salidas" onclick="switchInventarioView('salidas')">Salidas y reservas</button>
           <button type="button" class="admin-subview-tab-btn" data-inv-view="ordenes-compra" onclick="switchInventarioView('ordenes-compra')">Órdenes de compra</button>
           <button type="button" class="admin-subview-tab-btn" data-inv-view="compras" onclick="switchInventarioView('compras')">Compras</button>
@@ -7760,6 +7772,27 @@
               <thead><tr><th>Nombre</th><th>Productos/servicios asociados</th><th style="text-align:right;">Acciones</th></tr></thead>
               <tbody id="categorias-table-body"></tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Vista: Catálogo de órdenes -->
+        <!-- Alimenta el dropdown "Buscar y seleccionar..." de Consultorio >
+             Órdenes, NO la lista de precios: son dos catálogos distintos a
+             propósito (ver la nota de CATALOGO_PRODUCTOS_SERVICIOS). Vive en
+             Inventario porque es donde ya se gestionan los catálogos, y es la
+             unica sub-vista de este tab que el Médico Veterinario tambien ve
+             (ver applyInventarioRoleGating): es quien ordena los estudios. -->
+        <div class="admin-subview" id="inv-view-catalogo-ordenes">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title"><i data-lucide="clipboard-list" style="width: 16px; height: 16px; color: var(--clinic-accent);"></i> Catálogo de órdenes</span>
+            </div>
+            <p style="font-size:13px;color:var(--text-2);line-height:1.55;margin:0 0 18px;">
+              Lo que se puede elegir en Consultorio &gt; Órdenes al seleccionar un tipo de orden.
+              Cada grupo corresponde a un tipo. También se puede crear una entrada sobre la marcha,
+              desde el mismo dropdown de la orden.
+            </p>
+            <div id="catalogo-ordenes-grupos"></div>
           </div>
         </div>
 
@@ -17478,7 +17511,7 @@
       if (e.target === document.getElementById('delete-confirm-modal')) closeDeleteConfirmModal();
     }
 
-    function confirmDeleteRow() {
+    async function confirmDeleteRow() {
       if (!pendingDelete) return;
       const { moduleKey, recordId } = pendingDelete;
       document.getElementById('delete-confirm-modal').classList.remove('show');
@@ -17625,10 +17658,10 @@
         eliminarProductoReal(recordId);
       } else if (moduleKey === 'propietario') {
         eliminarPropietarioReal(recordId);
+      } else if (moduleKey === 'catalogo-orden') {
+        await eliminarCatalogoOrdenReal(recordId);
       } else if (moduleKey === 'categoria') {
-        const idx = VENTAS_CATEGORIAS.indexOf(recordId);
-        if (idx > -1) VENTAS_CATEGORIAS.splice(idx, 1);
-        renderCategoriasTable();
+        await eliminarCategoriaProductoReal(recordId);
       } else if (moduleKey === 'salida') {
         INVENTARIO_SALIDAS.splice(INVENTARIO_SALIDAS.findIndex(d => d.id === Number(recordId)), 1);
         renderSalidasTable();
@@ -21151,6 +21184,77 @@
       consultas_especialidad: []
     };
 
+    // Las 4 claves de arriba ya NO son mock: se cargan y se guardan en
+    // `catalogos_custom` (la misma tabla genérica de "+Registrar vacuna"),
+    // una `categoria` por clave. Antes vivían solo en memoria, arrancaban
+    // vacías y no existía NINGUNA forma de agregarles una entrada: al
+    // elegir "Prueba/Examen" el dropdown decía "Sin resultados" y ahí
+    // terminaba el flujo. Se reutilizó esa tabla en vez de crear cuatro
+    // más porque cada entrada es un string plano sin sub-estructura,
+    // exactamente el criterio con el que nació `catalogos_custom`.
+    //
+    // Este mapa es el contrato con la base y con la pantalla de gestión
+    // (Inventario > Catálogo de órdenes). Si se agrega un tipo de orden
+    // con catálogo propio: clave acá + valor en el `check` de
+    // `catalogos_custom.categoria` (migración) + entrada en TIPOS_ORDEN.
+    const CATALOGO_ORDENES_DB_CATEGORIA = {
+      consultas_especialidad: 'orden_consultas_especialidad',
+      imagenes_diagnosticas: 'orden_imagenes_diagnosticas',
+      cirugias_procedimientos: 'orden_cirugias_procedimientos',
+      pruebas_examenes: 'orden_pruebas_examenes'
+    };
+
+    // Rótulo de cada grupo para la pantalla de gestión. Sale de
+    // TIPOS_ORDEN para no escribir dos veces el mismo texto: el usuario
+    // tiene que reconocer ahí el mismo nombre que eligió en "Tipo de
+    // orden".
+    function catalogoOrdenLabel(catalogKey) {
+      const t = TIPOS_ORDEN.find(x => x.catalogKey === catalogKey);
+      return t ? t.label : catalogKey;
+    }
+
+    function getCatalogoOrden(catalogKey) {
+      return CATALOGO_PRODUCTOS_SERVICIOS[catalogKey] || [];
+    }
+
+    // Alta de una entrada del catálogo. Escritura BLOQUEANTE antes de
+    // tocar el array en memoria (mismo criterio que el resto del
+    // archivo): si el insert falla, la opción no aparece en pantalla en
+    // vez de aparecer y desaparecer en la próxima recarga.
+    //
+    // Devuelve `{ valor, nueva }` y no solo el string porque los dos
+    // llamadores necesitan cosas distintas del caso "ya existía": el
+    // dropdown de la orden quiere seleccionar la que ya está (es lo útil
+    // ahí), y la pantalla de gestión tiene que decir "ya existe" en vez de
+    // "entrada agregada". Devuelve null si no se pudo guardar.
+    async function crearEntradaCatalogoOrden(catalogKey, valorCrudo) {
+      const valor = String(valorCrudo || '').trim();
+      const dbCategoria = CATALOGO_ORDENES_DB_CATEGORIA[catalogKey];
+      if (!valor || !dbCategoria) return null;
+      const lista = getCatalogoOrden(catalogKey);
+      const yaEsta = lista.find(v => v.toLowerCase() === valor.toLowerCase());
+      if (yaEsta) return { valor: yaEsta, nueva: false };
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return null;
+      }
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const { error } = await window.supabase.from('catalogos_custom').insert({
+          establecimiento_id: currentSession.activeMembership.establecimientoId,
+          categoria: dbCategoria, valor, created_by: userId
+        });
+        if (error && error.code !== '23505') throw error; // 23505 = ya existe (otra sesión la agregó)
+        lista.push(valor);
+        return { valor, nueva: true };
+      } catch (err) {
+        console.error('[IRIS] Error guardando la entrada del catálogo de órdenes:', err);
+        showToast('No se pudo guardar — intenta de nuevo');
+        return null;
+      }
+    }
+
     const TIPOS_ORDEN = [
       { value: 'consulta', label: 'Consulta', catalogKey: 'consultas_especialidad' },
       { value: 'imagen', label: 'Imagen diagnóstica', catalogKey: 'imagenes_diagnosticas' },
@@ -21170,7 +21274,11 @@
 
     // Dropdown buscable genérico y reutilizable (usado en Órdenes y Documentos)
     // onSelectFnName (opcional): nombre de función global a invocar con el valor elegido
-    function searchableSelectHTML(fieldName, options, selectedValue, placeholder, onSelectFnName) {
+    // crearOpcion (opcional): { label, onclick } para la fila "+ Crear nuevo …"
+    //   del pie del panel. `onclick` recibe el uid ya interpolado, así que el
+    //   handler puede insertar la opción nueva y seleccionarla sin repintar el
+    //   formulario entero (ver crearOpcionCatalogoOrdenDesdeSelect).
+    function searchableSelectHTML(fieldName, options, selectedValue, placeholder, onSelectFnName, crearOpcion) {
       const uid = `ss-${ordenSsUidCounter++}`;
       const label = selectedValue || placeholder || 'Seleccionar...';
       // Cada opción puede ser un string plano (comportamiento original: se
@@ -21182,6 +21290,11 @@
       const optsHTML = norm.length
         ? norm.map(o => `<div class="ss-option" data-value="${o.value}" data-search="${(o.value + ' ' + (o.search || '')).toLowerCase()}" onclick="selectSearchableOption('${uid}', this)">${o.value}</div>`).join('')
         : `<div class="ss-option-empty">Sin resultados</div>`;
+      const crearHTML = crearOpcion
+        ? `<div class="ss-create-row" onclick="${crearOpcion.onclick.replace(/__UID__/g, uid)}">
+             <i data-lucide="plus" style="width:13px;height:13px;"></i> ${crearOpcion.label}
+           </div>`
+        : '';
       return `
         <div class="searchable-select" id="${uid}" ${onSelectFnName ? `data-onselect="${onSelectFnName}"` : ''}>
           <input type="hidden" data-ss-field="${fieldName}" value="${selectedValue || ''}">
@@ -21195,9 +21308,48 @@
               <input type="text" class="ss-search-input" placeholder="Buscar..." oninput="filterSearchableOptions('${uid}', this.value)">
             </div>
             <div class="ss-options">${optsHTML}</div>
+            ${crearHTML}
           </div>
         </div>
       `;
+    }
+
+    // Inserta una opción en un dropdown ya montado y la deja seleccionada.
+    // Se agrega el nodo en vez de repintar el contenedor porque repintarlo
+    // generaría un uid nuevo y perdería lo que el usuario ya escribió en el
+    // resto del bloque de orden.
+    function agregarYSeleccionarOpcionSS(uid, valor) {
+      const container = document.getElementById(uid);
+      if (!container) return;
+      const opciones = container.querySelector('.ss-options');
+      const vacio = opciones.querySelector('.ss-option-empty');
+      if (vacio) vacio.remove();
+      let opt = [...opciones.querySelectorAll('.ss-option')].find(o => o.getAttribute('data-value') === valor);
+      if (!opt) {
+        opt = document.createElement('div');
+        opt.className = 'ss-option';
+        opt.setAttribute('data-value', valor);
+        opt.setAttribute('data-search', valor.toLowerCase());
+        opt.setAttribute('onclick', `selectSearchableOption('${uid}', this)`);
+        opt.textContent = valor;
+        opciones.appendChild(opt);
+      }
+      selectSearchableOption(uid, opt);
+    }
+
+    // "+ Crear nuevo …" del dropdown de detalle de una orden. Es el atajo
+    // para el caso real (el catálogo está vacío justo cuando hace falta la
+    // entrada); la gestión completa vive en Inventario > Catálogo de órdenes.
+    async function crearOpcionCatalogoOrdenDesdeSelect(uid, catalogKey) {
+      const valor = prompt(`Nueva entrada para "${catalogoOrdenLabel(catalogKey)}":`);
+      if (valor === null) return;
+      const res = await crearEntradaCatalogoOrden(catalogKey, valor);
+      if (!res) return;
+      // Si ya existía se selecciona la que está, que es lo que el usuario
+      // quería: escribió el nombre porque no lo vio en la lista.
+      agregarYSeleccionarOpcionSS(uid, res.valor);
+      renderCatalogoOrdenesTables();
+      showToast(res.nueva ? 'Agregado al catálogo' : 'Ya estaba en el catálogo — seleccionado');
     }
 
     function toggleSearchableSelect(e, uid) {
@@ -21277,11 +21429,14 @@
     function renderOrdenDetalleWrapHTML(tipo, selectedDetalle) {
       const tipoDef = TIPOS_ORDEN.find(t => t.value === tipo);
       if (!tipoDef || !tipoDef.catalogKey) return '';
-      const options = CATALOGO_PRODUCTOS_SERVICIOS[tipoDef.catalogKey] || [];
+      const options = getCatalogoOrden(tipoDef.catalogKey);
       return `
         <div class="input-group">
           <label class="input-label">${tipoDef.label}</label>
-          ${searchableSelectHTML('detalle', options, selectedDetalle, 'Buscar y seleccionar...')}
+          ${searchableSelectHTML('detalle', options, selectedDetalle, 'Buscar y seleccionar...', null, {
+            label: 'Crear nuevo',
+            onclick: `crearOpcionCatalogoOrdenDesdeSelect('__UID__', '${tipoDef.catalogKey}')`
+          })}
         </div>
       `;
     }
@@ -33963,13 +34118,20 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
     function inventarioRowActions() {
       return puedeEditarInventario() ? ['ver', 'editar', 'eliminar'] : ['ver'];
     }
+    // El Médico Veterinario ve dos sub-vistas, no una: "Productos y
+    // servicios" (solo lectura, como antes) y "Catálogo de órdenes", que es
+    // suya — es quien ordena los estudios, y dejarle solo el "+ Crear nuevo"
+    // del dropdown lo obligaría a pedirle a un administrador cualquier
+    // corrección de un nombre mal escrito.
+    const INVENTARIO_VIEWS_MEDICO = ['productos', 'catalogo-ordenes'];
     function applyInventarioRoleGating() {
       const isMedico = currentSimRole === 'medico';
+      const visible = v => !isMedico || INVENTARIO_VIEWS_MEDICO.includes(v);
       document.querySelectorAll('#tab-inventario .admin-subview-tab-btn').forEach(btn => {
-        btn.style.display = (isMedico && btn.getAttribute('data-inv-view') !== 'productos') ? 'none' : '';
+        btn.style.display = visible(btn.getAttribute('data-inv-view')) ? '' : 'none';
       });
       const activeBtn = document.querySelector('#tab-inventario .admin-subview-tab-btn.active');
-      if (isMedico && activeBtn && activeBtn.getAttribute('data-inv-view') !== 'productos') {
+      if (activeBtn && !visible(activeBtn.getAttribute('data-inv-view'))) {
         switchInventarioView('productos');
       }
       document.querySelectorAll('#tab-inventario .inv-editor-only').forEach(el => {
@@ -33977,6 +34139,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       });
       renderProductosServiciosTable();
       renderCategoriasTable();
+      renderCatalogoOrdenesTables();
       renderSalidasTable();
       renderOrdenesCompraTable();
       renderComprasTable();
@@ -34074,10 +34237,91 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       const tasa = TASA_TRIBUTARIA[document.getElementById('prod-tributario-select').value] || 0;
       document.getElementById('prod-valor-total-input').value = Math.round(base * (1 + tasa));
     }
+    // Repuebla los dos selects CONSERVANDO lo que ya estuviera elegido. Sin
+    // eso, "+ Nueva categoría" (que llama acá para que la categoría nueva
+    // aparezca en la lista) reescribía también el select de proveedor y
+    // borraba el proveedor que el usuario ya había seleccionado.
     function poblarSelectsProductoModal() {
-      document.getElementById('prod-categoria-select').innerHTML = VENTAS_CATEGORIAS.map(c => `<option value="${c}">${c}</option>`).join('');
-      document.getElementById('prod-proveedor-select').innerHTML =
+      const catSel = document.getElementById('prod-categoria-select');
+      const provSel = document.getElementById('prod-proveedor-select');
+      const catPrevia = catSel.value;
+      const provPrevio = provSel.value;
+      // La opción vacía es explícita: una clínica nueva no tiene ninguna
+      // categoría y sin ella el select quedaba sin opciones, así que el
+      // producto se guardaba con categoria '' sin que nadie lo eligiera —
+      // que es como quedaron los productos sin categoría que ya hay en
+      // producción.
+      catSel.innerHTML = '<option value="">— Sin categoría —</option>' +
+        VENTAS_CATEGORIAS.map(c => `<option value="${c}">${c}</option>`).join('');
+      provSel.innerHTML =
         '<option value="">Sin proveedor asignado</option>' + VENTAS_PROVEEDORES.map(pr => `<option value="${pr.id}">${pr.nombre}</option>`).join('');
+      if (catPrevia) asegurarOpcionCategoriaProducto(catPrevia);
+      catSel.value = catPrevia;
+      provSel.value = provPrevio;
+    }
+
+    // Garantiza que el <select> tenga la opción de ESTA categoría, aunque no
+    // esté en VENTAS_CATEGORIAS. Es la red de seguridad del bug que ya causó
+    // pérdida de datos: si la categoría del producto no existía como opción,
+    // el select quedaba en selectedIndex = -1 (value '') y el siguiente
+    // "Guardar" escribía categoria = '' — borraba el dato en silencio, sin
+    // que el usuario hubiera tocado el campo.
+    function asegurarOpcionCategoriaProducto(categoria) {
+      if (!categoria) return;
+      const sel = document.getElementById('prod-categoria-select');
+      if (!sel || [...sel.options].some(o => o.value === categoria)) return;
+      const opt = document.createElement('option');
+      opt.value = categoria;
+      opt.textContent = categoria;
+      sel.appendChild(opt);
+    }
+
+    // Reconstruye VENTAS_CATEGORIAS como la unión de lo persistido en
+    // `catalogos_custom` con lo que ya traen los productos cargados. Ver la
+    // nota en cargarDatosClinicaDesdeSupabase: las dos mitades hacen falta.
+    function sincronizarCategoriasProducto(persistidas) {
+      const vistas = new Map();
+      const sumar = v => {
+        const val = String(v || '').trim();
+        if (val && !vistas.has(val.toLowerCase())) vistas.set(val.toLowerCase(), val);
+      };
+      (persistidas || []).forEach(sumar);
+      VENTAS_CATALOGO.forEach(p => sumar(p.categoria));
+      VENTAS_CATEGORIAS.length = 0;
+      VENTAS_CATEGORIAS.push(...[...vistas.values()].sort((a, b) => a.localeCompare(b, 'es')));
+      renderCategoriasTable();
+    }
+
+    // Alta de una categoría de producto. Igual que el catálogo de órdenes:
+    // escritura BLOQUEANTE antes de tocar el array, para que una categoría
+    // que se ve en pantalla exista de verdad en la próxima sesión.
+    async function crearCategoriaProducto(valorCrudo) {
+      const valor = String(valorCrudo || '').trim();
+      if (!valor) return null;
+      if (VENTAS_CATEGORIAS.some(c => c.toLowerCase() === valor.toLowerCase())) {
+        showToast('Esa categoría ya existe');
+        return VENTAS_CATEGORIAS.find(c => c.toLowerCase() === valor.toLowerCase());
+      }
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return null;
+      }
+      try {
+        const { data: userData } = await window.supabase.auth.getUser();
+        const userId = userData && userData.user ? userData.user.id : null;
+        const { error } = await window.supabase.from('catalogos_custom').insert({
+          establecimiento_id: currentSession.activeMembership.establecimientoId,
+          categoria: 'producto_categoria', valor, created_by: userId
+        });
+        if (error && error.code !== '23505') throw error; // 23505 = ya existe (otra sesión)
+        VENTAS_CATEGORIAS.push(valor);
+        VENTAS_CATEGORIAS.sort((a, b) => a.localeCompare(b, 'es'));
+        return valor;
+      } catch (err) {
+        console.error('[IRIS] Error guardando la categoría:', err);
+        showToast('No se pudo guardar la categoría — intenta de nuevo');
+        return null;
+      }
     }
     function openProductoModal(mode, id) {
       const isEdit = mode === 'edit';
@@ -34089,7 +34333,13 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       switchProductoModalTab('general');
       setProductoTipo(p ? p.tipo : 'producto');
       document.getElementById('prod-nombre-input').value = p ? p.nombre : '';
-      document.getElementById('prod-categoria-select').value = p ? p.categoria : (VENTAS_CATEGORIAS[0] || '');
+      // La categoría del producto se agrega como opción si no está en la
+      // lista (importaciones viejas de Excel, categorías borradas): sin esto
+      // el select quedaba vacío y guardar borraba la categoría. Un producto
+      // NUEVO arranca sin categoría elegida en vez de heredar la primera de
+      // la lista, que era una elección que nadie hizo.
+      if (p && p.categoria) asegurarOpcionCategoriaProducto(p.categoria);
+      document.getElementById('prod-categoria-select').value = p ? (p.categoria || '') : '';
       document.getElementById('prod-sku-input').value = p ? (p.sku || '') : '';
       document.getElementById('prod-barcode-input').value = p ? (p.barcode || '') : '';
       document.getElementById('prod-descripcion-input').value = p ? (p.descripcion || '') : '';
@@ -34118,14 +34368,17 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
     function handleProductoModalOverlayClick(e) {
       if (e.target === document.getElementById('producto-modal')) closeProductoModal();
     }
-    function agregarCategoriaInlineDesdeProducto() {
+    async function agregarCategoriaInlineDesdeProducto() {
       const nombre = prompt('Nombre de la nueva categoría:');
-      if (!nombre || !nombre.trim()) return;
-      const limpio = nombre.trim();
-      if (!VENTAS_CATEGORIAS.includes(limpio)) VENTAS_CATEGORIAS.push(limpio);
+      if (nombre === null) return;
+      const guardado = await crearCategoriaProducto(nombre);
+      if (!guardado) return;
+      // poblarSelectsProductoModal() ya conserva el proveedor elegido, así
+      // que acá solo hay que fijar la categoría nueva.
       poblarSelectsProductoModal();
-      document.getElementById('prod-categoria-select').value = limpio;
+      document.getElementById('prod-categoria-select').value = guardado;
       poblarFiltroCategoriasInventario();
+      renderCategoriasTable();
     }
     // Persiste de verdad en Supabase (tabla `productos`, mismo patrón que
     // guardarDocVenta() para ventas_facturas/ventas_cotizaciones) — antes
@@ -34258,22 +34511,253 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
     function handleCategoriaModalOverlayClick(e) {
       if (e.target === document.getElementById('categoria-modal')) closeCategoriaModal();
     }
-    function guardarCategoria() {
+    // Persiste de verdad en `catalogos_custom` (categoria
+    // 'producto_categoria'). Antes solo mutaba VENTAS_CATEGORIAS en memoria:
+    // la categoría creada desaparecía al recargar y un renombrado volvía al
+    // nombre viejo — con el agravante de que los productos ya reetiquetados
+    // en memoria quedaban apuntando a una categoría inexistente.
+    async function guardarCategoria() {
       const nombre = document.getElementById('categoria-nombre-input').value.trim();
       if (!nombre) { showToast('El nombre es obligatorio'); return; }
-      if (editingCategoriaOriginal) {
-        if (editingCategoriaOriginal !== nombre) {
-          const idx = VENTAS_CATEGORIAS.indexOf(editingCategoriaOriginal);
-          if (idx > -1) VENTAS_CATEGORIAS[idx] = nombre;
-          VENTAS_CATALOGO.forEach(p => { if (p.categoria === editingCategoriaOriginal) p.categoria = nombre; });
-        }
-      } else {
-        if (!VENTAS_CATEGORIAS.includes(nombre)) VENTAS_CATEGORIAS.push(nombre);
+      const original = editingCategoriaOriginal;
+      if (VENTAS_CATEGORIAS.some(c => c !== original && c.toLowerCase() === nombre.toLowerCase())) {
+        showToast('Ya existe una categoría con ese nombre');
+        return;
       }
-      renderCategoriasTable();
-      renderProductosServiciosTable();
-      closeCategoriaModal();
-      showToast(editingCategoriaOriginal ? 'Categoría actualizada' : 'Categoría creada');
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede guardar');
+        return;
+      }
+      const establecimientoId = currentSession.activeMembership.establecimientoId;
+      const btn = document.getElementById('categoria-save-btn');
+      if (btn) btn.disabled = true;
+      try {
+        if (original) {
+          if (original === nombre) { closeCategoriaModal(); return; }
+          const { data: filas, error } = await window.supabase.from('catalogos_custom')
+            .update({ valor: nombre })
+            .eq('establecimiento_id', establecimientoId)
+            .eq('categoria', 'producto_categoria')
+            .eq('valor', original)
+            .select('id');
+          if (error) throw error;
+          if (!filas || !filas.length) { showToast('No se pudo renombrar — no tienes permiso o la categoría ya no existe'); return; }
+          // Reetiquetar los productos es parte del renombrado y también tiene
+          // que persistir: si solo se hiciera en memoria, al recargar los
+          // productos volverían al nombre viejo, que ya no existe en la lista
+          // — justo la situación que vacía la categoría al editarlos.
+          const { error: prodErr } = await window.supabase.from('productos')
+            .update({ categoria: nombre })
+            .eq('establecimiento_id', establecimientoId)
+            .eq('categoria', original);
+          if (prodErr) throw prodErr;
+          const idx = VENTAS_CATEGORIAS.indexOf(original);
+          if (idx > -1) VENTAS_CATEGORIAS[idx] = nombre;
+          VENTAS_CATALOGO.forEach(p => { if (p.categoria === original) p.categoria = nombre; });
+        } else {
+          if (!(await crearCategoriaProducto(nombre))) return;
+        }
+        renderCategoriasTable();
+        renderProductosServiciosTable();
+        closeCategoriaModal();
+        showToast(original ? 'Categoría actualizada' : 'Categoría creada');
+      } catch (err) {
+        console.error('[IRIS] Error guardando la categoría:', err);
+        showToast('No se pudo guardar la categoría — intenta de nuevo');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // Eliminar una categoría EN USO se rechaza en vez de dejar los productos
+    // apuntando a un nombre que ya no está en ninguna lista: eso es
+    // exactamente lo que hacía que al editar esos productos se les vaciara la
+    // categoría. El contador de la tabla ya dice cuántos hay.
+    async function eliminarCategoriaProductoReal(nombre) {
+      const enUso = getCategoriaCount(nombre);
+      if (enUso) {
+        showToast(`No se puede eliminar: ${enUso} producto${enUso === 1 ? '' : 's'} usa${enUso === 1 ? '' : 'n'} esta categoría — reasígnalos o renómbrala`);
+        return;
+      }
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede eliminar');
+        return;
+      }
+      try {
+        const { error } = await window.supabase.from('catalogos_custom')
+          .delete()
+          .eq('establecimiento_id', currentSession.activeMembership.establecimientoId)
+          .eq('categoria', 'producto_categoria')
+          .eq('valor', nombre);
+        if (error) throw error;
+        const idx = VENTAS_CATEGORIAS.indexOf(nombre);
+        if (idx > -1) VENTAS_CATEGORIAS.splice(idx, 1);
+        renderCategoriasTable();
+        showToast('Categoría eliminada');
+      } catch (err) {
+        console.error('[IRIS] Error eliminando la categoría:', err);
+        showToast('No se pudo eliminar la categoría — intenta de nuevo');
+      }
+    }
+
+    // ── INVENTARIO — Catálogo de órdenes ────────────────────────
+    // Gestión de las 4 listas de CATALOGO_PRODUCTOS_SERVICIOS. Persisten en
+    // `catalogos_custom` (ver CATALOGO_ORDENES_DB_CATEGORIA); acá se
+    // renombran y se eliminan, que es lo que el "+ Crear nuevo" del dropdown
+    // de la orden no puede hacer.
+    //
+    // A diferencia del resto de Inventario, el gate NO es
+    // puedeEditarInventario(): el Médico Veterinario gestiona este catálogo
+    // (ver INVENTARIO_VIEWS_MEDICO). El Auxiliar no entra al tab.
+    function puedeGestionarCatalogoOrdenes() {
+      return currentSimRole === 'admin' || currentSimRole === 'medico' || currentSimRole === 'ventas';
+    }
+
+    function renderCatalogoOrdenesTables() {
+      const cont = document.getElementById('catalogo-ordenes-grupos');
+      if (!cont) return;
+      const puedeEditar = puedeGestionarCatalogoOrdenes();
+      cont.innerHTML = Object.keys(CATALOGO_ORDENES_DB_CATEGORIA).map(catalogKey => {
+        const lista = getCatalogoOrden(catalogKey);
+        const filas = lista.length
+          ? lista.map((valor, i) => `
+              <tr>
+                <td>${valor}</td>
+                <td style="text-align:right;">${puedeEditar
+                  ? renderRowActionsMenu('catalogo-orden', `${catalogKey}:${i}`, null, ['editar', 'eliminar'])
+                  : ''}</td>
+              </tr>`).join('')
+          : `<tr><td colspan="2" style="text-align:center;color:var(--text-2);">Todavía no hay entradas en este grupo</td></tr>`;
+        return `
+          <div style="margin-bottom:22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <span style="font-size:13px;font-weight:600;color:var(--text-1);">${catalogoOrdenLabel(catalogKey)}</span>
+              ${puedeEditar ? `<button type="button" class="btn-outline accent-create-btn" style="padding:7px 12px;font-size:12px;" onclick="openCatalogoOrdenModal('create', '${catalogKey}')">
+                <i data-lucide="plus" style="width:12px;height:12px;"></i> Agregar
+              </button>` : ''}
+            </div>
+            <table class="results-table">
+              <thead><tr><th>Nombre</th><th style="text-align:right;width:110px;">Acciones</th></tr></thead>
+              <tbody>${filas}</tbody>
+            </table>
+          </div>
+        `;
+      }).join('');
+      lucide.createIcons();
+    }
+
+    // Resuelve el `catalogKey:indice` de una fila. Por índice y no por valor
+    // porque el valor viaja dentro de un onclick entre comillas simples y un
+    // apóstrofo en el nombre ("Perfil pre-anestésico O'Brien") lo rompería.
+    function catalogoOrdenDeRecordId(recordId) {
+      const sep = String(recordId).lastIndexOf(':');
+      const catalogKey = String(recordId).slice(0, sep);
+      const idx = Number(String(recordId).slice(sep + 1));
+      const lista = getCatalogoOrden(catalogKey);
+      return { catalogKey, idx, valor: lista[idx] };
+    }
+
+    let editingCatalogoOrden = null; // { catalogKey, idx, valor } al renombrar
+    function openCatalogoOrdenModal(mode, catalogKeyORecordId) {
+      if (mode === 'edit') {
+        const ref = catalogoOrdenDeRecordId(catalogKeyORecordId);
+        if (ref.valor === undefined) return;
+        editingCatalogoOrden = ref;
+        document.getElementById('catalogo-orden-modal-title').textContent = 'Renombrar entrada';
+        document.getElementById('catalogo-orden-grupo').textContent = catalogoOrdenLabel(ref.catalogKey);
+        document.getElementById('catalogo-orden-nombre-input').value = ref.valor;
+      } else {
+        editingCatalogoOrden = { catalogKey: catalogKeyORecordId, idx: -1, valor: null };
+        document.getElementById('catalogo-orden-modal-title').textContent = 'Nueva entrada del catálogo';
+        document.getElementById('catalogo-orden-grupo').textContent = catalogoOrdenLabel(catalogKeyORecordId);
+        document.getElementById('catalogo-orden-nombre-input').value = '';
+      }
+      document.getElementById('catalogo-orden-modal').classList.add('show');
+      lucide.createIcons();
+    }
+    function closeCatalogoOrdenModal() {
+      document.getElementById('catalogo-orden-modal').classList.remove('show');
+      editingCatalogoOrden = null;
+    }
+    function handleCatalogoOrdenModalOverlayClick(e) {
+      if (e.target === document.getElementById('catalogo-orden-modal')) closeCatalogoOrdenModal();
+    }
+
+    // Renombrar NO toca las órdenes ya registradas, y es deliberado:
+    // `ordenes.detalle` guarda el texto que se eligió ese día (igual que
+    // `documentos.tipo` guarda el nombre del formato). Reescribirlo cambiaría
+    // lo que dice una orden ya emitida.
+    async function guardarCatalogoOrden() {
+      if (!editingCatalogoOrden) return;
+      const { catalogKey, idx, valor: original } = editingCatalogoOrden;
+      const nombre = document.getElementById('catalogo-orden-nombre-input').value.trim();
+      if (!nombre) { showToast('El nombre es obligatorio'); return; }
+
+      const btn = document.getElementById('catalogo-orden-save-btn');
+      if (btn) btn.disabled = true;
+      try {
+        if (original === null) {
+          const res = await crearEntradaCatalogoOrden(catalogKey, nombre);
+          if (!res) return;
+          if (!res.nueva) { showToast('Ya existe una entrada con ese nombre en este grupo'); return; }
+        } else {
+          if (nombre === original) { closeCatalogoOrdenModal(); return; }
+          const lista = getCatalogoOrden(catalogKey);
+          if (lista.some((v, i) => i !== idx && v.toLowerCase() === nombre.toLowerCase())) {
+            showToast('Ya existe una entrada con ese nombre en este grupo');
+            return;
+          }
+          if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+            showToast('No hay una clínica activa — no se puede guardar');
+            return;
+          }
+          // .select('id') para detectar el caso "0 filas": sin la policy de
+          // update la escritura se filtra en silencio (mismo criterio que
+          // persistirEstablecimientoConfig).
+          const { data: filas, error } = await window.supabase.from('catalogos_custom')
+            .update({ valor: nombre })
+            .eq('establecimiento_id', currentSession.activeMembership.establecimientoId)
+            .eq('categoria', CATALOGO_ORDENES_DB_CATEGORIA[catalogKey])
+            .eq('valor', original)
+            .select('id');
+          if (error) throw error;
+          if (!filas || !filas.length) { showToast('No se pudo renombrar — no tienes permiso o la entrada ya no existe'); return; }
+          lista[idx] = nombre;
+        }
+        renderCatalogoOrdenesTables();
+        closeCatalogoOrdenModal();
+        showToast(original === null ? 'Entrada agregada' : 'Entrada renombrada');
+      } catch (err) {
+        console.error('[IRIS] Error guardando la entrada del catálogo de órdenes:', err);
+        showToast('No se pudo guardar — intenta de nuevo');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function eliminarCatalogoOrdenReal(recordId) {
+      const { catalogKey, idx, valor } = catalogoOrdenDeRecordId(recordId);
+      if (valor === undefined) return;
+      if (!window.supabase || !currentSession || !currentSession.activeMembership) {
+        showToast('No hay una clínica activa — no se puede eliminar');
+        return;
+      }
+      try {
+        const { data: filas, error } = await window.supabase.from('catalogos_custom')
+          .delete()
+          .eq('establecimiento_id', currentSession.activeMembership.establecimientoId)
+          .eq('categoria', CATALOGO_ORDENES_DB_CATEGORIA[catalogKey])
+          .eq('valor', valor)
+          .select('id');
+        if (error) throw error;
+        if (!filas || !filas.length) { showToast('No se pudo eliminar — no tienes permiso o ya no existe'); return; }
+        getCatalogoOrden(catalogKey).splice(idx, 1);
+        renderCatalogoOrdenesTables();
+        showToast('Entrada eliminada del catálogo');
+      } catch (err) {
+        console.error('[IRIS] Error eliminando la entrada del catálogo de órdenes:', err);
+        showToast('No se pudo eliminar — intenta de nuevo');
+      }
     }
 
     // ── INVENTARIO — Salidas y reservas ──────────────────────────
@@ -34841,7 +35325,21 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
           inserted.forEach((r, i) => VENTAS_CATALOGO.push({ id: r.id, ...paraCrear[i] }));
         }
 
+        // Las categorías que trae el Excel también se persisten: son la vía
+        // por la que entraron a producción las categorías que no estaban en
+        // ninguna lista (`Vacunas`, `Arena`, …) y que por eso se vaciaban al
+        // editar el producto. Se hace sin await bloqueante y sin relanzar —
+        // la importación en sí ya terminó bien, y `sincronizarCategoriasProducto()`
+        // las deriva igual de los productos en la próxima carga.
         VENTAS_CATEGORIAS.push(...nuevasCategorias);
+        if (nuevasCategorias.length && window.supabase && currentSession && currentSession.activeMembership) {
+          window.supabase.from('catalogos_custom').insert(nuevasCategorias.map(valor => ({
+            establecimiento_id: currentSession.activeMembership.establecimientoId,
+            categoria: 'producto_categoria', valor
+          }))).then(({ error }) => {
+            if (error && error.code !== '23505') console.error('[IRIS] No se pudieron persistir las categorías importadas:', error);
+          });
+        }
         poblarFiltroCategoriasInventario();
         renderProductosServiciosTable();
         renderCategoriasTable();
@@ -35728,6 +36226,10 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
     VENTAS_FACTURAS.length = 0;
     VENTAS_COTIZACIONES.length = 0;
     VENTAS_CATALOGO.length = 0;
+    // Las 4 listas del Catálogo de Órdenes viven en `catalogos_custom` y se
+    // cargan en cargarDatosClinicaDesdeSupabase; acá se vacían para que no
+    // queden entradas de la clínica anterior visibles en el instante previo.
+    Object.keys(CATALOGO_PRODUCTOS_SERVICIOS).forEach(k => { CATALOGO_PRODUCTOS_SERVICIOS[k].length = 0; });
     VENTAS_MOVIMIENTOS.length = 0;
     VENTAS_ARQUEOS.length = 0;
     AGENDA_EVENTOS.length = 0;
@@ -36490,11 +36992,32 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       vacunasCatalogoCustom.length = 0;
       desparasitacionTiposCustom.length = 0;
       hospitalizacionTiposCustom.length = 0;
+      // Catálogo de Órdenes (4 grupos) y categorías de Inventario, que viven
+      // en la misma tabla con otra `categoria`. Se vacían acá y no en
+      // resetMockDataForClinic por el mismo motivo que los 3 de arriba: son
+      // datos reales de la clínica, no semilla.
+      Object.keys(CATALOGO_PRODUCTOS_SERVICIOS).forEach(k => { CATALOGO_PRODUCTOS_SERVICIOS[k].length = 0; });
+      const categoriasProductoPersistidas = [];
+      const CATALOGO_ORDENES_POR_DB = Object.fromEntries(
+        Object.entries(CATALOGO_ORDENES_DB_CATEGORIA).map(([k, v]) => [v, k]));
       catalogoRows.forEach(r => {
         if (r.categoria === 'vacuna') vacunasCatalogoCustom.push(r.valor);
         else if (r.categoria === 'desparasitacion') desparasitacionTiposCustom.push(r.valor);
         else if (r.categoria === 'hospitalizacion') hospitalizacionTiposCustom.push(r.valor);
+        else if (r.categoria === 'producto_categoria') categoriasProductoPersistidas.push(r.valor);
+        else if (CATALOGO_ORDENES_POR_DB[r.categoria]) {
+          CATALOGO_PRODUCTOS_SERVICIOS[CATALOGO_ORDENES_POR_DB[r.categoria]].push(r.valor);
+        }
       });
+      // La lista de categorías es la UNIÓN de lo persistido con lo que ya
+      // traen los productos cargados. Las dos mitades hacen falta: una
+      // categoría recién creada todavía no está en ningún producto, y las
+      // categorías que entraron por la importación de Excel están en
+      // `productos.categoria` y en ninguna lista. Sin la segunda mitad, el
+      // <select> del producto no tiene la opción de su propia categoría y el
+      // siguiente "Guardar" la borraba (ver la nota de sincronizarCategoriasProducto).
+      sincronizarCategoriasProducto(categoriasProductoPersistidas);
+      renderCatalogoOrdenesTables();
 
       // Registros de OTRAS clínicas que nos aprobaron por la Red IRIS. Va
       // al final a propósito: se mezclan sobre el patientData ya armado
@@ -37987,6 +38510,27 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       <div class="soap-modal-footer">
         <button class="btn-secondary" onclick="closeOrdenModal()">Cerrar</button>
         <button class="btn-primary" id="orden-save-btn" onclick="guardarOrdenes()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Nueva/renombrar entrada del Catálogo de órdenes -->
+  <div class="modal-overlay" id="catalogo-orden-modal" onclick="handleCatalogoOrdenModalOverlayClick(event)">
+    <div class="modal-card" onclick="event.stopPropagation()" style="width:440px;">
+      <div class="modal-header">
+        <span class="modal-title" id="catalogo-orden-modal-title">Nueva entrada del catálogo</span>
+        <button class="modal-close" onclick="closeCatalogoOrdenModal()"><i data-lucide="x" style="width:18px;height:18px;"></i></button>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-2);margin:0 0 14px;">
+        Grupo: <strong id="catalogo-orden-grupo" style="color:var(--text-1);">—</strong>
+      </p>
+      <div class="input-group">
+        <label class="input-label" for="catalogo-orden-nombre-input">Nombre</label>
+        <input type="text" id="catalogo-orden-nombre-input" class="input-control" style="padding-left:12px;" placeholder="Ej. Radiografía de tórax">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+        <button class="btn-secondary" onclick="closeCatalogoOrdenModal()">Cancelar</button>
+        <button class="btn-primary" id="catalogo-orden-save-btn" onclick="guardarCatalogoOrden()">Guardar</button>
       </div>
     </div>
   </div>
@@ -39777,7 +40321,7 @@ Quedamos atentos para servirlos y visitarlos proximamente 🐾💚
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn-secondary" onclick="closeCategoriaModal()">Cancelar</button>
-        <button class="btn-primary" onclick="guardarCategoria()">Guardar</button>
+        <button class="btn-primary" id="categoria-save-btn" onclick="guardarCategoria()">Guardar</button>
       </div>
     </div>
   </div>

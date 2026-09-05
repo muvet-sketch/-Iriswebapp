@@ -87,11 +87,12 @@ cierra el script") en vez del literal `</script>`.
 - `ROLES` (objeto JS): privilegios por defecto de Administrador/Médico
   Veterinario/Auxiliar/Ventas. El selector "Viendo como" simula rol activo.
 - `patientData`: datos mock por mascota (timeline, consultas, etc.)
-- `CATALOGO_PRODUCTOS_SERVICIOS`: catálogo mock usado SOLO por
-  Consultorio > Órdenes (detalle según tipo de orden) — no confundir con
-  el catálogo de Inventario/Ventas, que es `VENTAS_CATALOGO` (+
-  `VENTAS_CATEGORIAS`/`VENTAS_PROVEEDORES`), ya integrado entre ambos
-  módulos.
+- `CATALOGO_PRODUCTOS_SERVICIOS`: catálogo usado SOLO por Consultorio >
+  Órdenes (detalle según tipo de orden). **Ya no es mock** — persiste en
+  `catalogos_custom` y se gestiona en Inventario > Catálogo de órdenes,
+  ver su propia sección más abajo. No confundir con el catálogo de
+  Inventario/Ventas, que es `VENTAS_CATALOGO` (+ `VENTAS_CATEGORIAS`/
+  `VENTAS_PROVEEDORES`), ya integrado entre ambos módulos.
 - Menú de acciones "..." por fila (Ver/Editar/Imprimir/Email/Eliminar),
   ya implementado en Consultas — reutilizar en cada módulo nuevo.
 - `showToast(msg)`: función ya existente para notificaciones.
@@ -1540,6 +1541,86 @@ Tabla `pqrs` (migración `20260903_pqrs.sql`).
   `supabase/schema.sql` (a diferencia del hueco conocido de
   `formulas_medicas`/`ventas_facturas`). No entra al `c_tablas` de
   `fusionar_mascotas`: no tiene `mascota_id`.
+
+## Catálogo de Órdenes + categorías de producto (`catalogos_custom`)
+Migración `20260905_catalogo_ordenes_y_categorias.sql`. Dos listas de
+strings por establecimiento que vivían SOLO en memoria y se perdían al
+refrescar. Las dos entraron a `catalogos_custom` —la tabla genérica de
+"+Registrar vacuna"— con un valor propio de `categoria`, en vez de crear
+cinco tablas casi idénticas: cada entrada es un string plano sin
+sub-estructura, que es el criterio con el que esa tabla nació.
+
+- **`CATALOGO_PRODUCTOS_SERVICIOS`** (las 4 listas del dropdown "Buscar y
+  seleccionar…" de Consultorio > Órdenes) ya NO es mock. Arrancaba vacío,
+  no había forma de agregarle una entrada y no existía pantalla de
+  gestión: al elegir "Prueba/Examen" el dropdown decía "Sin resultados" y
+  el flujo terminaba ahí.
+  - **`CATALOGO_ORDENES_DB_CATEGORIA` es el contrato** clave local →
+    `catalogos_custom.categoria` (`orden_*`). Agregar un tipo de orden con
+    catálogo propio son 3 cosas: clave ahí, valor en el `check` de la
+    columna (migración nueva) y entrada en `TIPOS_ORDEN`.
+  - Los rótulos de los grupos salen de `TIPOS_ORDEN` vía
+    `catalogoOrdenLabel()`, no repetidos: el usuario tiene que reconocer
+    en la gestión el mismo nombre que eligió en "Tipo de orden".
+  - **Dos entradas al catálogo, una sola fuente.** `searchableSelectHTML()`
+    recibió un 6º parámetro `crearOpcion` ({label, onclick}) que pinta la
+    fila "+ Crear nuevo" al pie del panel — **fuera de `.ss-options`**, que
+    es lo que filtra la búsqueda: el caso que la justifica es el catálogo
+    vacío, donde no hay nada sobre lo que buscar. Ese atajo solo AGREGA;
+    renombrar y eliminar viven en Inventario > Catálogo de órdenes.
+  - `agregarYSeleccionarOpcionSS()` inserta el nodo de la opción nueva en
+    vez de repintar el contenedor: repintarlo generaría un `uid` nuevo y
+    perdería lo que el usuario ya escribió en el resto del bloque de orden.
+  - **Renombrar una entrada NO reescribe las órdenes ya registradas**, a
+    propósito: `ordenes.detalle` guarda el texto elegido ese día (mismo
+    criterio que `documentos.tipo` con el nombre del formato).
+  - **La gestión es la única sub-vista de Inventario que el Médico
+    Veterinario también ve** (`INVENTARIO_VIEWS_MEDICO`, antes el gating
+    dejaba solo `productos`): es quien ordena los estudios, y dejarle solo
+    el "+ Crear nuevo" lo obligaría a pedirle a un administrador cualquier
+    corrección de un nombre mal escrito. El gate es
+    `puedeGestionarCatalogoOrdenes()` y NO `puedeEditarInventario()`.
+- **`VENTAS_CATEGORIAS`** (Inventario > Categorías) tampoco se guardaba, y
+  ahí el daño no era solo perder la categoría nueva: **borraba datos en
+  silencio**. Al recargar, la categoría real de un producto no estaba en la
+  lista del `<select>`, así que el select quedaba en `selectedIndex = -1`
+  (value `''`) y el siguiente "Guardar" escribía `categoria = ''` sin que
+  nadie hubiera tocado el campo. En producción ya había 7 productos así.
+  Hay cuatro piezas y las cuatro hacen falta:
+  - **`sincronizarCategoriasProducto()`** arma la lista como la UNIÓN de lo
+    persistido con las categorías distintas de los productos ya cargados.
+    Las dos mitades: una categoría recién creada todavía no está en ningún
+    producto, y las que entraron por la importación de Excel están en
+    `productos.categoria` y en ninguna lista.
+  - **`asegurarOpcionCategoriaProducto()`** agrega al `<select>` la
+    categoría de ESE producto si falta. Es la red de seguridad del borrado
+    silencioso, para los casos que la unión no cubra.
+  - **`poblarSelectsProductoModal()` conserva lo ya elegido.** Repoblaba
+    los dos selects, así que "+ Nueva categoría" —que la llama para que la
+    categoría nueva aparezca— borraba el **proveedor** que el usuario ya
+    había seleccionado.
+  - **Renombrar persiste también `productos.categoria`** (update por
+    establecimiento). Antes solo se reetiquetaba en memoria: al recargar
+    los productos volvían al nombre viejo, que ya no existía en la lista —
+    exactamente la situación que les vaciaba la categoría al editarlos.
+  - **Eliminar una categoría EN USO se rechaza** (`getCategoriaCount`), en
+    vez de dejar productos apuntando a un nombre que no está en ninguna
+    lista. Es un cambio de comportamiento deliberado respecto del `splice`
+    en memoria que había antes.
+  - Un producto NUEVO arranca **sin categoría** (opción explícita "— Sin
+    categoría —") en vez de heredar la primera de la lista, que era una
+    elección que nadie hizo. Esa opción vacía además evita que en una
+    clínica sin categorías el select quede sin opciones.
+- La migración **hace backfill** de las categorías ya usadas
+  (`insert … select distinct from productos`). No es cosmético: sin eso la
+  lista seguiría llegando incompleta a las clínicas que ya tienen
+  inventario y editar esos productos volvería a vaciarles la categoría.
+- Las policies de UPDATE/DELETE nuevas están **acotadas a las 5 categorías
+  con pantalla de gestión**. Y usan `.select('id')` desde el navegador para
+  detectar el caso "0 filas": sin policy, PostgREST filtra la escritura en
+  silencio (mismo modo de falla que documenta `fusionar_mascotas` para
+  `mensajes`, y que `persistirEstablecimientoConfig`).
+- `catalogos_custom` ya estaba en `RESPALDO_TABLAS` — no hizo falta tocarla.
 
 ## Solicitud de orden — copiar al laboratorio + aviso al administrador
 Dos cosas que le faltaban al módulo de Órdenes, ambas en el mismo bloque
