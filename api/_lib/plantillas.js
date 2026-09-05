@@ -23,6 +23,15 @@ function esTutor(rol) {
   return rol === 'tutor';
 }
 
+// PRIVACIDAD ENTRE DESTINATARIOS — la regla que gobierna este bloque.
+// Del mismo evento salen hasta tres correos (tutor, encargado, clínica) y cada
+// uno es un envío INDEPENDIENTE (una fila de `correos` por destinatario, sin
+// CC). Ninguno puede mostrarle a quien lo recibe el correo electrónico del
+// otro: el tutor no ve el del médico y el médico no ve el del tutor. El único
+// correo que los dos sí ven es el de la CLÍNICA, que es el canal por el que
+// tienen que comunicarse (va en el pie del layout, en el reply-to y como
+// ORGANIZER del .ics).
+//
 // Ojo con dos etiquetas que ya causaron confusión:
 //   · "Responsable" NO es el tutor. Es quién agendó la cita (o el nombre de
 //     la clínica cuando la agendó un administrador, ver `agendadoPor` en
@@ -105,11 +114,21 @@ function plantillaAgenda(fila) {
       inicio,
       fin,
       titulo: `${p.titulo}${p.mascota ? ` — ${p.mascota}` : ''}`,
-      descripcion: [p.tipoLabel, p.descripcion, p.propietario ? `Responsable: ${p.propietario}` : null]
+      // El nombre del tutor no viaja en el .ics del propio tutor (sería
+      // decirle su nombre) y sí en el del equipo, igual que la fila "Tutor".
+      descripcion: [p.tipoLabel, p.descripcion, (!esTutor(rol) && p.propietario) ? `Tutor: ${p.propietario}` : null]
         .filter(Boolean).join('\n'),
       lugar: p.lugar || p.clinica,
       organizador: p.correoClinica ? { nombre: p.clinica, email: p.correoClinica } : null,
-      asistentes: (p.asistentes || []),
+      // El ÚNICO asistente del .ics es quien recibe este correo. Antes iban
+      // acá todos los asistentes del evento (`p.asistentes`), así que al
+      // agregar la cita a su calendario el tutor veía el correo del médico y
+      // el médico el del tutor — justo lo que no puede pasar. Sale de la fila
+      // de la bandeja y no del payload a propósito: así ninguna fila ya
+      // encolada con el payload viejo puede filtrar la lista completa.
+      asistentes: fila.destinatario_email
+        ? [{ email: fila.destinatario_email, nombre: fila.destinatario_nombre }]
+        : [],
       cancelado: tipo === 'agenda_evento_cancelado'
     }, 'cita.ics'));
   }

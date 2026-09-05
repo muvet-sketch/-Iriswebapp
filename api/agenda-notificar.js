@@ -188,12 +188,20 @@ module.exports = async function handler(req, res) {
       descripcion: ev.descripcion || null,
       mascota: ev.mascota_nombre || null,
       propietario: nombreTutor,
-      encargadoNombre: ev.encargado_nombre || null,
-      asistentes: []
+      encargadoNombre: ev.encargado_nombre || null
     };
 
     // Destinatarios. "Solo reservar espacio" no tiene tutor, y un evento sin
     // encargado con correo tampoco: cada uno se cae solo si falta el dato.
+    //
+    // PRIVACIDAD: cada uno recibe su PROPIO correo (una fila de `correos` por
+    // destinatario, sin CC), y ni el cuerpo ni el .ics pueden llevar la
+    // dirección de los otros. El correo que sí comparten los tres es el de la
+    // clínica: va en el pie, en el reply-to y como ORGANIZER del .ics, que es
+    // el canal por el que tutor y médico deben comunicarse. Por eso el payload
+    // que se guarda en la bandeja YA NO lleva la lista de asistentes del
+    // evento: el .ics se arma en `plantillaAgenda()` con el destinatario de la
+    // fila y con nadie más.
     const candidatos = [
       { rol: 'tutor', email: emailTutor, nombre: nombreTutor },
       { rol: 'encargado', email: ev.encargado_email, nombre: ev.encargado_nombre },
@@ -207,9 +215,6 @@ module.exports = async function handler(req, res) {
       d.email = email;
       return true;
     });
-    payloadBase.asistentes = destinatarios
-      .filter(d => d.rol !== 'clinica')
-      .map(d => ({ email: d.email, nombre: d.nombre }));
 
     const aEncolar = [];
     const ahora = new Date().toISOString();

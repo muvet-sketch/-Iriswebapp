@@ -1408,6 +1408,25 @@ no un `if` en el navegador.
   el nombre de la clínica es un default correcto, no un relleno.
 - **El tutor solo se lista en el correo del EQUIPO** (`filasAgenda(p, rol)`).
   En el del tutor sería decirle su propio nombre.
+- **Ningún destinatario puede ver el correo electrónico de otro.** Del mismo
+  evento salen hasta tres correos (tutor, encargado, clínica) y cada uno es un
+  envío INDEPENDIENTE — una fila de `correos` por destinatario, sin CC. La
+  única dirección que los tres sí ven es la de la CLÍNICA: pie del layout,
+  `reply_to` y `ORGANIZER` del `.ics`. Es el canal por el que tutor y médico
+  tienen que comunicarse entre ellos.
+  - **El punto de fuga real era el `.ics`, no el cuerpo del correo.** El
+    adjunto llevaba un `ATTENDEE` por cada asistente del evento
+    (`payloadBase.asistentes`), así que al agregar la cita a su calendario el
+    tutor veía el correo del médico y el médico el del tutor. Ahora
+    `plantillaAgenda()` arma el único `ATTENDEE` con `fila.destinatario_email`
+    — la fila de la bandeja, **no el payload**: así una fila ya encolada con el
+    payload viejo tampoco puede filtrar la lista. `agenda-notificar.js` dejó de
+    escribir `asistentes` en el payload. Si algún día hace falta invitar a
+    varias personas por `.ics`, hay que resolver primero cómo hacerlo sin
+    exponer direcciones entre tutor y equipo.
+  - El nombre del tutor sigue viajando en el `.ics` del equipo (línea
+    `Tutor: …` de la `DESCRIPTION`, antes `Responsable: …`) y no en el del
+    propio tutor — mismo criterio que la fila "Tutor" de `filasAgenda()`.
 - **"Termina" se quitó** a pedido del cliente: la hora de fin no le aporta
   nada a quien recibe la cita y alargaba la tabla. El `.ics` sí la conserva,
   que es donde de verdad importa (el bloque en el calendario).
